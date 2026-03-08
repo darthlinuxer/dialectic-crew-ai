@@ -1,0 +1,4 @@
+crewai[tools]>=1.10.0
+crewai-tools>=1.10.0
+pydantic>=2.10.0
+python-dotenv
