@@ -1,10 +1,21 @@
+import os
 from crewai import Agent
 from tools import file_read_tool, json_search_tool
 
-# Configuração do LLM - altere conforme necessário
-# Opções: "gpt-4o", "claude-3-5-sonnet-20241022", "groq/llama-3.3-70b", etc.
-# Para MiniMax, use: "minimax/MiniMax-M2.1" ou outro modelo disponível
-LLM = "gpt-4o"
+from crewai import LLM
+
+# Configuração do LLM usando Anthropic SDK compatível com MiniMax
+# O MiniMax usa API compatível com Anthropic
+LLM = LLM(
+    model="anthropic/MiniMax-M2.1",
+    api_key=os.getenv("MINIMAX_API_KEY"),
+    base_url="https://api.minimax.io/anthropic"
+)
+
+# Para outros provedores, descomente:
+# LLM = LLM(model="gpt-4o")  # OpenAI
+# LLM = LLM(model="claude-3-5-sonnet-20241022")  # Anthropic
+# LLM = LLM(model="groq/llama-3.3-70b-versatile")  # Groq
 
 # ============================================================
 # AGENTE 1: VISIONÁRIO (TESE)
@@ -27,10 +38,11 @@ Antes de propor qualquer coisa, analise:
 
 Sua proposta deve ser holística, coerente e alinhada com VISION.md.
 """,
-    tools=[file_read_tool],
+
     verbose=True,
     allow_delegation=False,
-    llm=LLM
+    llm=LLM,
+    tools=[]
 )
 
 
@@ -55,10 +67,11 @@ Seu trabalho:
 Você é extremamente chato e rigoroso. Nunca seja gentil. 
 A crítica deve ser destrutiva mas construtiva. Encontre os pontos fracos.
 """,
-    tools=[file_read_tool, json_search_tool],
+
     verbose=True,
     allow_delegation=False,
-    llm=LLM
+    llm=LLM,
+    tools=[]
 )
 
 
@@ -86,10 +99,11 @@ Você deve criar uma SÍNTESE que:
 
 A síntese não é um meio-termo medíocre - é uma superação dialética.
 """,
-    tools=[file_read_tool],
+
     verbose=True,
     allow_delegation=False,
-    llm=LLM
+    llm=LLM,
+    tools=[]
 )
 
 
@@ -120,8 +134,11 @@ Checklist de validação:
 6. ✅ 5+ perguntas anti-drift respondidas?
 7. ✅ Zero contradições com VISION.md?
 """,
-    tools=[file_read_tool],
+
     verbose=True,
     allow_delegation=False,
-    llm=LLM
+    llm=LLM,
+    tools=[]  # Sem ferramentas
 )
+
+# Exportar LLM para uso em run_dialectic.py

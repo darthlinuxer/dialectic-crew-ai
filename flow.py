@@ -159,7 +159,7 @@ Checklist:
             agents=[visionario, critico_socratico, sintetizador, validador_macro],
             tasks=[task_vision, task_critica, task_sintese, task_validacao],
             process="hierarchical",
-            manager_llm="gpt-4o",  # Ou outro LLM configurado
+            manager_llm="MiniMax/MiniMax-M2.1",  # Ou outro LLM configurado
             verbose=2
         )
         
@@ -194,9 +194,9 @@ Checklist:
         
         return "avaliar"
     
-    @router(avaliar)
-    def decidir_proximo_passo(self):
-        """Decide se aprova ou faz retry"""
+    @router(rodar_rodada_dialetica)
+    def avaliar(self):
+        """Avalia o resultado e decide o próximo passo"""
         
         if self.state.quality_score >= 9.0:
             print(f"🎉 APROVADO! Quality score: {self.state.quality_score}")
