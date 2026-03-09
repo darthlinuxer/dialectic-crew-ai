@@ -234,6 +234,7 @@ def _extract_acceptance_criteria(
 def _run_verification(
     task: ImplementationTask,
     acceptance_criteria: list[str] | None = None,
+    vision_context: "VisionContext | None" = None,
 ) -> dict:
     """
     Run LLM-based verification on a single task. Pure logic, no plan I/O.
@@ -242,8 +243,11 @@ def _run_verification(
     """
     from crewai import Task as CrewTask, Crew
     from dialectic.agents import create_validador_macro, vision_knowledge
+    from dialectic.vision import VisionContext
     from dialectic.tools import file_read_tool
     from schemas import ValidationOutput
+
+    ctx = vision_context or VisionContext.PROJECT
 
     ac_text = ""
     if acceptance_criteria:
@@ -281,7 +285,7 @@ Respond with quality_score (0-10), consensus_reached (true if task is complete),
         tasks=[verify_crew_task],
         verbose=True,
         memory=True,
-        knowledge_sources=[vision_knowledge()],
+        knowledge_sources=[vision_knowledge(ctx)],
     )
     result = crew.kickoff()
 

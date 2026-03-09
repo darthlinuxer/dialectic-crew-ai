@@ -1,6 +1,19 @@
 # Agents
 
-Dialectic Crew AI defines five specialized agents, each with a distinct role in the dialectic process. Agents are defined as **factory functions** in `src/dialectic/agents.py` — each call returns a fresh `Agent` instance to prevent cross-flow memory contamination. The module also exports `vision_knowledge()`, which creates a `TextFileKnowledgeSource` for `knowledge/VISION.md`.
+Dialectic Crew AI defines five specialized agents, each with a distinct role in the dialectic process. Agents are defined as **factory functions** in `src/dialectic/agents.py` — each call returns a fresh `Agent` instance to prevent cross-flow memory contamination. The module also exports `vision_knowledge(context)`, which creates a `TextFileKnowledgeSource` for the active vision document.
+
+### Vision Knowledge
+
+`vision_knowledge()` accepts an optional `VisionContext` parameter that determines which vision document to load:
+
+| Call | Document | Use Case |
+|------|----------|----------|
+| `vision_knowledge()` | `knowledge/VISION.md` | Default — user project visions |
+| `vision_knowledge(VisionContext.SELF)` | `internal/SELF_VISION.md` | App self-improvement (`--self` flag) |
+
+The `VisionContext` enum is defined in `src/dialectic/vision.py`. All vision-related functions (`get_vision_path`, `ensure_vision_path`, `get_vision_hash`, `vision_knowledge`) accept this parameter, defaulting to `VisionContext.PROJECT`.
+
+Agent backstories reference "VISION.md" generically — they consult whatever vision document the Crew loaded into its `knowledge_sources`. The context switch happens at the Crew level (via `vision_knowledge(context)`), not in individual agent definitions. This keeps agent factories context-agnostic.
 
 ---
 
@@ -66,7 +79,7 @@ graph LR
 | **MCP Servers** | Context7, Brave Search |
 | **Phase** | Thesis |
 
-The Visionary generates bold, comprehensive initial proposals. With 18 years of simulated architectural experience, it always consults `knowledge/VISION.md` (available via the Crew's knowledge sources) and considers the system holistically: affected modules, non-functional requirements, and the ideal speed-quality tradeoff. Has access to Context7 for up-to-date library documentation and Brave Search for real-time web research.
+The Visionary generates bold, comprehensive initial proposals. With 18 years of simulated architectural experience, it always consults the active vision document (available via the Crew's knowledge sources) and considers the system holistically: affected modules, non-functional requirements, and the ideal speed-quality tradeoff. Its backstory references "VISION.md" generically — the actual document loaded (`knowledge/VISION.md` or `internal/SELF_VISION.md`) depends on the `VisionContext` set at the Crew level. Has access to Context7 for up-to-date library documentation and Brave Search for real-time web research.
 
 ### 2. Socratic Critic (`critico_socratico`)
 
@@ -118,7 +131,7 @@ The synthesis is not a mediocre middle ground — it is a **dialectical transcen
 | **MCP Servers** | None |
 | **Phase** | Validation |
 
-The Validator is the final gate. It always consults the macro vision (via knowledge sources) for comparison and scores against a checklist:
+The Validator is the final gate. It always consults the active vision document (via knowledge sources) for comparison and scores against a checklist:
 
 1. Feature aligned with macro vision?
 2. Affected modules considered?
@@ -142,7 +155,7 @@ If score < 9.0, it explains exactly what needs improvement.
 | **Phase** | Thesis (in execution context) |
 
 The Implementer executes tasks during the execution phase. It:
-- Consults the macro vision (via knowledge sources) before implementing
+- Consults the active vision document (via knowledge sources) before implementing
 - Uses file tools to create, modify, and explore files and directories
 - Has access to Context7 and Brave Search for documentation and research
 - Implements exactly what is asked (no overscope)

@@ -6,6 +6,7 @@ import pytest
 
 from dialectic.export import render_markdown, validate_consistency
 from dialectic.config import ExportConfig
+from dialectic.vision import VisionContext
 from schemas import PRDSchema, MacroImpact, UserStory, AntiDriftQuestion
 
 
@@ -152,3 +153,52 @@ def test_json_mismatch(tmp_path, monkeypatch):
     res = validate_consistency(md_path, json_path, prd)
     assert not res.is_valid
     assert any("feature_name mismatch" in e for e in res.errors)
+
+
+def test_consistency_with_self_vision_context(tmp_path, monkeypatch):
+    """validate_consistency works with VisionContext.SELF."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    (tmp_path / "knowledge" / "VISION.md").write_text("User Vision", encoding="utf-8")
+    (tmp_path / "internal").mkdir(exist_ok=True)
+    (tmp_path / "internal" / "SELF_VISION.md").write_text("Self Vision", encoding="utf-8")
+
+    prd = _make_prd()
+    config = ExportConfig()
+
+    md_text = render_markdown(prd, config, vision_context=VisionContext.SELF)
+    md_path = tmp_path / "prd_self.md"
+    md_path.write_text(md_text, encoding="utf-8")
+
+    json_path = tmp_path / "prd_self.json"
+    json_path.write_text(prd.model_dump_json(indent=2), encoding="utf-8")
+
+    res = validate_consistency(md_path, json_path, prd, vision_context=VisionContext.SELF)
+    assert res.is_valid, f"Expected valid but got errors: {res.errors} warnings: {res.warnings}"
+
+
+def test_vision_hash_drift_self_context(tmp_path, monkeypatch):
+    """vision_hash mismatch detected when SELF vision document changes after export."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    (tmp_path / "knowledge" / "VISION.md").write_text("User Vision", encoding="utf-8")
+    (tmp_path / "internal").mkdir(exist_ok=True)
+    self_vision = tmp_path / "internal" / "SELF_VISION.md"
+    self_vision.write_text("Original Self Vision", encoding="utf-8")
+
+    prd = _make_prd()
+    config = ExportConfig()
+    md_text = render_markdown(prd, config, vision_context=VisionContext.SELF)
+
+    self_vision.write_text("Modified Self Vision", encoding="utf-8")
+
+    md_path = tmp_path / "prd_drift.md"
+    md_path.write_text(md_text, encoding="utf-8")
+    json_path = tmp_path / "prd_drift.json"
+    json_path.write_text(prd.model_dump_json(indent=2), encoding="utf-8")
+
+    res = validate_consistency(md_path, json_path, prd, vision_context=VisionContext.SELF)
+    assert not res.is_valid
+    assert any("vision_hash" in e for e in res.errors)

@@ -17,6 +17,7 @@ def test_default_values():
     assert state.consensus_reached is False
     assert state.final_validation_notes == ""
     assert state.file_paths == []
+    assert state.vision_context == "project"
 
 
 def test_mutation():
@@ -32,3 +33,21 @@ def test_mutation():
     assert state.retry_count == 2
     assert state.consensus_reached is True
     assert state.file_paths == ["/tmp/spec.pdf"]
+
+
+def test_vision_context_default_is_project():
+    state = DialecticState()
+    assert state.vision_context == "project"
+
+
+def test_vision_context_self():
+    state = DialecticState(vision_context="self")
+    assert state.vision_context == "self"
+
+
+def test_vision_context_roundtrip():
+    """vision_context survives serialization/deserialization."""
+    state = DialecticState(vision_context="self")
+    data = state.model_dump()
+    restored = DialecticState(**data)
+    assert restored.vision_context == "self"

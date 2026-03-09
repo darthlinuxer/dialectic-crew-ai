@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from dialectic.vision import VisionContext
+
 MAX_RETRIES = 5
 
 
@@ -13,3 +15,4 @@ class DialecticState(BaseModel):
     consensus_reached: bool = False
     final_validation_notes: str = ""
     file_paths: list[str] = Field(default_factory=list)
+    vision_context: str = VisionContext.PROJECT.value

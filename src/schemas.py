@@ -117,3 +117,62 @@ class ExecutionReport(BaseModel):
     overall_success: bool = False
     verified_tasks: List[str] = Field(default_factory=list)
     failed_verification_tasks: List[str] = Field(default_factory=list)
+
+
+# --- Self-improvement schemas ---
+
+
+# --- Dialectic prioritization schemas ---
+
+
+class PrioritizedOpportunity(BaseModel):
+    """Result of dialectic debate ranking for a single improvement opportunity."""
+    opportunity_id: str
+    rank: int
+    justification: str
+    feasibility_score: float = Field(..., ge=0.0, le=10.0)
+    alignment_score: float = Field(..., ge=0.0, le=10.0)
+    final_priority_score: float = Field(..., ge=0.0, le=10.0)
+
+
+class PrioritizationResult(BaseModel):
+    """Output of the dialectic prioritization crew."""
+    ranked: List[PrioritizedOpportunity] = Field(default_factory=list)
+    debate_summary: str = ""
+
+
+# --- Self-improvement schemas ---
+
+
+class ImprovementOpportunity(BaseModel):
+    id: str
+    category: Literal[
+        "vision_gap", "metric_regression", "code_health", "failure_pattern"
+    ]
+    title: str
+    description: str
+    evidence: List[str] = Field(default_factory=list)
+    estimated_impact: Literal["low", "medium", "high"] = "medium"
+
+
+class IntrospectionReport(BaseModel):
+    timestamp: str
+    opportunities: List[ImprovementOpportunity] = Field(default_factory=list)
+    baseline_metrics: dict = Field(default_factory=dict)
+
+
+class SelfImprovementRecord(BaseModel):
+    cycle_id: str
+    timestamp: str
+    opportunities_found: int = 0
+    opportunities_attempted: int = 0
+    prd_generated: bool = False
+    plan_generated: bool = False
+    execution_attempted: bool = False
+    tests_passed: bool = False
+    metrics_stable: bool = False
+    pr_created: bool = False
+    branch_name: str = ""
+    failure_reason: str = ""
+    total_tokens: int = 0
+    estimated_cost: float = 0.0

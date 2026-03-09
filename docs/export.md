@@ -87,9 +87,11 @@ vision_hash: a1b2c3d4...
 | `quality_score` | `PRDSchema.quality_score` | The validation score |
 | `validation_status` | Derived from `consensus_reached` | `"approved"` or `"unapproved"` |
 | `generated_at` | Current UTC time | ISO 8601 timestamp |
-| `vision_hash` | SHA-256 of `knowledge/VISION.md` | Enables drift detection |
+| `vision_hash` | SHA-256 of the active vision document | Enables drift detection |
 
-The `vision_hash` is only included if `knowledge/VISION.md` can be read. If the file is unavailable, the field is omitted silently.
+The `vision_hash` reflects whichever vision document was active when the PRD was generated: `knowledge/VISION.md` by default, or `internal/SELF_VISION.md` when running with `--self`. If the active vision file is unavailable, the field is omitted silently.
+
+`render_markdown()` accepts an optional `vision_context` parameter (`VisionContext.USER` or `VisionContext.SELF`) that controls which vision file is hashed for the frontmatter.
 
 #### Body Sections
 
@@ -129,7 +131,7 @@ Sections: Title → Score → Approach → Tasks (sorted by order) → Mitigated
 
 ## Consistency Validation
 
-The `validate_consistency()` function cross-checks the generated Markdown against the JSON and in-memory PRD.
+The `validate_consistency()` function cross-checks the generated Markdown against the JSON and in-memory PRD. It accepts an optional `vision_context` parameter to specify which vision document should be used for the hash comparison (`VisionContext.USER` or `VisionContext.SELF`).
 
 ```mermaid
 flowchart TD
@@ -160,13 +162,13 @@ flowchart TD
 |-------|----------|-------------|
 | Required headers in MD | Error | `# Objective`, `## Macro Impact`, `## User Stories`, `## Anti-Drift Questions` |
 | `quality_score` match | Error | Frontmatter score must match PRD score |
-| `vision_hash` match | Error | Frontmatter hash must match current `knowledge/VISION.md` SHA-256 |
+| `vision_hash` match | Error | Frontmatter hash must match the SHA-256 of the active vision document |
 | `feature_name` match | Error | JSON field must match PRD |
 | `version` match | Error | JSON field must match PRD |
 | `consensus_reached` match | Error | JSON field must match PRD |
 | Missing `quality_score` in frontmatter | Warning | Acceptable but noted |
 | Missing `vision_hash` in frontmatter | Warning | Acceptable but noted |
-| Cannot read `knowledge/VISION.md` | Warning | Hash check skipped |
+| Cannot read active vision document | Warning | Hash check skipped |
 
 ### Frontmatter Parsing
 

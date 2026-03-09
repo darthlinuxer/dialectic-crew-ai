@@ -25,6 +25,10 @@ flowchart LR
         VSTORY["verify-story"]
     end
 
+    subgraph self_cmds ["Self-Improvement"]
+        SELF["self-improve"]
+    end
+
     subgraph overrides ["Manual Overrides"]
         MARK["mark"]
         VERIFY["verify"]
@@ -36,9 +40,11 @@ flowchart LR
     EXEC -->|"Generates"| EXEC_OUT["exec_output/<br/>run_id/report.json"]
     STATUS -->|"Reads"| PLAN_OUT
     VSTORY -->|"Re-verifies + updates"| PLAN_OUT
+    SELF -->|"Introspect → PRD → Plan → Execute\n→ Validate → PR"| SELF_OUT["GitHub PR\n(human review gate)"]
     MARK -->|"Manual update"| PLAN_OUT
     VERIFY -->|"Manual re-check"| PLAN_OUT
 
+    style SELF fill:#00CEC9,stroke:#00B4B4,color:#fff
     style PRD fill:#6C5CE7,stroke:#4834D4,color:#fff
     style PLAN fill:#00B894,stroke:#00896B,color:#fff
     style EXEC fill:#E17055,stroke:#D63031,color:#fff
@@ -67,9 +73,10 @@ uv run dialectic-crew prd "your feature request" [--files file1.pdf file2.png ..
 |----------|----------|-------------|
 | `"feature request"` | Yes | The feature description |
 | `--files` | No | One or more reference files (PDFs, images, text) for agents to analyze |
+| `--self` | No | Run against app's internal vision (`internal/SELF_VISION.md`) for self-improvement |
 
 **Requirements:**
-- `knowledge/VISION.md` in the project root
+- `knowledge/VISION.md` (or `internal/SELF_VISION.md` with `--self`)
 - API key configured in `.env`
 
 **Output:** `prd_output/PRD_YYYYMMDD_HHMM.json` and `.md`
@@ -82,6 +89,9 @@ uv run dialectic-crew prd "Login with two-factor authentication"
 
 # Attach reference documents for agents to analyze
 uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
+
+# Self-improvement: generate PRD for the app itself
+uv run dialectic-crew prd "Add memory support" --self
 ```
 
 ### `plan` — Plan User Story Execution
@@ -99,6 +109,7 @@ uv run dialectic-crew plan [prd.json] [US-001|index]
 |----------|----------|---------|-------------|
 | `prd.json` | No | Latest PRD in `prd_output/` | Path to the PRD JSON file |
 | `US-001` | No | First user story | User story reference (ID or index) |
+| `--self` | No | — | Run against app's internal vision (`internal/SELF_VISION.md`) |
 
 **Output:** `prd_output/exec_<US>_<timestamp>.json` and `.md`
 
@@ -113,6 +124,9 @@ uv run dialectic-crew plan prd_output/PRD_20260308_1640.json US-002
 
 # Use numeric index (0-based)
 uv run dialectic-crew plan prd_output/PRD_20260308_1640.json 1
+
+# Self-improvement: plan against the app's own vision
+uv run dialectic-crew plan --self
 ```
 
 **User story references are flexible:**
@@ -135,6 +149,7 @@ uv run dialectic-crew execute [plan.json|--latest] [--spec-only]
 |----------|----------|---------|-------------|
 | `plan.json` | No | `--latest` | Path to the plan JSON or `--latest` |
 | `--spec-only` | No | `false` | Generate only a Markdown spec (no LLM execution) |
+| `--self` | No | `false` | Run against app's internal vision (`internal/SELF_VISION.md`) |
 
 **What happens during execution:**
 
@@ -161,6 +176,9 @@ uv run dialectic-crew execute prd_output/exec_US-001_20260308_1200.json
 
 # Generate only a static spec (no LLM calls)
 uv run dialectic-crew execute --spec-only
+
+# Self-improvement: execute plan against the app's own vision
+uv run dialectic-crew execute --self
 ```
 
 ---
@@ -304,6 +322,68 @@ uv run dialectic-crew verify T-002 --prd prd_output/PRD_20260308_1640.json
 
 ---
 
+---
+
+## Self-Improvement Command
+
+### `self-improve` — Automated Self-Improvement Cycle
+
+Runs a semi-autonomous improvement cycle against `internal/SELF_VISION.md`. The cycle introspects the codebase through 4 lenses, generates a PRD for the top improvement opportunity, plans and executes it, then validates with tests and metrics. If all gates pass, a PR is created for human review.
+
+```bash
+uv run dialectic-crew self-improve [--dry-run] [--max N]
+# or: python main.py self-improve [--dry-run] [--max N]
+```
+
+**Arguments:**
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `--dry-run` | No | `false` | Print the introspection report without making changes |
+| `--max N` | No | `1` | Maximum number of improvements per cycle |
+
+**What happens during a cycle:**
+
+1. **Baseline snapshot**: Runs pytest to ensure tests currently pass
+2. **Introspection**: Analyses through 4 lenses:
+   - **Vision gaps**: Unchecked items in `internal/SELF_VISION.md`
+   - **Metric trends**: Declining PRD/task scores, rising retries
+   - **Code health**: TODO/FIXME count, test inventory
+   - **Failure patterns**: Recurring guardrail rejections
+3. **PRD generation**: Creates a PRD for the top opportunity (with `VisionContext.SELF`)
+4. **Planning**: Plans user story execution
+5. **Execution**: Runs the plan with full dialectic per task
+6. **Validation**:
+   - Tests must pass (absolute gate)
+   - Metrics must not regress by more than 5% (configurable via `MIN_METRIC_RETENTION`)
+7. **PR creation**: If all gates pass, creates a GitHub PR for human review
+
+**Safety mechanisms:**
+
+- **Immutable files**: `internal/SELF_VISION.md`, `self_improve.py`, `metrics.py`, `introspect.py` cannot be modified
+- **Test gate**: Absolute — if tests fail, the branch is discarded
+- **Metric gate**: No metric can decrease by more than 5%
+- **Token budget gate**: Configurable via `SELF_IMPROVE_TOKEN_BUDGET` (default: 500K tokens)
+- **Iteration cap**: `--max` limits blast radius (default: 1 improvement per cycle)
+- **LLM iteration cap**: Per-agent limit via `SELF_IMPROVE_MAX_ITERATIONS` (default: 25)
+- **Dialectic prioritization**: Improvement opportunities are debated by a 3-agent crew before selection
+- **Human gate**: PR created, never auto-merged
+
+**Examples:**
+
+```bash
+# See what improvements are available (no changes)
+uv run dialectic-crew self-improve --dry-run
+
+# Run one improvement cycle
+uv run dialectic-crew self-improve
+
+# Run up to 3 improvements in a cycle
+uv run dialectic-crew self-improve --max 3
+```
+
+---
+
 ### `help` — Show Help
 
 ```bash
@@ -334,3 +414,55 @@ flowchart TD
     style E fill:#E17055,stroke:#D63031,color:#fff
     style I fill:#55EFC4,stroke:#00B894,color:#333
 ```
+
+### Self-Improvement Workflow
+
+The same pipeline can target the app itself by adding `--self` to each step. This switches the vision context from the user's project vision (`knowledge/VISION.md`) to the app's own evolution vision (`internal/SELF_VISION.md`).
+
+```bash
+# 1. Generate a PRD for improving Dialectic Crew AI itself
+uv run dialectic-crew prd "Add persistent memory across sessions" --self
+
+# 2. Plan a user story from the self-improvement PRD
+uv run dialectic-crew plan --self
+
+# 3. Execute the plan
+uv run dialectic-crew execute --self
+
+# 4. Check status (status always reads from plan files; no --self needed)
+uv run dialectic-crew status
+```
+
+The `vision_hash` in exported files will reflect which vision document was active, enabling drift detection for both contexts independently.
+
+### Automated Self-Improvement Workflow
+
+For a fully automated cycle, use `self-improve` instead of manually running each step:
+
+```bash
+# Dry run: see what would be improved
+uv run dialectic-crew self-improve --dry-run
+
+# Full cycle: introspect → PRD → plan → execute → validate → PR
+uv run dialectic-crew self-improve
+```
+
+This runs the same pipeline as the manual `--self` workflow but adds introspection, dialectic prioritization, test gates, metric gates, token budget enforcement, and automatic PR creation.
+
+---
+
+## Hooks & Cost Tracking Environment Variables
+
+The following environment variables control the execution hooks system used for token budgeting, cost tracking, and safety:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TOKEN_BUDGET` | `0` (unlimited) | Global token budget for any `HookScope` (0 = no limit) |
+| `SELF_IMPROVE_TOKEN_BUDGET` | `500000` | Token budget for the `self-improve` cycle |
+| `SELF_IMPROVE_MAX_ITERATIONS` | `25` | Max LLM iterations per agent during self-improve |
+| `MAX_LLM_ITERATIONS` | `25` | Default max LLM iterations for any `HookScope` |
+| `COST_PER_INPUT_TOKEN` | `0.0000025` | Cost per input token in USD (GPT-4o default) |
+| `COST_PER_OUTPUT_TOKEN` | `0.00001` | Cost per output token in USD (GPT-4o default) |
+| `MIN_METRIC_RETENTION` | `0.95` | Minimum metric retention ratio for self-improve validation |
+
+Token usage and estimated cost are tracked per-PRD, per-task, and per-self-improve cycle via the `HookScope` context manager and emitted to the MetricsStore.

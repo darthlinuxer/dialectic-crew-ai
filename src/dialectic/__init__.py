@@ -13,6 +13,7 @@ from dialectic.agents import (
 from dialectic.state import DialecticState
 from dialectic.prd_flow import DialecticFlow, run_dialectic_flow, OUTPUT_DIR
 from dialectic.export import prd_to_markdown, execution_plan_to_markdown
+from dialectic.vision import VisionContext
 
 __all__ = [
     "create_visionario",
@@ -21,6 +22,7 @@ __all__ = [
     "create_validador_macro",
     "create_implementer",
     "vision_knowledge",
+    "VisionContext",
     "DialecticState",
     "DialecticFlow",
     "run_dialectic_flow",

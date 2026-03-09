@@ -1,0 +1,1 @@
+/home/darthlinuxer/Agentic-Skills/.cursor/agents/mobile-developer.md

@@ -8,11 +8,11 @@
 
 ## Project Status
 
-**This is a pre-production, self-evolving application.** The system is currently using its own dialectic pipeline to implement the features defined in [`knowledge/VISION.md`](knowledge/VISION.md). In other words, the app generates PRDs for its own roadmap items, plans user stories, and produces execution artifacts to build itself.
+**This is a pre-production, self-evolving application.** The system uses a dual-vision architecture: [`internal/SELF_VISION.md`](internal/SELF_VISION.md) drives the app's own evolution (via `--self` mode), while [`knowledge/VISION.md`](knowledge/VISION.md) is the user-facing project vision that anchors all generated artifacts. The app generates PRDs for its own roadmap items, plans user stories, and produces execution artifacts to build itself — all through `--self` mode.
 
-The goal is to first implement and test all features from the vision document. Once the full feature set is stable and verified, the application will be transformed into a **general-purpose dialectic platform** that works like an advanced REPL loop with full observability — capable of ingesting any external project, generating PRDs, planning implementation, and executing tasks against it.
+With the vision split in place, the application is now becoming a **general-purpose dialectic platform** that works like an advanced REPL loop with full observability — capable of ingesting any external project via `knowledge/VISION.md`, generating PRDs, planning implementation, and executing tasks against it, while continuing to evolve itself through `internal/SELF_VISION.md`.
 
-**Current phase:** Phase 1 (core engine) is complete. The system is bootstrapping Phases 2-6 through self-evolution.
+**Current phase:** Phase 1 (core engine) complete. Phase 2 (passive metrics) and Phase 3 (introspection engine) are operational. The `self-improve` command provides a semi-autonomous improvement cycle with human PR gate.
 
 ## What is it?
 
@@ -41,6 +41,13 @@ THESIS -> ANTITHESIS -> SYNTHESIS -> VALIDATION -> (RETRY UNTIL 9.0)
 - Dual export: JSON + Markdown with YAML frontmatter
 - SQLite persistence with lazy initialization for flow state recovery
 - Dependency-aware task ordering via topological sort
+- Dual-vision architecture: separate internal and project visions
+- `--self` mode for self-improvement using the app's own dialectic pipeline
+- `self-improve` command: introspection -> PRD -> plan -> execute -> validate -> PR
+- SQLite-backed passive metrics collection (PRD scores, retries, guardrail rejections)
+- 4-lens introspection engine (vision gaps, metric trends, code health, failure patterns)
+- CrewAI execution hooks for token budgeting, cost-per-PRD tracking, and tool safety
+- Dialectic prioritization of improvement opportunities (3-agent debate)
 - Conditional MCP server loading (Context7, Brave Search, Sequential Thinking)
 
 ## Installation
@@ -117,6 +124,19 @@ uv run dialectic-crew verify T0
 uv run dialectic-crew verify T2 --prd prd_output/PRD_20260308_164012.json
 ```
 
+### Self-improvement
+
+```bash
+# Dry run: inspect improvement opportunities without making changes
+uv run dialectic-crew self-improve --dry-run
+
+# Run one improvement cycle (introspect -> PRD -> plan -> execute -> validate -> PR)
+uv run dialectic-crew self-improve
+
+# Run up to 3 improvements in one cycle
+uv run dialectic-crew self-improve --max 3
+```
+
 ## Configuration (.env)
 
 | Variable | Description | Default |
@@ -159,7 +179,7 @@ Generated Markdown includes YAML frontmatter with audit metadata:
 quality_score: 9.2
 validation_status: approved
 generated_at: 2026-03-08T20:00:00Z
-vision_hash: a1b2c3d4...  # SHA-256 of knowledge/VISION.md
+vision_hash: a1b2c3d4...  # SHA-256 of the active vision document
 ---
 ```
 
@@ -171,8 +191,10 @@ Body sections: `# Objective`, `## Macro Impact`, `## User Stories`, `## Anti-Dri
 dialectic-crew-ai/
 +-- main.py                        # Bootstrap entry point
 +-- pyproject.toml                 # Project config (uv/pip, package-dir=src)
++-- internal/
+|   +-- SELF_VISION.md             # App's own evolution vision (--self mode)
 +-- knowledge/
-|   +-- VISION.md                  # System macro vision (accessed via TextFileKnowledgeSource)
+|   +-- VISION.md                  # User's project vision (template provided, accessed via TextFileKnowledgeSource)
 +-- .env                           # API keys and config (not committed)
 +-- tests/                         # Unit tests
 |   +-- test_*.py
@@ -186,6 +208,8 @@ dialectic-crew-ai/
     |   +-- export.py              # Dual exporter (JSON+MD) with atomicity
     |   +-- config.py              # Export configuration
     |   +-- tools.py               # CrewAI tools (FileRead, FileWrite)
+    |   +-- hooks.py               # CrewAI execution hooks (token budget, cost, tool safety)
+    |   +-- prioritize.py          # Dialectic prioritization of improvement opportunities
     +-- planning/                  # User story planning
     |   +-- flow.py                # Dialectic planning flow with retry loop
     +-- execution/                 # Plan execution
@@ -193,22 +217,25 @@ dialectic-crew-ai/
     |   +-- task_flow.py           # Per-task CrewAI Flow
     |   +-- runner.py              # Spec Markdown generation
     |   +-- verify.py              # Task tracking and LLM verification
-    +-- main/                      # CLI
-        +-- cli.py                 # Full CLI (prd, plan, execute, status, mark, verify)
+    |   +-- metrics.py             # SQLite-backed passive metrics store
+    |   +-- introspect.py          # 4-lens introspection engine
+    +-- main/                      # CLI and orchestration
+        +-- cli.py                 # Full CLI (prd, plan, execute, status, mark, verify, self-improve)
+        +-- self_improve.py        # Self-improvement cycle orchestrator
 ```
 
 ## Self-Evolution Roadmap
 
-The application is currently working through its own roadmap (see [`knowledge/VISION.md`](knowledge/VISION.md) for the full vision):
+The application evolves itself through its own dialectic pipeline. The self-evolution roadmap lives in [`internal/SELF_VISION.md`](internal/SELF_VISION.md) and is accessed via the `--self` flag or the `self-improve` command:
 
-- **Phase 1** (complete): Core dialectic engine, planning, execution, CLI
-- **Phase 2** (next): CrewAI feature adoption (Memory, Reasoning, Planning, Conditional Tasks, LLM Hooks)
-- **Phase 3**: Self-improvement via Training (`crew.train()`) and Testing (`crewai test`)
-- **Phase 4**: REST API with Event Listeners, PostgreSQL, background workers
-- **Phase 5**: Web UI with live dialectic visualization and review workflows
-- **Phase 6**: External integrations (GitHub, Jira, Slack) and multi-tenant scale
+- **Phase 1** (complete): Core dialectic engine, planning, execution, CLI, dual-vision architecture
+- **Phase 2** (complete): Passive metrics collection (PRD scores, retries, guardrail rejections via SQLite)
+- **Phase 3** (complete): Introspection engine (vision gaps, metric trends, code health, failure patterns)
+- **Phase 4** (complete): Semi-autonomous self-improvement cycle (`self-improve` command) with test gate, metric gate, and human PR gate
+- **Phase 5** (planned): CrewAI feature adoption (Memory, Reasoning, Training, Event Listeners)
+- **Phase 6** (planned): REST API, PostgreSQL, Web UI
 
-Once all phases are implemented and battle-tested through self-evolution, the platform will be generalized to accept any external project as input — functioning as an advanced REPL loop with full observability for automated PRD generation, planning, and execution.
+The dual-vision architecture keeps the app's own evolution (`internal/SELF_VISION.md`) separate from user projects (`knowledge/VISION.md`). All default commands operate against the user's project vision; use `--self` to switch to self-improvement mode, or use `self-improve` for the full automated cycle.
 
 ## Tests
 

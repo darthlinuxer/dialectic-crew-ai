@@ -34,7 +34,10 @@ from dialectic.agents import (
     llm_simple,
     vision_knowledge,
 )
+from dialectic.vision import VisionContext
 from dialectic.tools import file_read_tool, file_write_tool, directory_read_tool
+from dialectic.hooks import HookScope
+from dialectic.metrics import emit as emit_metric
 from schemas import (
     ValidationOutput,
     VerificationResult,
@@ -58,6 +61,7 @@ class TaskFlowState(BaseModel):
     acceptance_checks: list[str] = Field(default_factory=list)
     min_score: float = DEFAULT_MIN_SCORE
     max_retries: int = DEFAULT_MAX_RETRIES
+    vision_context: str = VisionContext.PROJECT.value
 
     # Dialectic results
     dialectic_score: float = 0.0
@@ -88,7 +92,9 @@ def _quality_guardrail(result) -> tuple[bool, Any]:
     if pydantic_obj and isinstance(pydantic_obj, ValidationOutput):
         if 0.0 <= pydantic_obj.quality_score <= 10.0:
             return (True, result)
+        emit_metric("guardrail_reject", 1.0, guardrail="quality", reason="score_out_of_range")
         return (False, "quality_score must be between 0.0 and 10.0")
+    emit_metric("guardrail_reject", 1.0, guardrail="quality", reason="invalid_schema")
     return (False, "Output must be valid JSON: quality_score, consensus_reached, final_validation_notes")
 
 
@@ -96,6 +102,7 @@ def _verification_guardrail(result) -> tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, VerificationResult):
         return (True, result)
+    emit_metric("guardrail_reject", 1.0, guardrail="verification", reason="invalid_schema")
     return (False, "Output must be VerificationResult JSON: verified, checks_passed, checks_failed, notes")
 
 
@@ -170,7 +177,7 @@ Fill in:
             tasks=[task_verify],
             verbose=True,
             memory=True,
-            knowledge_sources=[vision_knowledge()],
+            knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
         )
         result = crew.kickoff()
 
@@ -284,10 +291,14 @@ Verify alignment with the macro vision.
                 memory=True,
                 planning=True,
                 planning_llm=llm_planning,
-                knowledge_sources=[vision_knowledge()],
+                knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
             )
 
-            result = crew.kickoff()
+            with HookScope(
+                token_budget=0,
+                label=f"task/{self.state.task_id}",
+            ):
+                result = crew.kickoff()
 
             validation: ValidationOutput | None = None
             tasks_out = getattr(result, "tasks_output", None) or []
@@ -420,7 +431,7 @@ Verify alignment with the macro vision.
             process="sequential",
             verbose=True,
             memory=True,
-            knowledge_sources=[vision_knowledge()],
+            knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
         )
 
         result = crew.kickoff()
@@ -477,12 +488,38 @@ Verify alignment with the macro vision.
     def on_completed(self):
         phases = " → ".join(self.state.phases_executed)
         print(f"   {self.state.task_id} COMPLETED (phases: {phases})")
+        emit_metric(
+            "task_score",
+            max(self.state.dialectic_score, self.state.reimplement_score),
+            task_id=self.state.task_id,
+            success=True,
+            vision_context=self.state.vision_context,
+        )
+        emit_metric(
+            "task_retry_count",
+            float(self.state.dialectic_retries),
+            task_id=self.state.task_id,
+            vision_context=self.state.vision_context,
+        )
         return self._build_result(success=True)
 
     @listen("mark_failed")
     def on_failed(self):
         phases = " → ".join(self.state.phases_executed)
         print(f"   {self.state.task_id} FAILED (phases: {phases})")
+        emit_metric(
+            "task_score",
+            max(self.state.dialectic_score, self.state.reimplement_score),
+            task_id=self.state.task_id,
+            success=False,
+            vision_context=self.state.vision_context,
+        )
+        emit_metric(
+            "task_retry_count",
+            float(self.state.dialectic_retries),
+            task_id=self.state.task_id,
+            vision_context=self.state.vision_context,
+        )
         return self._build_result(success=False)
 
     def _build_result(self, success: bool) -> TaskExecutionResult:

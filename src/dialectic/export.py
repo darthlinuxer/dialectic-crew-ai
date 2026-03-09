@@ -13,7 +13,7 @@ import json
 
 from schemas import PRDSchema, UserStoryExecutionPlan
 from dialectic.config import ExportConfig
-from dialectic.vision import get_vision_hash
+from dialectic.vision import VisionContext, get_vision_hash
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,12 @@ def _parse_frontmatter(md_text: str) -> dict:
     return data
 
 
-def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> ValidationResult:
+def validate_consistency(
+    md_path: Path,
+    json_path: Path,
+    prd: PRDSchema,
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> ValidationResult:
     """Validates consistency between the generated Markdown and the PRD/JSON.
 
     Checks implemented:
@@ -243,15 +248,15 @@ def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> Vali
 
     # 3) vision_hash
     fm_vision = front.get("vision_hash")
-    vision_hash_current = get_vision_hash()
+    vision_hash_current = get_vision_hash(vision_context)
     if vision_hash_current is None:
-        warnings.append("Could not read knowledge/VISION.md to verify vision_hash")
+        warnings.append("Could not read vision document to verify vision_hash")
 
     if fm_vision:
         if vision_hash_current is None:
-            errors.append("MD contains vision_hash but knowledge/VISION.md could not be read to verify it")
+            errors.append("MD contains vision_hash but the vision document could not be read to verify it")
         elif str(fm_vision) != vision_hash_current:
-            errors.append("vision_hash in MD does not match current knowledge/VISION.md")
+            errors.append("vision_hash in MD does not match current vision document")
     else:
         # it's acceptable for MD to omit vision_hash; warn
         warnings.append("vision_hash not present in MD frontmatter")
@@ -305,20 +310,24 @@ def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> Vali
     return ValidationResult(is_valid=is_valid, errors=errors, warnings=warnings)
 
 
-def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
+def render_markdown(
+    prd: PRDSchema,
+    config: ExportConfig,
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> str:
     """Renders the final Markdown with metadata frontmatter and body generated from the schema.
 
     Frontmatter (YAML) includes:
       - quality_score
       - validation_status
       - generated_at (UTC ISO)
-      - vision_hash (SHA-256 of knowledge/VISION.md read with utf-8) ONLY if available
+      - vision_hash (SHA-256 of the active vision document) ONLY if available
 
     The body contains the sections: # Objective, ## Macro Impact, ## User Stories, ## Anti-Drift Questions.
     """
-    vision_hash = get_vision_hash()
+    vision_hash = get_vision_hash(vision_context)
     if vision_hash is None:
-        logger.debug("Could not read knowledge/VISION.md to compute hash; continuing without vision_hash.")
+        logger.debug("Could not read vision document to compute hash; continuing without vision_hash.")
 
     quality = getattr(prd, "quality_score", None)
     # determine validation status: prefer explicit field, else derive from consensus_reached

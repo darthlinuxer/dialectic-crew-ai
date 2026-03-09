@@ -25,7 +25,7 @@ from dialectic.agents import (
 )
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_flow import OUTPUT_DIR
-from dialectic.vision import get_vision_hash
+from dialectic.vision import VisionContext, get_vision_hash
 from schemas import PRDSchema, UserStoryExecutionPlan
 
 
@@ -149,6 +149,7 @@ def _extract_plan(result, us) -> UserStoryExecutionPlan | None:
 def run_user_story_planning(
     prd_path: str | None,
     user_story_ref: str | None,
+    vision_context: VisionContext = VisionContext.PROJECT,
 ) -> dict:
     """
     Execute dialectic cycle to generate an implementation plan for a user story.
@@ -279,7 +280,7 @@ Fill in:
             memory=True,
             planning=True,
             planning_llm=llm_planning,
-            knowledge_sources=[vision_knowledge()],
+            knowledge_sources=[vision_knowledge(vision_context)],
         )
 
     print(f"\n{'='*60}")
@@ -301,7 +302,7 @@ Fill in:
 
         plan_valid = _ensure_acceptance_checks(plan_valid, us)
         plan_valid.source_prd_path = str(Path(prd_path).resolve())
-        plan_valid.vision_hash = get_vision_hash()
+        plan_valid.vision_hash = get_vision_hash(vision_context)
 
         if plan_valid.quality_score >= MIN_PLAN_SCORE:
             print(f"   Plan approved (score {plan_valid.quality_score}/10)")

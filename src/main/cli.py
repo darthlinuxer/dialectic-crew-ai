@@ -24,16 +24,17 @@ from planning.flow import run_user_story_planning
 from execution.runner import run_execution
 from execution.dialectic_execution import run_dialectic_execution
 from execution.verify import show_status, mark_task, verify_task, verify_user_story
-from dialectic.vision import ensure_vision_path
+from dialectic.vision import ensure_vision_path, VisionContext
 
 
 BANNER = """
 ╔══════════════════════════════════════════════════════════════════╗
 ║                                                                   ║
-║     DIALECTIC CREW AI - PRD & Planning v1.2                       ║
+║     DIALECTIC CREW AI - PRD & Planning v1.3                       ║
 ║                                                                   ║
 ║     Dialectic: Thesis → Antithesis → Synthesis → Validation       ║
 ║     Commands: prd | plan | execute | status | verify-story | help ║
+║              | self-improve                                        ║
 ║                                                                   ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
@@ -102,6 +103,23 @@ Manual overrides (the execute command handles these automatically):
       Ex.: python main.py verify T0
            python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 
+  self-improve [--dry-run] [--max N]
+      Runs one self-improvement cycle: introspect against internal/SELF_VISION.md,
+      generate PRD, plan, and execute improvements, then validate with tests
+      and metrics. Creates a PR for human review if all gates pass.
+      --dry-run   Print the introspection report without making changes.
+      --max N     Maximum number of improvements per cycle (default: 1).
+      Ex.: python main.py self-improve --dry-run
+           python main.py self-improve --max 2
+
+  --self (flag for prd, plan, execute)
+      Run against the app's internal vision (internal/SELF_VISION.md) instead
+      of the user's project vision (knowledge/VISION.md). Used to evolve the
+      app itself using its own dialectic pipeline.
+      Ex.: python main.py prd "Add memory support" --self
+           python main.py plan --self
+           python main.py execute --self
+
   help, -h, --help
       Shows this message.
 
@@ -123,11 +141,18 @@ def _check_api_key():
     return has
 
 
-def _check_vision_exists():
+def _extract_self_flag(args: list[str]) -> tuple[list[str], VisionContext]:
+    if "--self" in args:
+        remaining = [a for a in args if a != "--self"]
+        return remaining, VisionContext.SELF
+    return args, VisionContext.PROJECT
+
+
+def _check_vision_exists(context: VisionContext = VisionContext.PROJECT):
     try:
-        ensure_vision_path()
+        ensure_vision_path(context)
     except FileNotFoundError as exc:
-        print("  knowledge/VISION.md not found!")
+        print(f"  Vision document not found!")
         print(f"  {exc}")
         sys.exit(1)
 
@@ -145,12 +170,15 @@ def _command_requires_vision(sub: str, args: list[str]) -> bool:
         return True
     if sub == "execute" and "--spec-only" not in args:
         return True
+    if sub == "self-improve":
+        return False  # self-improve checks SELF vision internally
     return False
 
 
-def cmd_prd(feature_request: str, file_paths: list[str] | None = None):
+def cmd_prd(feature_request: str, file_paths: list[str] | None = None, vision_context: VisionContext = VisionContext.PROJECT):
     flow = DialecticFlow(persistence=_get_persistence())
     flow.state.feature_objective = feature_request
+    flow.state.vision_context = vision_context.value
     if file_paths:
         flow.state.file_paths = file_paths
     flow.kickoff()
@@ -164,15 +192,15 @@ def cmd_prd(feature_request: str, file_paths: list[str] | None = None):
     print("=" * 60)
 
 
-def cmd_plan(prd_path: str | None, us_ref: str | None):
+def cmd_plan(prd_path: str | None, us_ref: str | None, vision_context: VisionContext = VisionContext.PROJECT):
     if prd_path and not os.path.exists(prd_path):
         print(f"PRD not found: {prd_path}")
         sys.exit(1)
-    result = run_user_story_planning(prd_path, us_ref)
+    result = run_user_story_planning(prd_path, us_ref, vision_context=vision_context)
     print(f"Score: {result['quality_score']}/10.0")
 
 
-def cmd_execute(plan_path: str | None, spec_only: bool = False):
+def cmd_execute(plan_path: str | None, spec_only: bool = False, vision_context: VisionContext = VisionContext.PROJECT):
     try:
         if spec_only:
             result = run_execution(plan_path=plan_path or "--latest")
@@ -181,6 +209,7 @@ def cmd_execute(plan_path: str | None, spec_only: bool = False):
         else:
             result = run_dialectic_execution(
                 plan_path=plan_path or "--latest",
+                vision_context=vision_context,
             )
             story_status = result.get("story_status", "unknown")
             print(f"\nExecution complete: {result['output_path']}")
@@ -244,6 +273,19 @@ def cmd_verify_story(plan_path: str | None, prd_path: str | None):
         sys.exit(1)
 
 
+def cmd_self_improve(dry_run: bool = False, max_improvements: int = 1):
+    from main.self_improve import run_self_improve
+
+    _check_vision_exists(VisionContext.SELF)
+    record = run_self_improve(max_improvements=max_improvements, dry_run=dry_run)
+    if record.pr_created:
+        print("\nSelf-improvement cycle completed successfully.")
+    elif record.failure_reason == "dry_run":
+        print("\nDry run complete. No changes made.")
+    elif record.failure_reason:
+        print(f"\nSelf-improvement cycle ended: {record.failure_reason}")
+
+
 def cmd_help():
     print(HELP_TEXT.strip())
 
@@ -265,8 +307,9 @@ def main():
     print(BANNER)
     if _command_requires_api(sub, args) and not _check_api_key():
         sys.exit(1)
+    _, vision_ctx = _extract_self_flag(args)
     if _command_requires_vision(sub, args):
-        _check_vision_exists()
+        _check_vision_exists(vision_ctx)
 
     if sub == "prd":
         if len(args) < 2:
@@ -274,6 +317,7 @@ def main():
             sys.exit(1)
         file_paths: list[str] = []
         rest = args[1:]
+        rest, vision_context = _extract_self_flag(rest)
         if "--files" in rest:
             idx = rest.index("--files")
             feature_parts = rest[:idx]
@@ -284,18 +328,22 @@ def main():
                 sys.exit(1)
         else:
             feature_parts = rest
-        cmd_prd(" ".join(feature_parts), file_paths=file_paths or None)
+        cmd_prd(" ".join(feature_parts), file_paths=file_paths or None, vision_context=vision_context)
         return
     if sub == "plan":
-        prd_path = args[1] if len(args) > 1 else None
-        us_ref = args[2] if len(args) > 2 else None
-        cmd_plan(prd_path, us_ref)
+        remaining = args[1:]
+        remaining, vision_context = _extract_self_flag(remaining)
+        prd_path = remaining[0] if len(remaining) > 0 else None
+        us_ref = remaining[1] if len(remaining) > 1 else None
+        cmd_plan(prd_path, us_ref, vision_context=vision_context)
         return
     if sub == "execute":
-        remaining = [a for a in args[1:] if not a.startswith("-")]
-        spec_only = "--spec-only" in args
+        remaining_all = args[1:]
+        remaining_all, vision_context = _extract_self_flag(remaining_all)
+        remaining = [a for a in remaining_all if not a.startswith("-")]
+        spec_only = "--spec-only" in remaining_all
         plan_path = remaining[0] if remaining else "--latest"
-        cmd_execute(plan_path, spec_only=spec_only)
+        cmd_execute(plan_path, spec_only=spec_only, vision_context=vision_context)
         return
     if sub == "status":
         plan_path = args[1] if len(args) > 1 else None
@@ -335,8 +383,22 @@ def main():
                 prd_path = args[prd_idx + 1]
         cmd_verify(task_id, plan_path, prd_path)
         return
+    if sub == "self-improve":
+        remaining = args[1:]
+        dry_run = "--dry-run" in remaining
+        max_n = 1
+        if "--max" in remaining:
+            idx = remaining.index("--max")
+            if idx + 1 < len(remaining):
+                try:
+                    max_n = int(remaining[idx + 1])
+                except ValueError:
+                    print("--max requires an integer argument")
+                    sys.exit(1)
+        cmd_self_improve(dry_run=dry_run, max_improvements=max_n)
+        return
 
-    print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | help")
+    print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | self-improve | help")
     sys.exit(1)
 
 

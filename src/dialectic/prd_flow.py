@@ -28,8 +28,11 @@ from dialectic.agents import (
     vision_knowledge,
 )
 from dialectic.state import DialecticState, MAX_RETRIES
+from dialectic.vision import VisionContext
 from dialectic.export import prd_to_markdown, PRDExporter
 from dialectic.config import get_export_config
+from dialectic.hooks import HookScope
+from dialectic.metrics import emit as emit_metric
 from schemas import PRDSchema
 
 try:
@@ -53,7 +56,9 @@ def _prd_guardrail(result) -> tuple[bool, Any]:
     if pydantic_obj and isinstance(pydantic_obj, PRDSchema):
         if pydantic_obj.user_stories and len(pydantic_obj.user_stories) >= 1:
             return (True, result)
+        emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="no_user_stories")
         return (False, "PRD must include at least one user story")
+    emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="invalid_schema")
     return (
         False,
         "Output must be a valid PRDSchema JSON. Include all required fields: "
@@ -182,7 +187,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
             memory=True,
             planning=True,
             planning_llm=llm_planning,
-            knowledge_sources=[vision_knowledge()],
+            knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
         )
 
         kickoff_kwargs: dict[str, Any] = {
@@ -200,7 +205,12 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
             if input_files:
                 kickoff_kwargs["input_files"] = input_files
 
-        resultado = crew.kickoff(**kickoff_kwargs)
+        feature_label = self.state.feature_objective[:60].replace(" ", "_")
+        with HookScope(
+            token_budget=0,
+            label=f"prd/{feature_label}",
+        ):
+            resultado = crew.kickoff(**kickoff_kwargs)
 
         # Extract PRD via output_pydantic (native CrewAI structured output)
         prd: PRDSchema | None = None
@@ -288,6 +298,18 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
     @listen("aprovar")
     def salvar_prd_final(self):
         os.makedirs(OUTPUT_DIR, exist_ok=True)
+        emit_metric(
+            "prd_score",
+            self.state.quality_score,
+            feature=self.state.feature_objective[:120],
+            vision_context=self.state.vision_context,
+        )
+        emit_metric(
+            "prd_retry_count",
+            float(self.state.retry_count),
+            feature=self.state.feature_objective[:120],
+            vision_context=self.state.vision_context,
+        )
 
         data = self.state.prd_data if isinstance(self.state.prd_data, dict) else {}
 

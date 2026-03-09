@@ -13,7 +13,7 @@ from dialectic.tools import (
     directory_read_tool,
     code_docs_tool,
 )
-from dialectic.vision import prepare_vision_runtime
+from dialectic.vision import VisionContext, prepare_vision_runtime, get_vision_path
 
 logger = logging.getLogger(__name__)
 
@@ -86,19 +86,23 @@ mcp_brave_search = _make_mcp(
 
 
 # ---------------------------------------------------------------------------
-# Knowledge source: VISION.md loaded via semantic chunking + vector retrieval.
-# Attach to Crew(..., knowledge_sources=[vision_knowledge()]) so agents get
-# relevant sections automatically instead of raw text injection.
+# Knowledge source: vision document loaded via semantic chunking + vector
+# retrieval.  Attach to Crew(..., knowledge_sources=[vision_knowledge(ctx)])
+# so agents get relevant sections automatically.
 # ---------------------------------------------------------------------------
 
-def vision_knowledge() -> TextFileKnowledgeSource:
-    """Create a TextFileKnowledgeSource for VISION.md.
+def vision_knowledge(
+    context: VisionContext = VisionContext.PROJECT,
+) -> TextFileKnowledgeSource:
+    """Create a TextFileKnowledgeSource for the active vision document.
 
-    Resolve to the project-level `knowledge/VISION.md` so callers do not need
-    to invoke the CLI from the repository root.
+    *context* selects which vision to load:
+      - PROJECT (default): ``knowledge/VISION.md`` (user's project)
+      - SELF: ``internal/SELF_VISION.md`` (app's own evolution)
     """
-    prepare_vision_runtime()
-    return TextFileKnowledgeSource(file_paths=["VISION.md"])
+    prepare_vision_runtime(context)
+    vision_path = get_vision_path(context)
+    return TextFileKnowledgeSource(file_paths=[vision_path.name])
 
 
 # ---------------------------------------------------------------------------

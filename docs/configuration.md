@@ -61,6 +61,23 @@ The Sequential Thinking MCP server requires only Docker (no API key).
 
 **Docker prerequisite:** The Brave Search and Sequential Thinking MCP servers run via Docker containers. If `docker` is not on your `PATH`, these servers are skipped automatically.
 
+### Project Root
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DIALECTIC_PROJECT_ROOT` | Auto-detected | Overrides automatic project root detection. Useful when running from a different working directory. |
+
+### Vision Contexts
+
+The app supports two vision documents, selected via the `--self` CLI flag:
+
+| Context | Vision File | Flag | Purpose |
+|---------|------------|------|---------|
+| User project (default) | `knowledge/VISION.md` | *(none)* | Your project's product vision |
+| Self-improvement | `internal/SELF_VISION.md` | `--self` | The app's own evolution vision |
+
+The active vision context affects PRD generation, planning, execution, and the `vision_hash` embedded in exported files. See the [CLI Reference](cli.md) for per-command usage.
+
 ### Export Configuration
 
 | Variable | Default | Valid Values | Description |

@@ -40,7 +40,7 @@ from execution.verify import (
     load_plan,
 )
 from execution.task_flow import TaskExecutionFlow, _get_task_persistence
-from dialectic.vision import get_vision_hash
+from dialectic.vision import VisionContext, get_vision_hash
 
 EXEC_OUTPUT_DIR = "exec_output"
 DEFAULT_MAX_RETRIES_PER_TASK = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
@@ -134,6 +134,7 @@ def run_dialectic_execution(
     plan_path: str | None = None,
     max_retries_per_task: int = DEFAULT_MAX_RETRIES_PER_TASK,
     output_dir: str | None = None,
+    vision_context: VisionContext = VisionContext.PROJECT,
 ) -> dict:
     """
     Execute the plan with native CrewAI Flow per task.
@@ -213,6 +214,7 @@ def run_dialectic_execution(
             flow.state.acceptance_checks = task.acceptance_checks
             flow.state.min_score = DEFAULT_MIN_SCORE
             flow.state.max_retries = max_retries_per_task
+            flow.state.vision_context = vision_context.value
             flow_result = flow.kickoff()
 
             if isinstance(flow_result, TaskExecutionResult):
@@ -291,7 +293,7 @@ def run_dialectic_execution(
                 continue
             print(f"\n  Post-verifying {task.id} — {task.title}...")
             try:
-                vr = _run_verification(task, acceptance_criteria)
+                vr = _run_verification(task, acceptance_criteria, vision_context)
                 if vr["verified"]:
                     verified_ids.append(task.id)
                     print(f"   {task.id} VERIFIED (score: {vr['score']}/10)")
@@ -342,7 +344,7 @@ def run_dialectic_execution(
         plan_title=plan.user_story_title,
         run_id=run_id,
         plan_path=str(Path(path).resolve()),
-        vision_hash=plan.vision_hash or get_vision_hash(),
+        vision_hash=plan.vision_hash or get_vision_hash(vision_context),
         task_results=task_results,
         overall_success=overall_success,
         verified_tasks=verified_ids,

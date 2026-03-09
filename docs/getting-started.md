@@ -8,7 +8,7 @@ This guide covers installation, prerequisites, and running your first dialectic 
 
 - **Python 3.10–3.13**
 - **An LLM API key** (OpenAI, Anthropic, or Groq)
-- **`knowledge/VISION.md`** in the project root (already included in the repository)
+- **`knowledge/VISION.md`** — your project's vision document (a template is provided; customize it for your project)
 - **Docker** (optional) — required for Brave Search and Sequential Thinking MCP servers
 
 ---
@@ -101,6 +101,8 @@ The system will:
 4. Run the Synthesizer to merge them (synthesis)
 5. Run the Validator to score it (validation)
 6. Repeat until the quality score reaches 9.0 (or max retries)
+
+The agents consult `knowledge/VISION.md` to ensure alignment with your project's vision.
 
 **Output:** `prd_output/PRD_YYYYMMDD_HHMM.json` and `.md`
 
@@ -223,7 +225,9 @@ exec_output/
 
 ### "knowledge/VISION.md not found"
 
-Make sure you're running from the project root directory where `knowledge/VISION.md` exists. This file must be inside the `knowledge/` directory (CrewAI convention for file-based knowledge sources).
+Make sure you're running from the project root directory where `knowledge/VISION.md` exists. This file is your project's vision template — customize it for your project. It must be inside the `knowledge/` directory (CrewAI convention for file-based knowledge sources).
+
+For self-improvement mode (`--self`), the system looks for `internal/SELF_VISION.md` instead. Make sure this file exists if you're using the `--self` flag.
 
 ### "Configure your API key first!"
 
@@ -244,6 +248,49 @@ The system retries up to `MAX_RETRIES` (default: 5) times. If scores consistentl
 - Review `knowledge/VISION.md` — agents use it as their primary reference via semantic retrieval
 - Try a stronger reasoning model: `LLM_MODEL_REASONING=o3`
 - Check that your feature request is clear and specific
+
+---
+
+## Self-Improvement Mode
+
+The app can use its own dialectic pipeline to evolve itself. Use the `--self` flag to run against `internal/SELF_VISION.md` instead of `knowledge/VISION.md`:
+
+```bash
+# Generate a PRD for the app's own improvement
+uv run dialectic-crew prd "Add memory support for cross-session learning" --self
+
+# Plan the implementation
+uv run dialectic-crew plan --self
+
+# Execute the plan
+uv run dialectic-crew execute --self
+```
+
+In self-improvement mode, agents consult `internal/SELF_VISION.md` which contains the app's own evolution roadmap and design principles.
+
+### Automated Self-Improvement
+
+For a fully automated improvement cycle, use the `self-improve` command:
+
+```bash
+# See what improvements the introspection engine finds (no changes made)
+uv run dialectic-crew self-improve --dry-run
+
+# Run one improvement cycle: introspect → PRD → plan → execute → validate → PR
+uv run dialectic-crew self-improve
+
+# Run up to 3 improvements per cycle
+uv run dialectic-crew self-improve --max 3
+```
+
+The self-improve command:
+1. Inspects `internal/SELF_VISION.md` for unchecked roadmap items
+2. Checks metric trends (PRD scores, retries, guardrail rejections)
+3. Scans for code health issues (TODOs, test coverage)
+4. Analyses recurring failure patterns
+5. Generates a PRD, plans, and executes the top improvement
+6. Validates with tests and metric gates
+7. Creates a PR for human review if all gates pass
 
 ---
 
