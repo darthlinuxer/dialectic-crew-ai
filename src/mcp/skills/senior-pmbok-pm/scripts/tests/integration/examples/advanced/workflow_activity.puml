@@ -1,0 +1,11 @@
+@startuml
+title Create Workflow
+start
+:Confirm artifact(s);
+:Read TEMPLATE.md, INPUTS.md, DOCUMENTACAO;
+:Validate/normalize template format;
+:Map inputs from user context to placeholders;
+:create/update/refactor artifact following TEMPLATE.md;
+:Run quality checks;
+stop
+@enduml

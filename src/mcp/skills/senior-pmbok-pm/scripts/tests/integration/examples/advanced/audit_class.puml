@@ -1,0 +1,12 @@
+@startsalt
+{
+  Quality Audit Results
+  ==
+  {T
+  + Artifact | Status | Version | Owner | Issues
+  | project_charter | complete | 1.2 | PM Team | 0
+  | wbs | in_progress | 0.8 | Tech Lead | 2
+  | risk_register | complete | 1.0 | Risk Manager | 0
+  }
+}
+@endsalt

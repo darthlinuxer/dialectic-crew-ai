@@ -1,0 +1,17 @@
+# Requirements for Senior Agile PM Budget Analyst Scripts
+# Python 3.8+ required
+
+# No external dependencies required for core functionality
+# All scripts use Python standard library only:
+# - dataclasses
+# - typing
+# - datetime
+# - enum
+# - logging
+# - statistics
+
+# Optional: For enhanced functionality (not required)
+# networkx>=3.0  # For advanced critical path algorithms
+# pandas>=1.5.0  # For data analysis and export
+# matplotlib>=3.5.0  # For visual chart generation
+# openpyxl>=3.0.0  # For Excel export

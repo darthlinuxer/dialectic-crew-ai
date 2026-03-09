@@ -173,6 +173,13 @@ class SelfImprovementRecord(BaseModel):
     metrics_stable: bool = False
     pr_created: bool = False
     branch_name: str = ""
+    prd_path_json: str = ""
+    prd_path_md: str = ""
+    plan_path_json: str = ""
+    plan_path_md: str = ""
+    execution_run_id: str = ""
+    execution_output_path: str = ""
+    execution_report_path: str = ""
     failure_reason: str = ""
     total_tokens: int = 0
     estimated_cost: float = 0.0

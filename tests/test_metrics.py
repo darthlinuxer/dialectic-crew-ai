@@ -1,10 +1,12 @@
 """Tests for dialectic.metrics -- SQLite-backed passive metrics store."""
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 from dialectic.metrics import (
+    _default_metrics_db_path,
     MetricRecord,
     MetricsStore,
     emit,
@@ -43,6 +45,24 @@ class TestMetricRecord:
 
 
 class TestMetricsStore:
+    def test_default_path_uses_hidden_runtime_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("dialectic.metrics.resolve_project_root", lambda: tmp_path)
+        monkeypatch.delenv("DIALECTIC_METRICS_DB", raising=False)
+
+        assert _default_metrics_db_path() == tmp_path / ".dialectic" / "metrics.db"
+
+    def test_default_path_honors_env_override(self, monkeypatch):
+        monkeypatch.setenv("DIALECTIC_METRICS_DB", "~/custom-metrics.db")
+
+        assert _default_metrics_db_path() == Path("~/custom-metrics.db").expanduser()
+
+    def test_creates_parent_directory_for_db(self, tmp_path):
+        db = tmp_path / "nested" / "metrics" / "custom.db"
+        store = MetricsStore(db_path=db)
+
+        assert db.parent.exists()
+        store.close()
+
     def test_record_and_query(self, store):
         store.record(MetricRecord(metric_type="prd_score", value=8.5))
         store.record(MetricRecord(metric_type="prd_score", value=9.0))

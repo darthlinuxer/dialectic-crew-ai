@@ -1,0 +1,41 @@
+{
+  "total_stories": 3,
+  "total_points": 29,
+  "completed_points": 0,
+  "remaining_points": 29,
+  "completion_percentage": 0.0,
+  "size_distribution": {
+    "small": {
+      "count": 0,
+      "points": 0,
+      "percentage": 0.0
+    },
+    "ideal": {
+      "count": 2,
+      "points": 8,
+      "percentage": 66.66666666666666
+    },
+    "large": {
+      "count": 0,
+      "points": 0,
+      "percentage": 0.0
+    },
+    "too_large": {
+      "count": 1,
+      "points": 21,
+      "percentage": 33.33333333333333,
+      "action_required": "These stories should be broken down",
+      "stories": [
+        {
+          "id": "US-3",
+          "title": "Large Story",
+          "points": 21
+        }
+      ]
+    }
+  },
+  "health_check": {
+    "ideal_distribution": 66.66666666666666,
+    "status": "1 stories need breakdown"
+  }
+}

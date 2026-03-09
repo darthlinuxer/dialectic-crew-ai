@@ -1,0 +1,17 @@
+@startuml
+title Review Workflow
+start
+:Identify artifacts for review;
+:Load artifact templates and standards;
+:Check version control history;
+:Validate artifact structure;
+:Verify placeholder coverage;
+:Check terminology consistency;
+:Audit quality metrics;
+:Review traceability matrix;
+:Validate ownership and approvals;
+:Generate review report;
+:Document findings;
+:Create action items if needed;
+stop
+@enduml

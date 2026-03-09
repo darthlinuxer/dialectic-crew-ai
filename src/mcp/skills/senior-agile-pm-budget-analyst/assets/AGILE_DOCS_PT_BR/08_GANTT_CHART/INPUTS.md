@@ -1,0 +1,29 @@
+# INPUTS — Gantt Chart
+
+| Chave | Obrigatório |
+|------|-------------|
+| nome_projeto | Sim |
+| data_inicio | Sim |
+| data_termino | Sim |
+| duracao_total | Sim |
+| task_1_id | Sim |
+| task_1_nome | Sim |
+| task_1_inicio | Sim |
+| task_1_fim | Sim |
+| task_1_duracao | Sim |
+| task_1_dep | Não |
+| task_1_sprint | Não |
+| task_1_status | Sim |
+| task_1_critico | Sim |
+| milestone_1 | Não |
+| milestone_1_data | Não |
+| milestone_1_desc | Não |
+| milestone_1_status | Não |
+| sprint_1_num | Não |
+| sprint_1_inicio | Não |
+| sprint_1_fim | Não |
+| sprint_1_pontos | Não |
+| sprint_1_tasks | Não |
+| critico_1 | Sim |
+| duracao_caminho_critico | Sim |
+| script_python | Não |

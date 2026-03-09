@@ -98,7 +98,7 @@ Takes a PRD and a specific user story, then produces an implementation plan thro
 flowchart TD
     INPUT["Load PRD + Select User Story"] --> LOOP
 
-    subgraph LOOP["Retry Loop (until score >= 7.0 or max retries)"]
+    subgraph LOOP["Retry Loop (until score >= 7.5 or max retries)"]
         subgraph CREW["Crew: Dialectic Planning (sequential)"]
             P1["Task: Thesis<br/>(Visionary / o3-mini)<br/>Generate initial plan"]
             P2["Task: Antithesis<br/>(Socratic Critic / gpt-4o)<br/>Critique the plan"]
@@ -108,7 +108,7 @@ flowchart TD
         end
 
         P4 --> EXTRACT["Extract UserStoryExecutionPlan<br/>(output_pydantic or fallback)"]
-        EXTRACT --> CHECK{"score >= 7.0?"}
+        EXTRACT --> CHECK{"score >= 7.5?"}
         CHECK -->|No| RETRY["Retry with feedback"]
         RETRY --> P1
     end
@@ -124,7 +124,7 @@ flowchart TD
 
 ### Key Features
 
-- **Retry loop**: Synchronous `crew.kickoff()` with quality gate — retries until score >= 7.0 or max retries reached
+- **Retry loop**: Synchronous `crew.kickoff()` with quality gate — retries until score >= 7.5 or max retries reached
 - **Knowledge**: Crews are configured with `knowledge_sources=[vision_knowledge()]` for semantic access to `knowledge/VISION.md`
 - **Guardrail**: `_plan_guardrail` ensures at least 1 implementation task in the plan
 - **Auto-discovery**: Finds the latest PRD if no path specified; resolves user story by ID or index

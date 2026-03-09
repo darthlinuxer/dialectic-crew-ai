@@ -1,0 +1,30 @@
+# INPUTS — Sprint Planning
+
+| Chave | Obrigatório |
+|------|-------------|
+| numero_sprint | Sim |
+| data_inicio | Sim |
+| data_termino | Sim |
+| duracao | Sim |
+| scrum_master | Sim |
+| product_owner | Sim |
+| sprint_goal | Sim |
+| membro_1 | Sim |
+| funcao_1 | Sim |
+| disp_1 | Sim |
+| horas_1 | Sim |
+| cap_1 | Sim |
+| capacidade_total | Sim |
+| us_1_id | Sim |
+| us_1_titulo | Sim |
+| us_1_pontos | Sim |
+| us_1_resp | Não |
+| us_1_prior | Sim |
+| us_1_dep | Não |
+| total_comprometido | Sim |
+| risco_1 | Não |
+| risco_1_impacto | Não |
+| risco_1_mitigacao | Não |
+| dod_1 | Sim |
+| dod_2 | Sim |
+| dod_3 | Sim |

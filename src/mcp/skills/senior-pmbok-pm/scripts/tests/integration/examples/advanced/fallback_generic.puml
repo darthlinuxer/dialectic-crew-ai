@@ -1,0 +1,10 @@
+@startjson
+{
+  "items": [
+    "a",
+    "b",
+    "c"
+  ],
+  "title": "Generic Report"
+}
+@endjson

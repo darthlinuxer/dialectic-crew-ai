@@ -1,0 +1,32 @@
+# INPUTS — Caminho Crítico
+
+| Chave | Obrigatório |
+|------|-------------|
+| nome_projeto | Sim |
+| data_analise | Sim |
+| analista | Sim |
+| task_1_id | Sim |
+| task_1_nome | Sim |
+| task_1_dur | Sim |
+| task_1_pred | Não |
+| task_1_es | Sim |
+| task_1_ef | Sim |
+| task_1_ls | Sim |
+| task_1_lf | Sim |
+| task_1_slack | Sim |
+| critico_1 | Sim |
+| duracao_total | Sim |
+| duracao_total_semanas | Sim |
+| bottleneck_1 | Não |
+| bottleneck_1_prob | Não |
+| bottleneck_1_impacto | Não |
+| bottleneck_1_rec | Não |
+| fast_tracking | Não |
+| crashing | Não |
+| outras_otimizacoes | Não |
+| risco_1_task | Não |
+| risco_1 | Não |
+| risco_1_prob | Não |
+| risco_1_imp | Não |
+| risco_1_mit | Não |
+| script_python | Não |

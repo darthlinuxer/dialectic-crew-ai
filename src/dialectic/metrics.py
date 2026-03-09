@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -33,6 +34,16 @@ from dialectic.vision import resolve_project_root
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DB_NAME = "metrics.db"
+_DEFAULT_DB_DIR = ".dialectic"
+_METRICS_DB_ENV_VAR = "DIALECTIC_METRICS_DB"
+
+
+def _default_metrics_db_path() -> Path:
+    """Return the default metrics database path."""
+    configured = os.getenv(_METRICS_DB_ENV_VAR, "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return resolve_project_root() / _DEFAULT_DB_DIR / _DEFAULT_DB_NAME
 
 
 class MetricRecord(BaseModel):
@@ -51,7 +62,9 @@ class MetricsStore:
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         if db_path is None:
-            db_path = resolve_project_root() / _DEFAULT_DB_NAME
+            db_path = _default_metrics_db_path()
+        db_path = Path(db_path).expanduser()
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = str(db_path)
         self._local = threading.local()
         self._ensure_table()

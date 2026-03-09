@@ -208,13 +208,15 @@ Agents working on self-evolution PRDs MUST consult these sources before proposin
 
 ### Phase 2: CrewAI Feature Adoption (engine enhancement)
 
-- [ ] Enable **Memory** (`memory=True`) on dialectic crews for cross-session learning
-- [ ] Convert VISION.md to a **Knowledge** source (`TextFileKnowledgeSource`) for semantic access
-- [ ] Enable **Reasoning** (`reasoning=True`) on Visionary, Critic, and Synthesizer agents
-- [ ] Enable **Planning** (`planning=True`) for macro step-by-step planning before dialectic
+- [ ] Harden **Memory** (`memory=True`) for cross-session learning beyond a single crew run
+- [x] Convert VISION.md to a **Knowledge** source (`TextFileKnowledgeSource`) for semantic access
+- [x] Enable **Reasoning** (`reasoning=True`) on Visionary, Critic, and Synthesizer agents
+- [x] Enable **Planning** (`planning=True`) for macro step-by-step planning before dialectic
 - [ ] Add **Conditional Tasks** to skip unnecessary dialectic steps (e.g., skip antithesis if score >= 9.5)
 - [x] Register **LLM Hooks** for cost tracking (token counting per PRD) and iteration limiting
 - [ ] Option to choose only MD, only JSON, or both; configurable Markdown templates
+
+> Note: Memory, Knowledge, Reasoning, and Planning are already partially adopted in the current engine. Remaining work is focused on hardening, cross-session behavior, and removing documentation/introspection drift.
 
 ### Phase 3: Self-Improvement (training and testing)
 

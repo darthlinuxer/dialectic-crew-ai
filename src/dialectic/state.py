@@ -9,6 +9,8 @@ class DialecticState(BaseModel):
     """Persistent state of the dialectic flow"""
     feature_objective: str = ""
     prd_data: dict = {}
+    prd_path_json: str = ""
+    prd_path_md: str = ""
     quality_score: float = 0.0
     retry_count: int = 0
     max_retries: int = MAX_RETRIES

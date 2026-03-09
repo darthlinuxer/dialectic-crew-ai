@@ -1,0 +1,11 @@
+```plantuml
+@startuml
+title Test Diagram
+
+:Start;
+note right: A
+:Process;
+note right: B
+
+@enduml
+```

@@ -1,0 +1,21 @@
+```mermaid
+flowchart TD
+    Start([Start: Update Workflow])
+    Step1[Locate existing artifact]
+    Step2[Read current version]
+    Step3[Review TEMPLATE.md for updates]
+    Step4[Apply changes maintaining structure]
+    Step5[Validate output]
+    Step6[Run quality audit]
+    Step7[Update version control]
+    End([Complete])
+
+    Start --> Step1
+    Step1 --> Step2
+    Step2 --> Step3
+    Step3 --> Step4
+    Step4 --> Step5
+    Step5 --> Step6
+    Step6 --> Step7
+    Step7 --> End
+```

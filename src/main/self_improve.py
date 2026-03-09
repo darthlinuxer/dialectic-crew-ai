@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +38,10 @@ PROTECTED_PATHS = frozenset({
 MIN_METRIC_RETENTION = float(os.getenv("MIN_METRIC_RETENTION", "0.95"))
 
 
+def _command_available(command: str) -> bool:
+    return shutil.which(command) is not None
+
+
 def _run_cmd(
     cmd: list[str],
     cwd: str | Path | None = None,
@@ -53,7 +59,7 @@ def _run_cmd(
 def _snapshot_tests(project_root: Path) -> dict:
     """Run pytest and return pass/fail summary."""
     try:
-        r = _run_cmd(["uv", "run", "pytest", "--tb=short", "-q"], cwd=project_root, timeout=300)
+        r = _run_cmd(_pytest_command(), cwd=project_root, timeout=300)
         return {
             "returncode": r.returncode,
             "passed": r.returncode == 0,
@@ -62,6 +68,13 @@ def _snapshot_tests(project_root: Path) -> dict:
         }
     except subprocess.TimeoutExpired:
         return {"returncode": -1, "passed": False, "stdout_tail": "timeout", "stderr_tail": ""}
+
+
+def _pytest_command() -> list[str]:
+    """Prefer uv-managed pytest, then fall back to the active Python environment."""
+    if _command_available("uv"):
+        return ["uv", "run", "pytest", "--tb=short", "-q"]
+    return [sys.executable, "-m", "pytest", "--tb=short", "-q"]
 
 
 def _metrics_stable(
@@ -95,7 +108,24 @@ def _git_discard_branch(branch: str, cwd: Path) -> None:
     _run_cmd(["git", "branch", "-D", branch], cwd=cwd)
 
 
+def _git_worktree_clean(cwd: Path) -> tuple[bool, str]:
+    r = _run_cmd(["git", "status", "--porcelain"], cwd=cwd)
+    if r.returncode != 0:
+        return False, "Unable to determine git worktree status"
+
+    dirty_entries = [line.strip() for line in r.stdout.splitlines() if line.strip()]
+    if not dirty_entries:
+        return True, "clean"
+
+    preview = ", ".join(dirty_entries[:5])
+    suffix = "" if len(dirty_entries) <= 5 else f", +{len(dirty_entries) - 5} more"
+    return False, f"Worktree has uncommitted changes: {preview}{suffix}"
+
+
 def _create_pr(branch: str, title: str, body: str, cwd: Path) -> str | None:
+    if not _command_available("gh"):
+        logger.warning("PR creation skipped: GitHub CLI (gh) not found")
+        return None
     r = _run_cmd(
         ["gh", "pr", "create", "--title", title, "--body", body, "--head", branch],
         cwd=cwd,
@@ -105,6 +135,30 @@ def _create_pr(branch: str, title: str, body: str, cwd: Path) -> str | None:
         return r.stdout.strip()
     logger.warning("PR creation failed: %s", r.stderr)
     return None
+
+
+def _record_prd_artifacts(record: SelfImprovementRecord, flow) -> str:
+    record.prd_path_json = flow.state.prd_path_json or ""
+    record.prd_path_md = flow.state.prd_path_md or ""
+    return record.prd_path_json
+
+
+def _record_plan_artifacts(record: SelfImprovementRecord, plan_result: dict) -> str:
+    record.plan_path_json = plan_result.get("plan_path_json", "") or ""
+    record.plan_path_md = plan_result.get("plan_path_md", "") or ""
+    return record.plan_path_json
+
+
+def _record_execution_artifacts(record: SelfImprovementRecord, exec_result: dict) -> None:
+    record.execution_run_id = exec_result.get("run_id", "") or ""
+    record.execution_output_path = exec_result.get("output_path", "") or ""
+    record.execution_report_path = exec_result.get("report_path", "") or ""
+
+
+def _require_artifact(path: str, failure_reason: str) -> str:
+    if not path:
+        raise _CycleAbort(failure_reason)
+    return path
 
 
 def run_self_improve(
@@ -181,6 +235,19 @@ def run_self_improve(
     branch_name = f"self-improve/{cycle_id}"
     record.branch_name = branch_name
 
+    if not _command_available("git"):
+        record.failure_reason = "Git is required for self-improve branch isolation but was not found on PATH"
+        print(f"  ABORT: {record.failure_reason}")
+        _persist_record(store, record)
+        return record
+
+    clean_worktree, worktree_reason = _git_worktree_clean(project_root)
+    if not clean_worktree:
+        record.failure_reason = worktree_reason
+        print(f"  ABORT: {record.failure_reason}")
+        _persist_record(store, record)
+        return record
+
     print("  Prioritized order:")
     for i, opp in enumerate(selected, 1):
         print(f"    {i}. [{opp.estimated_impact.upper()}] {opp.title}")
@@ -224,11 +291,16 @@ def run_self_improve(
                 flow.state.feature_objective = feature_request
                 flow.state.vision_context = VisionContext.SELF.value
                 flow.kickoff()
+                prd_path = _record_prd_artifacts(record, flow)
 
                 if flow.state.quality_score < 9.0 and not flow.state.consensus_reached:
                     record.failure_reason = f"PRD quality too low: {flow.state.quality_score}"
                     print(f"  PRD did not reach threshold: {flow.state.quality_score}/10")
                     raise _CycleAbort(record.failure_reason)
+                prd_path = _require_artifact(
+                    prd_path,
+                    "PRD generation did not produce an exported JSON artifact",
+                )
                 record.prd_generated = True
 
                 if tracker.budget_exceeded:
@@ -242,13 +314,18 @@ def run_self_improve(
                 from planning.flow import run_user_story_planning
 
                 plan_result = run_user_story_planning(
-                    prd_path=None,
-                    us_ref=None,
+                    prd_path=prd_path,
+                    user_story_ref=None,
                     vision_context=VisionContext.SELF,
                 )
+                plan_path = _record_plan_artifacts(record, plan_result)
                 if plan_result["quality_score"] < 7.5:
                     record.failure_reason = f"Plan quality too low: {plan_result['quality_score']}"
                     raise _CycleAbort(record.failure_reason)
+                plan_path = _require_artifact(
+                    plan_path,
+                    "Planning did not produce an exported artifact",
+                )
                 record.plan_generated = True
 
                 if tracker.budget_exceeded:
@@ -262,9 +339,10 @@ def run_self_improve(
                 from execution.dialectic_execution import run_dialectic_execution
 
                 exec_result = run_dialectic_execution(
-                    plan_path=plan_result.get("plan_path_json"),
+                    plan_path=plan_path,
                     vision_context=VisionContext.SELF,
                 )
+                _record_execution_artifacts(record, exec_result)
                 record.execution_attempted = True
 
                 if not exec_result.get("overall_success"):
@@ -272,9 +350,19 @@ def run_self_improve(
                         f"Execution failed: {exec_result.get('story_status', 'unknown')}"
                     )
                     raise _CycleAbort(record.failure_reason)
+                _require_artifact(
+                    record.execution_output_path,
+                    "Execution did not produce an exported artifact",
+                )
+                _require_artifact(
+                    record.execution_report_path,
+                    "Execution report did not produce an exported artifact",
+                )
 
         except _CycleAbort as e:
             print(f"\n  Cycle aborted: {e}")
+            if not record.failure_reason:
+                record.failure_reason = str(e)
             record.total_tokens = tracker.total_tokens
             record.estimated_cost = tracker.estimated_cost
             _git_discard_branch(branch_name, project_root)
@@ -384,6 +472,16 @@ def _build_pr_body(
         lines.append(f"- **{opp.title}** ({opp.category}, {opp.estimated_impact})")
         lines.append(f"  {opp.description}")
     lines.extend([
+        "",
+        "### Artifacts",
+        "",
+        f"- PRD JSON: {record.prd_path_json or 'n/a'}",
+        f"- PRD Markdown: {record.prd_path_md or 'n/a'}",
+        f"- Plan JSON: {record.plan_path_json or 'n/a'}",
+        f"- Plan Markdown: {record.plan_path_md or 'n/a'}",
+        f"- Execution run: {record.execution_run_id or 'n/a'}",
+        f"- Execution output dir: {record.execution_output_path or 'n/a'}",
+        f"- Execution report: {record.execution_report_path or 'n/a'}",
         "",
         "### Validation",
         "",

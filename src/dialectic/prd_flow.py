@@ -314,6 +314,8 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         data = self.state.prd_data if isinstance(self.state.prd_data, dict) else {}
 
         if data.get("_parse_failed"):
+            self.state.prd_path_json = ""
+            self.state.prd_path_md = ""
             print(f"\nPRD generation FAILED: could not extract structured output.")
             print(f"Score: {self.state.quality_score}/10.0")
             print("No PRD artifact saved. Check debug files in prd_output/.")
@@ -322,6 +324,8 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         try:
             prd = PRDSchema.model_validate(data)
         except Exception:
+            self.state.prd_path_json = ""
+            self.state.prd_path_md = ""
             logger.error("Failed to validate prd_data as PRDSchema: %s", data.keys())
             print(f"\nPRD generation FAILED: state data is not a valid PRDSchema.")
             print(f"Score: {self.state.quality_score}/10.0")
@@ -336,6 +340,10 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
                 config = get_export_config()
                 exporter = PRDExporter()
                 created_paths = exporter.export(prd, config)
+                json_path = next((p for p in created_paths if p.endswith(".json")), "")
+                md_path = next((p for p in created_paths if p.endswith(".md")), "")
+                self.state.prd_path_json = json_path
+                self.state.prd_path_md = md_path
                 logger.info("PRD exported via PRDExporter: %s", created_paths)
                 print(f"\nPRD APPROVED with score {self.state.quality_score}!")
                 for p in created_paths:
@@ -353,6 +361,9 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         filename_md = filename.replace(".json", ".md")
         with open(filename_md, "w", encoding="utf-8") as f:
             f.write(prd_to_markdown(prd))
+
+        self.state.prd_path_json = filename
+        self.state.prd_path_md = filename_md
 
         print(f"\nPRD APPROVED with score {self.state.quality_score}!")
         print(f"Saved to: {filename}")
@@ -381,6 +392,8 @@ def run_dialectic_flow(feature_request: str) -> dict:
         "quality_score": s.quality_score,
         "iterations": s.retry_count + 1,
         "prd": s.prd_data,
+        "prd_path_json": s.prd_path_json,
+        "prd_path_md": s.prd_path_md,
         "consensus_reached": s.consensus_reached,
         "validation": s.final_validation_notes,
     }

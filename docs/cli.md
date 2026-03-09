@@ -342,6 +342,13 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
 | `--dry-run` | No | `false` | Print the introspection report without making changes |
 | `--max N` | No | `1` | Maximum number of improvements per cycle |
 
+**Runtime requirements:**
+
+- `git` must be available on `PATH` (required for branch isolation)
+- the git worktree must be clean before the cycle starts (self-improve will refuse to mix unrelated local changes into its branch)
+- `gh` is optional; if unavailable, the cycle can still complete but PR creation is skipped and the branch is preserved for manual review
+- metrics are stored in `.dialectic/metrics.db` by default; set `DIALECTIC_METRICS_DB` to override the runtime location
+
 **What happens during a cycle:**
 
 1. **Baseline snapshot**: Runs pytest to ensure tests currently pass
@@ -351,10 +358,10 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
    - **Code health**: TODO/FIXME count, test inventory
    - **Failure patterns**: Recurring guardrail rejections
 3. **PRD generation**: Creates a PRD for the top opportunity (with `VisionContext.SELF`)
-4. **Planning**: Plans user story execution
+4. **Planning**: Plans user story execution using the exact PRD artifact generated in step 3
 5. **Execution**: Runs the plan with full dialectic per task
 6. **Validation**:
-   - Tests must pass (absolute gate)
+    - Tests must pass (absolute gate; uses `uv run pytest` when available, otherwise falls back to the active Python interpreter)
    - Metrics must not regress by more than 5% (configurable via `MIN_METRIC_RETENTION`)
 7. **PR creation**: If all gates pass, creates a GitHub PR for human review
 
@@ -448,6 +455,10 @@ uv run dialectic-crew self-improve
 ```
 
 This runs the same pipeline as the manual `--self` workflow but adds introspection, dialectic prioritization, test gates, metric gates, token budget enforcement, and automatic PR creation.
+
+Unlike the manual `plan --self` workflow, the automated `self-improve` command does not rely on "latest PRD" discovery between stages — it passes the exported PRD artifact path explicitly from PRD generation into planning.
+
+The cycle also records exact lineage for the generated PRD, plan, and execution report paths so the final review can trace each stage back to its concrete artifacts.
 
 ---
 

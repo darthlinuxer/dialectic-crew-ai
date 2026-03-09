@@ -30,6 +30,7 @@ Thumbs.db
 # Output dirs
 prd_output/
 exec_output/
+.dialectic/
 
 # Build / egg-info
 *.egg-info/

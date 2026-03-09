@@ -1,0 +1,113 @@
+{
+  "project_duration": 30.0,
+  "unit": "days",
+  "activities": [
+    {
+      "id": "A",
+      "name": "Requirements",
+      "duration": 5.0,
+      "predecessors": [],
+      "ES": 0,
+      "EF": 5.0,
+      "LS": 0.0,
+      "LF": 5.0,
+      "slack": 0.0,
+      "critical": true
+    },
+    {
+      "id": "B",
+      "name": "Design",
+      "duration": 8.0,
+      "predecessors": [
+        "A"
+      ],
+      "ES": 5.0,
+      "EF": 13.0,
+      "LS": 5.0,
+      "LF": 13.0,
+      "slack": 0.0,
+      "critical": true
+    },
+    {
+      "id": "C",
+      "name": "Procurement",
+      "duration": 3.0,
+      "predecessors": [
+        "A"
+      ],
+      "ES": 5.0,
+      "EF": 8.0,
+      "LS": 20.0,
+      "LF": 23.0,
+      "slack": 15.0,
+      "critical": false
+    },
+    {
+      "id": "D",
+      "name": "Development",
+      "duration": 10.0,
+      "predecessors": [
+        "B"
+      ],
+      "ES": 13.0,
+      "EF": 23.0,
+      "LS": 13.0,
+      "LF": 23.0,
+      "slack": 0.0,
+      "critical": true
+    },
+    {
+      "id": "E",
+      "name": "Testing",
+      "duration": 5.0,
+      "predecessors": [
+        "D",
+        "C"
+      ],
+      "ES": 23.0,
+      "EF": 28.0,
+      "LS": 23.0,
+      "LF": 28.0,
+      "slack": 0.0,
+      "critical": true
+    },
+    {
+      "id": "F",
+      "name": "Deployment",
+      "duration": 2.0,
+      "predecessors": [
+        "E"
+      ],
+      "ES": 28.0,
+      "EF": 30.0,
+      "LS": 28.0,
+      "LF": 30.0,
+      "slack": 0.0,
+      "critical": true
+    }
+  ],
+  "critical_path": [
+    "A",
+    "B",
+    "D",
+    "E",
+    "F"
+  ],
+  "critical_path_duration": 30.0,
+  "bottlenecks": [],
+  "optimization_opportunities": [
+    {
+      "activity": "C",
+      "name": "Procurement",
+      "slack": 15.0,
+      "slack_unit": "days",
+      "recommendation": "Can delay up to 15.0 days without impacting project"
+    }
+  ],
+  "statistics": {
+    "total_activities": 6,
+    "critical_activities": 5,
+    "non_critical_activities": 1,
+    "average_slack": 15.0
+  }
+}

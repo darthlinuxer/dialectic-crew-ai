@@ -1,0 +1,35 @@
+@startgantt
+title Complex Enterprise Application Development
+
+printscale weekly
+
+[Project Kickoff] as [A] lasts 2 days
+[A] is colored in Red
+[Requirements Analysis] as [B] starts at [A]'s end and lasts 5 days
+[B] is colored in Red
+[Architecture Design] as [C] starts at [B]'s end and lasts 8 days
+[C] is colored in Red
+[Database Design] as [D] starts at [B]'s end and lasts 5 days
+[D] is colored in LightBlue
+[UI/UX Design] as [E] starts at [B]'s end and lasts 6 days
+[E] is colored in LightBlue
+' Note: [F] depends on: C, D
+[Backend Development] as [F] starts at [D]'s end and lasts 15 days
+[F] is colored in Red
+' Note: [G] depends on: C, E
+[Frontend Development] as [G] starts at [E]'s end and lasts 12 days
+[G] is colored in LightBlue
+' Note: [H] depends on: F, G
+[API Integration] as [H] starts at [G]'s end and lasts 5 days
+[H] is colored in LightBlue
+[Security Implementation] as [I] starts at [F]'s end and lasts 7 days
+[I] is colored in Red
+' Note: [J] depends on: H, I
+[Unit Testing] as [J] starts at [I]'s end and lasts 8 days
+[J] is colored in Red
+[Integration Testing] as [K] starts at [J]'s end and lasts 6 days
+[K] is colored in Red
+[UAT & Deployment] as [L] starts at [K]'s end and lasts 4 days
+[L] is colored in Red
+
+@endgantt

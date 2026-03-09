@@ -125,13 +125,17 @@ All Pydantic data models live here. Every module imports from this single file, 
 
 SQLite-backed store that records timestamped metric events. Flows and guardrails emit metrics passively (fire-and-forget) without changing any behavior. Provides `query()` and `trend()` for the introspection engine.
 
+By default, the runtime database now lives in `.dialectic/metrics.db` (override with `DIALECTIC_METRICS_DB`) so normal metric collection does not dirty a tracked repository file.
+
 ### `src/dialectic/introspect.py` — Introspection Engine
 
 Analyses the app through 4 lenses: vision gap (unchecked SELF_VISION.md items), metric trends (declining scores, rising retries), code health (TODOs, test count), and failure patterns (recurring guardrail rejections). Produces an `IntrospectionReport` with ranked `ImprovementOpportunity` items.
 
 ### `src/main/self_improve.py` — Self-Improvement Orchestrator
 
-Wires introspection + existing PRD/plan/execute commands + safety gates into a semi-autonomous improvement cycle. Steps: baseline test snapshot → introspect → generate PRD → plan → execute → validate (tests + metrics) → create PR. All changes happen on isolated git branches; the human always reviews.
+Wires introspection + existing PRD/plan/execute commands + safety gates into a semi-autonomous improvement cycle. Steps: baseline test snapshot → introspect → generate PRD → plan → execute → validate (tests + metrics) → create PR. The orchestrator carries exact PRD/plan/execution artifact paths between stages and stores them in the cycle record for traceable human review. All changes happen on isolated git branches; the human always reviews.
+
+Before branch creation, the orchestrator now verifies that the git worktree is clean, preventing unrelated local changes from being swept into a self-improvement branch.
 
 ### `src/main/cli.py` — Command-Line Interface
 
@@ -383,7 +387,7 @@ This produces a `PrioritizationResult` with scored and justified rankings. On fa
 |-----------|-----------|
 | Runtime | Python 3.10–3.13 |
 | Agent Framework | CrewAI (Flow API, Crew, Tasks, Agents) |
-| Tool Integration | MCP (Model Context Protocol) via `crewai.mcp` |
+| Tool Integration | MCP (Model Context Protocol) via `crewai.mcp` and local stdio servers (e.g., `skills_mcp`) |
 | Data Validation | Pydantic v2 |
 | LLM Integration | LiteLLM (via CrewAI) |
 | State Persistence | SQLite (via CrewAI `SQLiteFlowPersistence`) |
@@ -392,3 +396,15 @@ This produces a `PrioritizationResult` with scored and justified rankings. On fa
 | Build System | setuptools + pyproject.toml |
 | Package Manager | uv (recommended) |
 | Container Runtime | Docker (optional, for MCP Stdio servers) |
+
+### 20. Skills MCP Server
+
+Dialectic ships a dedicated MCP server `skills_mcp` (`src/mcp/skills_mcp.py`) that exposes local skill definitions as tools for CrewAI agents:
+
+- **Discovery**: A filesystem-backed index (`SkillIndex` in `src/mcp/skills_index.py`) scans `src/mcp/skills`, `~/.agents/skills`, and `.cursor/skills-cursor` for `*/SKILL.md` files and builds an in-memory catalog of skills.
+- **Tools**:
+  - `skills_list_skills`: Paginated listing of available skills with `skill_id`, `display_name`, `description`, and source (`project`, `agents`, `cursor`).
+  - `skills_get_skill`: Fetches a specific skill’s metadata and full SKILL markdown content for agents to follow.
+  - `skills_search_skills`: Simple full-text search across SKILL contents with snippets for quick discovery.
+- **Resources**: Each skill is also exposed as a read-only MCP resource at `skills://{skill_id}`, returning the raw SKILL markdown.
+- **Usage from CrewAI**: Flows or agents can reference `skills_mcp` via the standard CrewAI MCP adapter (e.g., adding `skills_mcp` to the agent `mcps` list) so that agents can dynamically discover and load skills such as `using-superpowers` and `sequential-thinking` during reasoning.
