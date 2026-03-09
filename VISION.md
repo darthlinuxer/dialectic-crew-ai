@@ -1,102 +1,116 @@
-# VISION.md - Visão Macro do Sistema
+# VISION.md — System Macro Vision
 
-## Sobre o Projeto
+## About the Project
 
-Plataforma de gestão de projetos ágeis com foco em produtividade, simplicidade e colaboração em tempo real.
+**Dialectic Crew AI** is itself the product: an application that uses the **dialectic method** (thesis → antithesis → synthesis → validation) to generate high-quality PRDs (Product Requirement Documents). The system self-orients by this vision to prevent drift and to evolve toward its vocation.
 
-## Objetivos de Negócio
+**Intent:** Be the best dialectic-method tool capable of generating PRDs in **Markdown** and **JSON**, with validated quality (score >= 9.0) and explicit alignment to a macro vision (VISION.md).
 
-1. **Gestão de Sprints** - Planejar e executar sprints com visibilidade total
-2. **Backlog Inteligente** - Priorização automática com AI
-3. **Colaboração Real-time** - Notificações e atualizações instantâneas
-4. **Métricas Actionáveis** - Dashboards que impulsionam decisões
-
-## Escopo do Sistema
-
-### Módulos Principais
-
-| Módulo | Descrição |
-|--------|-----------|
-| `auth` | Autenticação JWT, OAuth2, 2FA |
-| `projects` | Gestão de projetos e workspaces |
-| `sprints` | Planejamento e execução de sprints |
-| `backlog` | Product backlog com priorização |
-| `tasks` | Tasks, subtasks, comments |
-| `notifications` | Sistema de notificações multi-canal |
-| `analytics` | Métricas e relatórios |
-
-### Integrações
-
-- GitHub (webhooks para issues/PRs)
-- Slack (notificações)
-- Discord (notificações)
-- Calendar (sincronização de eventos)
-
-## Stack Tecnológico
-
-- **Backend:** Python 3.11+ / FastAPI
-- **Frontend:** React 18 / TypeScript / Vite
-- **Database:** PostgreSQL 15
-- **Cache:** Redis 7
-- **Queue:** Celery + RabbitMQ
-- **Infrastructure:** Docker + Kubernetes
-
-## Requisitos Não-Funcionais
-
-### Performance
-
-- Tempo de resposta P95 < 200ms para APIs
-- Tempo de carregamento < 1.5s para web
-- Suporte a 10,000+ usuários concorrentes
-
-### Segurança
-
-- ISO 27001 compliant
-- Encrypt at rest e in transit
-- GDPR compliant
-- Auth com JWT + refresh tokens
-- 2FA opcional
-
-### Disponibilidade
-
-- 99.9% uptime SLA
-- Zero-downtime deploys
-- Multi-region failover
-- Backup automático diário
-
-### Escalabilidade
-
-- Horizontal scaling
-- Database sharding ready
-- Cache layer otimizado
-- API rate limiting
-
-## Princípios de Design
-
-1. **Simplicidade** - Menos é mais. UI limpa, código limpo.
-2. **Performance** - Otimizar sempre. Lazy loading, caching.
-3. **Segurança** - Zero trust. Validate everywhere.
-4. **Manutenibilidade** - Código legível, testes coverage > 80%
-5. **UX** - Mobile-first, accessibility A11Y
-
-## Roadmap Sugerido
-
-### Fase 1 (MVP)
-- [x] Auth básico
-- [ ] Projects + Teams
-- [ ] Tasks CRUD
-- [ ] Dashboard simples
-
-### Fase 2
-- [ ] Sprints
-- [ ] Backlog
-- [ ] Notifications
-
-### Fase 3
-- [ ] Analytics
-- [ ] AI Prioritization
-- [ ] Integrations
+**Vocation:**
+- **Core:** Generate structured PRDs (objective, macro_impact, user_stories, anti_drift_questions) in **two formats** — `.md` (readable, versionable, collaborative) and `.json` (machine-friendly, integrations, APIs).
+- **Method:** Ensure every proposal goes through contradiction (antithesis) and synthesis before approval, reducing bias and overscope.
+- **Evolution:** Extend the same dialectic method to other artifacts and lifecycle phases (see "Possible Uses" below).
 
 ---
 
-*Este documento deve ser lido por TODOS os agentes antes de propor qualquer solução.*
+## Business Objectives
+
+1. **PRDs in Markdown and JSON** — Every approved PRD must be persisted in `prd_output/` as both `.md` (narrative document, human-ready) and `.json` (validated schema, tool-ready).
+2. **Quality through dialectics** — Maintain the Thesis → Antithesis → Synthesis → Validation loop with retry until score >= 9.0 and zero contradictions with VISION.md.
+3. **Anti-drift** — All agents read VISION.md; anti-drift questions and validation ensure continuous alignment with the macro vision.
+4. **Self-improvement** — The project uses this VISION to guide itself; behavior or scope changes must be consistent with this document.
+
+---
+
+## System Scope
+
+### Main Modules / Components
+
+| Component       | Description |
+|-----------------|-------------|
+| **dialectic**   | Dialectic core: agents (Visionary, Socratic Critic, Synthesizer, Validator), tools, state, DialecticFlow (PRD with retry), export (PRD and plan to Markdown). |
+| **planning**    | Execution planning: per user story, produces UserStoryExecutionPlan (thesis → antithesis → synthesis → validation). |
+| **execution**   | Approved plan execution: consumes UserStoryExecutionPlan and generates artifacts (spec/draft in Markdown; extensible to code or integrations). Three-phase pipeline: Dialectic → Verify (A+B) → Reimplement (C) via @router. |
+| **schemas**     | Source of truth for PRDs and plans: PRDSchema, UserStory, MacroImpact, AntiDriftQuestion; UserStoryExecutionPlan, ImplementationTask, VerificationResult. |
+| **main / CLI**  | Commands: `prd "feature"` (PRD with dialectics), `plan [prd] [US]` (plan per user story), `execute [plan]` (execution artifact), `status`, `mark`, `verify`. |
+
+### Integrations (current / desired)
+
+- **Input:** CLI arguments, VISION.md content, environment variables (API keys).
+- **Output:** Files in `prd_output/` (PRDs and plans in **JSON + Markdown**); execution artifacts in `exec_output/`.
+- **LLM:** Support for multiple providers (OpenAI, Anthropic, Groq, MiniMax, etc.) configurable in `dialectic/agents.py`.
+
+---
+
+## Tech Stack
+
+- **Runtime:** Python 3.10–3.13
+- **Agent Framework:** CrewAI (Flow API, Crew, Tasks, Agents)
+- **Validation:** Pydantic (PRDSchema, UserStory, etc.)
+- **Config:** pyproject.toml, uv (recommended), .env for API keys
+
+---
+
+## Non-Functional Requirements
+
+- **Reproducibility:** Dependency lock (uv.lock) and stable PRD schema.
+- **Clarity:** PRD in Markdown for human reading; JSON for pipelines and automation.
+- **Quality:** No PRD approved with score < 9.0 unless the flow has retried up to the configured limit.
+- **Maintainability:** Readable code, well-separated responsibilities (flow, agents, schemas).
+
+---
+
+## Design Principles
+
+1. **Dialectics as the core** — Thesis, antithesis, and synthesis are not optional; the Validator is the sole approval gate.
+2. **VISION.md as anchor** — Every proposal is confronted with the macro vision; anti-drift is mandatory.
+3. **Dual output (MD + JSON)** — Serve both human readers and tools/integrations.
+4. **Extensible** — Architecture must allow new flows (e.g., dialectics for user story execution) without breaking the core.
+
+---
+
+## Possible Uses (Conceptual Roadmap)
+
+### Already in scope
+
+- Generate a PRD from a feature request, with output in **JSON** and **Markdown** in `prd_output/`.
+- **Plan** user story execution in the format defined in `schemas.py`: each user story follows the **UserStory** model (id, title, description, acceptance_criteria, effort, dependencies). Planning produces **UserStoryExecutionPlan** (user_story_id, approach_summary, tasks as **ImplementationTask** — id, title, description, order, dependencies, acceptance_checks —, risks_mitigated, tech_notes, quality_score, consensus_reached).
+- **Execute** the approved plan: the execution module consumes the UserStoryExecutionPlan and generates artifacts (Markdown spec with ordered tasks and acceptance criteria; extensible to code drafts, specs, or issue integration).
+
+### Evolving
+
+- **Dialectic cycle per user story (planning)** — Already implemented: thesis (initial plan) → antithesis (critiques) → synthesis (refined plan) → validation (approved UserStoryExecutionPlan). Format aligned with `schemas.py`.
+- **Advanced execution** — From the approved plan: code draft generation, optional integration with GitHub Issues/Jira, or backlog updates (keeping the dialectic method as a gate). Three-phase pipeline (Dialectic → Verify → Reimplement) via native CrewAI Flow `@router`.
+
+- **Other possibilities**
+  - Generate ADRs (Architecture Decision Records) via the same dialectic flow.
+  - Refine backlog (prioritization and slicing) with thesis/antithesis/synthesis.
+  - Review existing PRDs (re-thesis, re-antithesis, re-synthesis from an old PRD or from feedback).
+
+---
+
+## Suggested Roadmap
+
+### Phase 1 (current)
+
+- [x] Dialectic flow with 4 agents and retry until 9.0
+- [x] PRD output in JSON and Markdown in `prd_output/`
+- [x] Modules **dialectic**, **planning**, **execution** and CLI (`prd` | `plan` | `execute` | `status` | `mark` | `verify`)
+
+### Phase 2
+
+- [ ] Option to choose only MD, only JSON, or both
+- [ ] Configurable Markdown templates for the PRD
+- [ ] Documentation on "how to extend" for new formats (e.g., YAML)
+
+### Phase 3 (user story planning and execution)
+
+- [x] **Planning** in UserStoryExecutionPlan format: for each user story, dialectic cycle (thesis → antithesis → synthesis → validation) produces a plan with tasks (ImplementationTask) and score; persisted in `prd_output/exec_*.json` and `.md`.
+- [x] **Execution** from the plan: artifact generation (Markdown spec) in `exec_output/`; entry point for future code generation or tool integration.
+- [x] **Three-phase pipeline**: Dialectic → Verify (acceptance checks) → Reimplement (if verification fails) via `TaskExecutionFlow` with `@router`.
+- [ ] Optional integration with GitHub Issues, Jira, etc. to create tasks from the approved plan
+- [ ] Option to generate code drafts per task (keeping the dialectic method as a gate)
+
+---
+
+*This document must be read by ALL agents before proposing any solution. It defines the product's vocation and the direction of evolution.*

@@ -1,235 +1,200 @@
-# 🔷 Dialectic Crew AI
+# Dialectic Crew AI
 
-> Sistema de geração automática de PRD usando dialética socrática/hegeliana com CrewAI.
+> Automated PRD generation using Socratic/Hegelian dialectics with CrewAI.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![CrewAI](https://img.shields.io/badge/CrewAI-0.11+-purple.svg)](https://crewai.com)
+[![CrewAI](https://img.shields.io/badge/CrewAI-1.10+-purple.svg)](https://crewai.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## O que é?
+## What is it?
 
-O **Dialectic Crew AI** é um sistema que gera PRDs (Product Requirement Documents) de alta qualidade usando um processo dialético:
-
-```
-TESE → ANTÍTESE → SÍNTESE → VALIDAÇÃO → (RETRY ATÉ 9.0)
-```
-
-- **Tese (Visionário)**: Propõe solução inicial
-- **Antítese (Crítico)**: Destrói a proposta com críticas
-- **Síntese (Sintetizador)**: Fundem as ideias na melhor versão
-- **Validação (Gate)**: Aprova se score >= 9.0
-
-## ✨ Features
-
-- 🤖 4 agentes IA trabalhando em harmonia
-- 🔄 Retry automático até atingir nota 9.0
-- 📋 Validação Pydantic do PRD
-- 🛡️ Anti-drift: todos os agentes leem VISION.md
-- 💾 Auto-save do PRD aprovado
-
-## 📁 Estrutura
+**Dialectic Crew AI** generates high-quality PRDs (Product Requirement Documents) through a dialectic process:
 
 ```
-dialectic-crew-ai/
-├── main.py              # Entry point
-├── flow.py              # Fluxo dialético com estado
-├── agents.py            # 4 agentes CrewAI
-├── schemas.py           # PRDSchema Pydantic
-├── tools.py             # Ferramentas
-├── VISION.md            # Visão macro (EDITE!)
-├── docs/                # Documentação
-│   └── README.md        # Diagramas Mermaid
-├── prd_output/          # PRDs gerados
-├── requirements.txt
-├── .env.example
-└── README.md            # Este arquivo
+THESIS → ANTITHESIS → SYNTHESIS → VALIDATION → (RETRY UNTIL 9.0)
 ```
 
-## 🚀 Instalação
+- **Thesis (Visionary)**: Proposes the initial solution
+- **Antithesis (Critic)**: Challenges the proposal with rigorous critique
+- **Synthesis (Synthesizer)**: Merges ideas into a superior version
+- **Validation (Gate)**: Approves if score >= 9.0
+
+## Features
+
+- 4 AI agents working in harmony (OpenAI models by tier)
+- Automatic retry until quality score reaches 9.0
+- Pydantic validation with native CrewAI `output_pydantic`
+- Task Guardrails for automatic output validation
+- Native timeout with `akickoff()` + `asyncio.wait_for()`
+- Anti-drift: all agents read VISION.md before acting
+- Task tracking: status, LLM-based verification, acceptance criteria
+- Three-phase execution pipeline: Dialectic → Verify (A+B) → Reimplement (C) via `@router`
+- Dual export: JSON + Markdown with YAML frontmatter
+
+## Installation
 
 ```bash
-# Clone/crie a pasta
+git clone <repo-url>
 cd dialectic-crew-ai
-
-# Crie ambiente virtual (Python 3.10-3.13)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-
-# Instale dependências
-pip install -r requirements.txt
+uv sync
 
 # Configure API key
 cp .env.example .env
-# Edite .env e adicione sua API key
+# Edit .env and add OPENAI_API_KEY=sk-...
 ```
 
-## 🔑 Configuração de API Key
+## Usage (CLI)
 
-O sistema suporta múltiplos provedores:
+### Generate PRD
 
 ```bash
-# OpenAI (padrão)
-OPENAI_API_KEY=sk-...
-
-# Anthropic (Claude)
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Groq (rápido!)
-GROQ_API_KEY=...
-
-# MiniMax
-MINIMAX_API_KEY=...
+python main.py prd "Login with 2FA"
 ```
 
-No `agents.py`, configure o LLM:
-
-```python
-LLM = "gpt-4o"                    # OpenAI
-# ou
-LLM = "claude-3-5-sonnet-20241022" # Anthropic
-# ou
-LLM = "groq/llama-3.3-70b"         # Groq
-```
-
-## 📝 Como Usar
-
-### 1. Edite VISION.md
-
-Este é o arquivo mais importante! Contiene a visão macro do SEU sistema.
-
-```markdown
-# Visão Macro do Sistema
-
-## Sobre o Projeto
-Seu projetoawesome
-
-## Objetivos
-1. Objetivo 1
-2. Objetivo 2
-
-## Stack
-- Backend: Python/FastAPI
-- Frontend: React
-
-## Requisitos Não-Funcionais
-- Performance: <200ms
-- Uptime: 99.9%
-```
-
-### 2. Execute
+### Plan user story execution
 
 ```bash
-python main.py "Sistema de pagamentos com Pix"
+# Latest PRD, first user story
+python main.py plan
+
+# Specific PRD and user story
+python main.py plan prd_output/PRD_20260308_1640.json US1
 ```
 
-### 3. Resultado
+### Execute plan with dialectic
 
-O PRD será salvo automaticamente em `prd_output/PRD_YYYYMMDD_HHMM.json`!
+```bash
+# Uses the latest plan
+python main.py execute
 
-## 🔄 Fluxo de Trabalho
+# Specific plan
+python main.py execute prd_output/exec_US1_20260308_1750.json
 
-```mermaid
-graph TB
-    subgraph Entrada
-        A[main.py] --> F[DialecticFlow]
-    end
-    
-    subgraph "Dialética"
-        F --> T[TESE]
-        T --> AT[ANTÍTESE]
-        AT --> S[SÍNTESE]
-        S --> V[VALIDAÇÃO]
-    end
-    
-    subgraph Decisão
-        V --> D{score >= 9.0?}
-        D -->|SIM| AP[Aprovar + Salvar]
-        D -->|NÃO| RT[Retry]
-        RT --> T
-    end
-    
-    AP --> O[prd_output/]
+# Generate spec Markdown only (no LLM)
+python main.py execute --spec-only
 ```
 
-## 📊 Exemplo de PRD Gerado
+### Check task status
 
-```json
-{
-  "feature_name": "Sistema de pagamentos com Pix",
-  "version": "1.0",
-  "objective": "Implementar processamento de Pix...",
-  "macro_impact": {
-    "modules_affected": ["payments", "users", "notifications"],
-    "risk_level": "HIGH",
-    "performance_impact": "Alta carga transacional",
-    "security_impact": "PCI-DSS compliance"
-  },
-  "user_stories": [
-    {
-      "id": "US-001",
-      "title": "Receber Pix",
-      "description": "Como usuário, quero receber Pix...",
-      "acceptance_criteria": ["Critério 1", "Critério 2"],
-      "effort": "M",
-      "dependencies": []
-    }
-  ],
-  "anti_drift_questions": [
-    {"question": "Align with VISION?", "answer": "Yes"}
-  ],
-  "quality_score": 9.5,
-  "consensus_reached": true,
-  "final_validation_notes": "Aprovado!"
-}
+```bash
+# Status of all tasks from the latest plan
+python main.py status
+
+# Specific plan
+python main.py status prd_output/exec_US1_20260308_1750.json
 ```
 
-## 🛠️ Customização
+### Manually mark a task
 
-### Adicionar Agente
-
-Edite `agents.py`:
-
-```python
-novo_agente = Agent(
-    role="Seu Papel",
-    goal="Seu objetivo",
-    backstory="Seu contexto...",
-    tools=[file_read_tool],
-    llm=LLM
-)
+```bash
+python main.py mark T0 completed
+python main.py mark T3 failed prd_output/exec_US1_20260308_1750.json
 ```
 
-### Mudar Schema
+### Verify task with LLM agent
 
-Edite `schemas.py`:
+```bash
+# Verify if a task was implemented correctly
+python main.py verify T0
 
-```python
-class PRDSchema(BaseModel):
-    # Adicione seus campos
-    seu_campo: str
+# With PRD to check acceptance criteria
+python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 ```
 
-## 📚 Requisitos
+### Alternative CLI (output format override)
 
-- Python 3.10 - 3.13
-- API Key (OpenAI/Anthropic/Groq/MiniMax)
+```bash
+python -m main.cli "Login with 2FA" --output-format both
+```
 
-## ⚠️ Notas
+## Configuration (.env)
 
-1. **VISION.md é obrigatório** - Sem ele, não há contexto
-2. **API key necessária** - Sem LLM, não funciona
-3. **Custo** - Cada iteração faz múltiplas chamadas ao LLM
-4. **Tempo** - Pode levar vários minutos
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | OpenAI API key | (required) |
+| `LLM_MODEL_SIMPLE` | Model for lightweight tasks (validation) | `gpt-4o-mini` |
+| `LLM_MODEL_COMPLEX` | Model for complex tasks (implementation, critique) | `gpt-4o` |
+| `LLM_MODEL_REASONING` | Model for architecture and macro decisions | `o3-mini` |
+| `LLM_REQUEST_TIMEOUT` | Timeout per LLM request (seconds) | `900` |
+| `PRD_OUTPUT_FORMAT` | PRD export format: `json`, `md`, `both` | `json` |
+| `PRD_OUTPUT_DIR` | PRD output directory | `prd_output` |
+| `MAX_RETRIES_PER_TASK` | Retries per task in dialectic cycle | `3` |
+| `MIN_QUALITY_SCORE` | Minimum score to approve a task (0-10) | `7.5` |
+| `CREW_KICKOFF_TIMEOUT` | Total timeout for crew.kickoff() (seconds) | `300` |
 
-## 🤝 Contribuição
+## Execution Pipeline
 
-Sinta-se livre para fork,改进, e enviar PRs!
+Each task runs through a CrewAI Flow (`TaskExecutionFlow`) with conditional routing:
 
+```
+@start() run_dialectic
+    │
+    ▼
+@router evaluate_dialectic
+    ├── "verify"  → verify_implementation (Phase A + B)
+    │                    │
+    │              @router evaluate_verification
+    │                    ├── "completed" → done ✓
+    │                    └── "reimplement" → independent_reimplement (Phase C)
+    │                                        ├── "completed" ✓
+    │                                        └── "failed" ✗
+    └── "failed" → done ✗
+```
+
+## Exported Markdown Format
+
+Generated Markdown includes YAML frontmatter with audit metadata:
+
+```yaml
 ---
+quality_score: 9.2
+validation_status: approved
+generated_at: 2026-03-08T20:00:00Z
+vision_hash: a1b2c3d4...  # SHA-256 of VISION.md
+---
+```
 
-Feito com ☕ e dialética por [Camilo]()
+Body sections: `# Objective`, `## Macro Impact`, `## User Stories`, `## Anti-Drift Questions`
 
-## 📖 Documentação
+## Project Structure
 
-Veja [`docs/README.md`](docs/README.md) para diagramas detalhados!
+```
+dialectic-crew-ai/
+├── main.py                        # Bootstrap entry point
+├── run_dialectic.py               # Convenience: full dialectic flow
+├── run_simple.py                  # Convenience: single-pass (no retry)
+├── run_user_story_dialectic.py    # Convenience: plan a user story
+├── pyproject.toml                 # Project config (uv/pip, package-dir=src)
+├── VISION.md                      # System macro vision
+├── .env                           # API keys and config (not committed)
+├── tests/                         # Unit tests (26 tests)
+│   └── test_*.py
+└── src/                           # All packages
+    ├── schemas.py                 # Pydantic models (PRD, tasks, execution)
+    ├── dialectic/                 # Dialectic core
+    │   ├── agents.py              # CrewAI agents (model tiers)
+    │   ├── prd_flow.py            # Main flow (thesis→antithesis→synthesis→validation)
+    │   ├── state.py               # Flow state
+    │   ├── export.py              # Dual exporter (JSON+MD) with atomicity
+    │   ├── config.py              # Export configuration
+    │   └── tools.py               # CrewAI tools (FileRead, FileWrite)
+    ├── planning/                  # User story planning
+    │   └── flow.py                # Dialectic cycle for execution plans
+    ├── execution/                 # Plan execution
+    │   ├── dialectic_execution.py # Orchestrator: runs TaskExecutionFlow per task
+    │   ├── task_flow.py           # CrewAI Flow: dialectic→verify→reimplement
+    │   ├── runner.py              # Spec Markdown generation
+    │   └── verify.py              # Task tracking and LLM verification
+    └── main/                      # CLI
+        └── cli.py                 # Full CLI (prd, plan, execute, status, mark, verify)
+```
+
+## Tests
+
+```bash
+# Run all unit tests
+uv run python -m pytest tests/ -v --ignore=tests/test_llm_tooling.py
+
+# Run tool calling test (requires API key)
+uv run python tests/test_llm_tooling.py
+```
