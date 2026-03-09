@@ -26,10 +26,10 @@ from execution.verify import show_status, mark_task, verify_task
 BANNER = """
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║     DIALECTIC CREW AI - PRD & Planning v1.1                   ║
+║     DIALECTIC CREW AI - PRD & Planning v1.1                  ║
 ║                                                              ║
-║     Dialectic: Thesis → Antithesis → Synthesis → Validation   ║
-║     Commands: prd | plan | execute | status | verify | help   ║
+║     Dialectic: Thesis → Antithesis → Synthesis → Validation  ║
+║     Commands: prd | plan | execute | status | verify | help  ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 """
