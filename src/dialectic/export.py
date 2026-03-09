@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Union, List
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import re
 import hashlib
@@ -243,19 +243,18 @@ def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> Vali
     # 3) vision_hash
     fm_vision = front.get("vision_hash")
     vision_hash_current = None
-    vision_path = Path("VISION.md")
+    vision_path = Path("knowledge/VISION.md")
     try:
         content = vision_path.read_text(encoding="utf-8")
         vision_hash_current = hashlib.sha256(content.encode("utf-8")).hexdigest()
     except Exception:
-        # if VISION.md unreadable, warn
-        warnings.append("Could not read VISION.md to verify vision_hash")
+        warnings.append("Could not read knowledge/VISION.md to verify vision_hash")
 
     if fm_vision:
         if vision_hash_current is None:
-            errors.append("MD contains vision_hash but current VISION.md could not be read to verify it")
+            errors.append("MD contains vision_hash but knowledge/VISION.md could not be read to verify it")
         elif str(fm_vision) != vision_hash_current:
-            errors.append("vision_hash in MD does not match current VISION.md")
+            errors.append("vision_hash in MD does not match current knowledge/VISION.md")
     else:
         # it's acceptable for MD to omit vision_hash; warn
         warnings.append("vision_hash not present in MD frontmatter")
@@ -316,18 +315,17 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
       - quality_score
       - validation_status
       - generated_at (UTC ISO)
-      - vision_hash (SHA-256 of VISION.md read with utf-8) ONLY if available
+      - vision_hash (SHA-256 of knowledge/VISION.md read with utf-8) ONLY if available
 
     The body contains the sections: # Objective, ## Macro Impact, ## User Stories, ## Anti-Drift Questions.
     """
-    # compute vision hash
     vision_hash = None
-    vision_path = Path("VISION.md")
+    vision_path = Path("knowledge/VISION.md")
     try:
         content = vision_path.read_text(encoding="utf-8")
         vision_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
     except Exception:
-        logger.debug("Could not read VISION.md to compute hash; continuing without vision_hash.")
+        logger.debug("Could not read knowledge/VISION.md to compute hash; continuing without vision_hash.")
         vision_hash = None
 
     quality = getattr(prd, "quality_score", None)
@@ -336,7 +334,7 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
     if validation_status is None:
         validation_status = "approved" if getattr(prd, "consensus_reached", False) else "unapproved"
 
-    generated_at = datetime.utcnow().isoformat() + "Z"
+    generated_at = datetime.now(tz=timezone.utc).isoformat()
 
     front: List[str] = ["---",]
     if quality is not None:

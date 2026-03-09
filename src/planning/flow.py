@@ -5,10 +5,8 @@ Produces UserStoryExecutionPlan (thesis → antithesis → synthesis → validat
 Uses native CrewAI features:
 - output_pydantic: structured output from Validator (eliminates manual JSON parsing)
 - Task guardrails: automatic plan structure validation
-- akickoff() + asyncio.wait_for(): native timeout
 """
 
-import asyncio
 import json
 import os
 from datetime import datetime
@@ -17,12 +15,17 @@ from typing import Any
 
 from crewai import Task, Crew
 
-from dialectic.agents import visionario, critico_socratico, sintetizador, validador_macro, llm_planning
+from dialectic.agents import (
+    create_visionario,
+    create_critico_socratico,
+    create_sintetizador,
+    create_validador_macro,
+    llm_planning,
+    vision_knowledge,
+)
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_flow import OUTPUT_DIR
 from schemas import PRDSchema, UserStoryExecutionPlan
-
-CREW_KICKOFF_TIMEOUT = int(os.getenv("CREW_KICKOFF_TIMEOUT", "300"))
 
 
 # ---------------------------------------------------------------------------
@@ -42,16 +45,6 @@ def _plan_guardrail(result) -> tuple[bool, Any]:
         "user_story_id, user_story_title, approach_summary, tasks, quality_score, "
         "consensus_reached, final_validation_notes. Return ONLY the JSON.",
     )
-
-
-# ---------------------------------------------------------------------------
-# Async crew execution with timeout
-# ---------------------------------------------------------------------------
-
-def _run_crew_with_timeout(crew: Crew, timeout: int):
-    async def _run():
-        return await asyncio.wait_for(crew.akickoff(), timeout=timeout)
-    return asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------
@@ -99,18 +92,53 @@ def _get_user_story(prd: PRDSchema, ref: str | None):
 # Main planning function
 # ---------------------------------------------------------------------------
 
+MIN_PLAN_SCORE = float(os.getenv("MIN_PLAN_SCORE", "7.5"))
+MAX_PLAN_RETRIES = int(os.getenv("MAX_PLAN_RETRIES", "3"))
+
+
+def _extract_plan(result, us) -> UserStoryExecutionPlan | None:
+    """Extract UserStoryExecutionPlan from crew result via pydantic or raw text fallback."""
+    pydantic_result = getattr(result, "pydantic", None)
+    if isinstance(pydantic_result, UserStoryExecutionPlan):
+        return pydantic_result
+
+    tasks_out = getattr(result, "tasks_output", None) or []
+    if tasks_out:
+        last_pydantic = getattr(tasks_out[-1], "pydantic", None)
+        if isinstance(last_pydantic, UserStoryExecutionPlan):
+            return last_pydantic
+
+    raw_text = getattr(result, "raw", None) or str(result)
+    if tasks_out:
+        last_raw = getattr(tasks_out[-1], "raw", None)
+        if last_raw and isinstance(last_raw, str) and last_raw.strip():
+            raw_text = last_raw
+    try:
+        import re
+        matches = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
+        json_str = matches[-1].strip() if matches else raw_text
+        start_idx = json_str.find("{")
+        if start_idx >= 0:
+            json_str = json_str[start_idx:]
+        plan_dict = json.loads(json_str)
+        plan_dict.setdefault("user_story_id", us.id)
+        plan_dict.setdefault("user_story_title", us.title)
+        return UserStoryExecutionPlan.model_validate(plan_dict)
+    except Exception:
+        return None
+
+
 def run_user_story_planning(
     prd_path: str | None,
     user_story_ref: str | None,
-    vision_content: str,
 ) -> dict:
     """
     Execute dialectic cycle to generate an implementation plan for a user story.
+    Retries up to MAX_PLAN_RETRIES times if quality_score < MIN_PLAN_SCORE.
 
     Uses native CrewAI features:
     - output_pydantic for structured plan output
     - Task guardrails for output validation
-    - akickoff() + asyncio.wait_for() for timeout
     """
     if prd_path is None:
         prd_path = str(_find_latest_prd())
@@ -126,17 +154,20 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
 """
     feature_context = f"Feature (PRD): {prd.feature_name}. Objective: {prd.objective}"
 
+    vis = create_visionario()
+    crit = create_critico_socratico()
+    sint = create_sintetizador()
+    val = create_validador_macro()
+
     task_tese = Task(
         description=f"""
-MACRO VISION (VISION.md):
-{vision_content}
-
 FEATURE CONTEXT:
 {feature_context}
 
 USER STORY TO IMPLEMENT:
 {us_context}
 
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 Generate the THESIS: an initial implementation plan for this user story.
 Include:
 1. Summarized technical approach (approach_summary)
@@ -147,20 +178,18 @@ Include:
 Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
 """,
         expected_output="Structured implementation plan (approach + tasks + risks + notes)",
-        agent=visionario,
+        agent=vis,
     )
 
     task_antitese = Task(
-        description=f"""
-MACRO VISION:
-{vision_content}
+        description="""
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 
-The implementation proposal (thesis) for the user story was:
-[Visionary's output]
+The implementation proposal (thesis) for the user story is in context.
 
 Apply the Socratic method. List ALL:
 1. Flaws and weak points of the plan
-2. Contradictions with VISION.md or the feature PRD
+2. Contradictions with the macro vision or the feature PRD
 3. Risks of technical debt or overscope
 4. Missing or poorly ordered tasks
 5. Acceptance criteria not covered by the plan
@@ -168,16 +197,15 @@ Apply the Socratic method. List ALL:
 Be relentless. Each critique must be specific and actionable.
 """,
         expected_output="Detailed critique of the implementation plan",
-        agent=critico_socratico,
+        agent=crit,
         context=[task_tese],
     )
 
     task_sintese = Task(
         description=f"""
-MACRO VISION:
-{vision_content}
-
 USER STORY: {us.id} — {us.title}
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 
 You received:
 - The thesis: implementation plan from the Visionary
@@ -188,12 +216,12 @@ Produce the SYNTHESIS: a refined implementation plan that:
 2. Incorporates ALL critiques from the antithesis
 3. Lists clear tasks (id, title, description, order, dependencies)
 4. Includes approach_summary, risks_mitigated, tech_notes
-5. Is aligned with VISION.md and the PRD
+5. Is aligned with the macro vision and the PRD
 
 Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
 """,
         expected_output="Refined implementation plan (approach + tasks + mitigated risks + notes)",
-        agent=sintetizador,
+        agent=sint,
         context=[task_tese, task_antitese],
     )
 
@@ -201,6 +229,8 @@ Format expected by the Validator: summarized approach, numbered task list, mitig
         description=f"""
 Based on the SYNTHESIS of the implementation plan for user story {us.id} — {us.title},
 produce the final document.
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 
 Fill in:
 - user_story_id: "{us.id}"
@@ -214,7 +244,7 @@ Fill in:
 - final_validation_notes: brief explanation
 """,
         expected_output="Valid UserStoryExecutionPlan with quality_score and consensus_reached",
-        agent=validador_macro,
+        agent=val,
         output_pydantic=UserStoryExecutionPlan,
         guardrail=_plan_guardrail,
         guardrail_max_retries=2,
@@ -222,63 +252,47 @@ Fill in:
     )
 
     crew = Crew(
-        agents=[visionario, critico_socratico, sintetizador, validador_macro],
+        agents=[vis, crit, sint, val],
         tasks=[task_tese, task_antitese, task_sintese, task_validacao],
         process="sequential",
         verbose=True,
         memory=True,
         planning=True,
         planning_llm=llm_planning,
+        knowledge_sources=[vision_knowledge()],
     )
 
     print(f"\n{'='*60}")
     print(f"Dialectic planning — {us.id} {us.title}")
     print(f"{'='*60}\n")
 
-    result = _run_crew_with_timeout(crew, CREW_KICKOFF_TIMEOUT)
-
-    # Extract plan via output_pydantic (native CrewAI structured output)
     plan_valid: UserStoryExecutionPlan | None = None
-    pydantic_result = getattr(result, "pydantic", None)
-    if isinstance(pydantic_result, UserStoryExecutionPlan):
-        plan_valid = pydantic_result
-    else:
-        tasks_out = getattr(result, "tasks_output", None) or []
-        if tasks_out:
-            last_pydantic = getattr(tasks_out[-1], "pydantic", None)
-            if isinstance(last_pydantic, UserStoryExecutionPlan):
-                plan_valid = last_pydantic
 
-    # Fallback: if output_pydantic failed, try parsing raw text
+    for attempt in range(MAX_PLAN_RETRIES + 1):
+        if attempt > 0:
+            print(f"\n--- Planning retry {attempt}/{MAX_PLAN_RETRIES} ---\n")
+
+        result = crew.kickoff()
+        plan_valid = _extract_plan(result, us)
+
+        if plan_valid is None:
+            print(f"   Failed to extract structured plan (attempt {attempt + 1})")
+            continue
+
+        if plan_valid.quality_score >= MIN_PLAN_SCORE:
+            print(f"   Plan approved (score {plan_valid.quality_score}/10)")
+            break
+
+        print(f"   Plan score {plan_valid.quality_score}/10 < {MIN_PLAN_SCORE}")
+
     if plan_valid is None:
-        raw_text = getattr(result, "raw", None) or str(result)
-        tasks_out = getattr(result, "tasks_output", None) or []
-        if tasks_out:
-            last_raw = getattr(tasks_out[-1], "raw", None)
-            if last_raw and isinstance(last_raw, str) and last_raw.strip():
-                raw_text = last_raw
-        try:
-            import re
-            match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
-            json_str = match.group(1).strip() if match else raw_text
-            plan_dict = json.loads(json_str)
-            plan_dict.setdefault("user_story_id", us.id)
-            plan_dict.setdefault("user_story_title", us.title)
-            plan_valid = UserStoryExecutionPlan.model_validate(plan_dict)
-        except Exception:
-            from schemas import ImplementationTask
-            plan_valid = UserStoryExecutionPlan(
-                user_story_id=us.id,
-                user_story_title=us.title,
-                approach_summary="Failed to extract structured plan from output.",
-                tasks=[ImplementationTask(id="T-001", title="Placeholder", description="N/A", order=1)],
-                quality_score=0.0,
-                consensus_reached=False,
-                final_validation_notes="output_pydantic and manual parsing both failed",
-            )
+        raise RuntimeError(
+            f"Planning failed after {MAX_PLAN_RETRIES + 1} attempts: "
+            "could not extract a valid UserStoryExecutionPlan from crew output."
+        )
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = f"{OUTPUT_DIR}/exec_{us.id}_{timestamp}"
     with open(f"{base}.json", "w", encoding="utf-8") as f:
         json.dump(plan_valid.model_dump(), f, indent=2, ensure_ascii=False)

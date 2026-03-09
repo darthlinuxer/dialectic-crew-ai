@@ -25,11 +25,14 @@ from crewai.flow.persistence import SQLiteFlowPersistence
 from pydantic import BaseModel, Field
 
 from dialectic.agents import (
-    implementer,
-    validador_macro,
-    critico_socratico,
-    sintetizador,
+    create_implementer,
+    create_validador_macro,
+    create_critico_socratico,
+    create_sintetizador,
     llm_planning,
+    llm_complex,
+    llm_simple,
+    vision_knowledge,
 )
 from dialectic.tools import file_read_tool, file_write_tool, directory_read_tool
 from schemas import (
@@ -48,7 +51,6 @@ class TaskFlowState(BaseModel):
     task_title: str = ""
     task_description: str = ""
     context_str: str = ""
-    vision_content: str = ""
     acceptance_checks: list[str] = Field(default_factory=list)
     min_score: float = DEFAULT_MIN_SCORE
     max_retries: int = DEFAULT_MAX_RETRIES
@@ -97,7 +99,14 @@ def _verification_guardrail(result) -> tuple[bool, Any]:
 # TaskExecutionFlow
 # ---------------------------------------------------------------------------
 
-_task_persistence = SQLiteFlowPersistence()
+_task_persistence: SQLiteFlowPersistence | None = None
+
+
+def _get_task_persistence() -> SQLiteFlowPersistence:
+    global _task_persistence
+    if _task_persistence is None:
+        _task_persistence = SQLiteFlowPersistence()
+    return _task_persistence
 
 
 class TaskExecutionFlow(Flow[TaskFlowState]):
@@ -115,6 +124,11 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
         synthesis_for_retry: str | None = None
 
         for retry in range(self.state.max_retries + 1):
+            impl = create_implementer()
+            crit = create_critico_socratico()
+            sint = create_sintetizador()
+            val = create_validador_macro()
+
             if synthesis_for_retry is None:
                 tese_input = f"""
 TASK TO IMPLEMENT: {self.state.task_id} — {self.state.task_title}
@@ -124,14 +138,17 @@ TASK TO IMPLEMENT: {self.state.task_id} — {self.state.task_title}
 CONTEXT:
 {self.state.context_str}
 
-VISION.md (read before implementing):
-{self.state.vision_content[:4000]}
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 """
             else:
                 tese_input = f"""
 RETRY {retry}/{self.state.max_retries} — Incorporate ALL refinements below.
 
 TASK: {self.state.task_id} — {self.state.task_title}
+
+{self.state.task_description}
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 
 CRITIQUES AND REFINEMENTS:
 {synthesis_for_retry[:3000]}
@@ -142,34 +159,45 @@ Re-implement incorporating these refinements.
             task_impl = Task(
                 description=tese_input,
                 expected_output="Description of what was implemented and files created/modified",
-                agent=implementer,
+                agent=impl,
             )
             task_critica = Task(
                 description=f"""
 Analyze the implementation of task {self.state.task_id} — {self.state.task_title}.
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
+
 SCOPE: Evaluate ONLY whether it meets the description: \"\"\"{self.state.task_description}\"\"\"
 Do NOT critique outside the scope. Do NOT request additional features.
+Check for contradictions with the macro vision.
 """,
                 expected_output="Detailed critique of the implementation",
-                agent=critico_socratico,
+                agent=crit,
                 context=[task_impl],
             )
             task_sintese = Task(
                 description=f"""
 Produce the SYNTHESIS for task {self.state.task_id}: incorporate ALL critiques.
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Ensure the synthesis is aligned with the macro vision.
 Include clear instructions for retry if necessary.
 """,
                 expected_output="Refined synthesis with instructions",
-                agent=sintetizador,
+                agent=sint,
                 context=[task_impl, task_critica],
             )
             task_val = Task(
                 description=f"""
 Evaluate the implementation of task {self.state.task_id}.
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
+
 Minimum score for approval: {self.state.min_score}
+Verify alignment with the macro vision.
 """,
                 expected_output="ValidationOutput",
-                agent=validador_macro,
+                agent=val,
                 output_pydantic=ValidationOutput,
                 guardrail=_quality_guardrail,
                 guardrail_max_retries=2,
@@ -177,13 +205,14 @@ Minimum score for approval: {self.state.min_score}
             )
 
             crew = Crew(
-                agents=[implementer, critico_socratico, sintetizador, validador_macro],
+                agents=[impl, crit, sint, val],
                 tasks=[task_impl, task_critica, task_sintese, task_val],
                 process="sequential",
                 verbose=True,
                 memory=True,
                 planning=True,
                 planning_llm=llm_planning,
+                knowledge_sources=[vision_knowledge()],
             )
 
             result = crew.kickoff()
@@ -251,7 +280,7 @@ Minimum score for approval: {self.state.min_score}
             allow_delegation=False,
             reasoning=True,
             max_reasoning_attempts=2,
-            llm=validador_macro.llm,
+            llm=llm_simple,
             tools=[file_read_tool, directory_read_tool],
         )
 
@@ -279,7 +308,13 @@ Fill in:
             guardrail_max_retries=2,
         )
 
-        crew = Crew(agents=[verify_agent], tasks=[task_verify], verbose=True, memory=True)
+        crew = Crew(
+            agents=[verify_agent],
+            tasks=[task_verify],
+            verbose=True,
+            memory=True,
+            knowledge_sources=[vision_knowledge()],
+        )
         result = crew.kickoff()
 
         vr: VerificationResult | None = None
@@ -332,7 +367,7 @@ Fill in:
             allow_delegation=False,
             reasoning=True,
             max_reasoning_attempts=2,
-            llm=implementer.llm,
+            llm=llm_complex,
             tools=[file_read_tool, file_write_tool, directory_read_tool],
         )
 
@@ -355,13 +390,19 @@ Fix ONLY the identified gaps. Use the file reading and writing tools.
             agent=reimpl_agent,
         )
 
+        reval_agent = create_validador_macro()
+
         task_revalidate = Task(
             description=f"""
 Evaluate whether the fix for task {self.state.task_id} resolved the issues.
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
+
 Minimum score: {self.state.min_score}
+Verify alignment with the macro vision.
 """,
             expected_output="ValidationOutput",
-            agent=validador_macro,
+            agent=reval_agent,
             output_pydantic=ValidationOutput,
             guardrail=_quality_guardrail,
             guardrail_max_retries=2,
@@ -369,11 +410,12 @@ Minimum score: {self.state.min_score}
         )
 
         crew = Crew(
-            agents=[reimpl_agent, validador_macro],
+            agents=[reimpl_agent, reval_agent],
             tasks=[task_fix, task_revalidate],
             process="sequential",
             verbose=True,
             memory=True,
+            knowledge_sources=[vision_knowledge()],
         )
 
         result = crew.kickoff()

@@ -69,7 +69,7 @@ uv run dialectic-crew prd "your feature request" [--files file1.pdf file2.png ..
 | `--files` | No | One or more reference files (PDFs, images, text) for agents to analyze |
 
 **Requirements:**
-- `VISION.md` in the current directory
+- `knowledge/VISION.md` in the project root
 - API key configured in `.env`
 
 **Output:** `prd_output/PRD_YYYYMMDD_HHMM.json` and `.md`
@@ -83,15 +83,6 @@ uv run dialectic-crew prd "Login with two-factor authentication"
 # Attach reference documents for agents to analyze
 uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
 ```
-
-**Compatibility shortcut:** Passing a string without a command is equivalent to `prd`:
-
-```bash
-python main.py "Login with 2FA"
-# Same as: python main.py prd "Login with 2FA"
-```
-
----
 
 ### `plan` — Plan User Story Execution
 

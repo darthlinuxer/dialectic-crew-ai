@@ -63,9 +63,11 @@ flowchart TD
 - **Guardrail**: `_prd_guardrail` validates that the output is a valid `PRDSchema` with at least 1 user story
 - **Fallback parsing**: If `output_pydantic` fails, regex-based JSON extraction from raw text is attempted
 - **Configurable**: Max retries via `DialecticState.max_retries` (default: 5)
-- **Persistence**: SQLite-backed state persistence enables recovery after interruptions
+- **Persistence**: Lazy-initialized SQLite-backed state persistence enables recovery after interruptions
+- **Knowledge**: Crews are configured with `knowledge_sources=[vision_knowledge()]` for semantic access to `knowledge/VISION.md`
 - **Planning**: Crews run with `planning=True` using the Planning LLM tier for coordination
 - **Memory**: Crews run with `memory=True` so agents learn from earlier interactions
+- **Garbage prevention**: Invalid PRDs (parse failures) are never saved; a diagnostic is added to `final_validation_notes` for retry feedback
 - **File attachments**: Optional reference files (PDFs, images, text) can be attached via `--files` and are passed to the crew as `input_files` (requires `crewai_files`)
 
 ### State Fields
@@ -73,7 +75,6 @@ flowchart TD
 | Field | Type | Description |
 |-------|------|-------------|
 | `feature_objective` | `str` | The feature request from the user |
-| `vision_content` | `str` | Contents of VISION.md |
 | `prd_data` | `dict` | Serialized PRD data |
 | `quality_score` | `float` | Current quality score (0-10) |
 | `retry_count` | `int` | Number of retries so far |
@@ -89,24 +90,30 @@ flowchart TD
 **Source:** `src/planning/flow.py`
 **Output:** `UserStoryExecutionPlan` → exported to `prd_output/exec_*.json` + `.md`
 
-Takes a PRD and a specific user story, then produces an implementation plan through the same dialectic method. Unlike the PRD flow, this uses a single-pass crew with async timeout rather than a Flow class.
+Takes a PRD and a specific user story, then produces an implementation plan through the same dialectic method. This uses a synchronous crew kickoff with a retry loop and quality gate.
 
 ### Flow Diagram
 
 ```mermaid
 flowchart TD
-    INPUT["Load PRD + Select User Story"] --> CREW
+    INPUT["Load PRD + Select User Story"] --> LOOP
 
-    subgraph CREW["Crew: Dialectic Planning (sequential)"]
-        P1["Task: Thesis<br/>(Visionary / o3-mini)<br/>Generate initial plan"]
-        P2["Task: Antithesis<br/>(Socratic Critic / gpt-4o)<br/>Critique the plan"]
-        P3["Task: Synthesis<br/>(Synthesizer / gpt-4o)<br/>Refined plan"]
-        P4["Task: Validation<br/>(Validator / gpt-4o-mini)<br/>output_pydantic=UserStoryExecutionPlan"]
-        P1 --> P2 --> P3 --> P4
+    subgraph LOOP["Retry Loop (until score >= 7.0 or max retries)"]
+        subgraph CREW["Crew: Dialectic Planning (sequential)"]
+            P1["Task: Thesis<br/>(Visionary / o3-mini)<br/>Generate initial plan"]
+            P2["Task: Antithesis<br/>(Socratic Critic / gpt-4o)<br/>Critique the plan"]
+            P3["Task: Synthesis<br/>(Synthesizer / gpt-4o)<br/>Refined plan"]
+            P4["Task: Validation<br/>(Validator / gpt-4o-mini)<br/>output_pydantic=UserStoryExecutionPlan"]
+            P1 --> P2 --> P3 --> P4
+        end
+
+        P4 --> EXTRACT["Extract UserStoryExecutionPlan<br/>(output_pydantic or fallback)"]
+        EXTRACT --> CHECK{"score >= 7.0?"}
+        CHECK -->|No| RETRY["Retry with feedback"]
+        RETRY --> P1
     end
 
-    P4 --> EXTRACT["Extract UserStoryExecutionPlan<br/>(output_pydantic or fallback)"]
-    EXTRACT --> SAVE["Save to prd_output/<br/>exec_US-XXX_timestamp.json + .md"]
+    CHECK -->|Yes| SAVE["Save to prd_output/<br/>exec_US-XXX_timestamp.json + .md"]
     SAVE --> DONE(["Planning Complete"])
 
     style INPUT fill:#4A90D9,stroke:#2C5F8A,color:#fff
@@ -117,7 +124,8 @@ flowchart TD
 
 ### Key Features
 
-- **Async timeout**: Uses `akickoff()` + `asyncio.wait_for()` for crew timeout (default: 300s)
+- **Retry loop**: Synchronous `crew.kickoff()` with quality gate — retries until score >= 7.0 or max retries reached
+- **Knowledge**: Crews are configured with `knowledge_sources=[vision_knowledge()]` for semantic access to `knowledge/VISION.md`
 - **Guardrail**: `_plan_guardrail` ensures at least 1 implementation task in the plan
 - **Auto-discovery**: Finds the latest PRD if no path specified; resolves user story by ID or index
 - **Normalization**: Handles `US-001`, `US001`, `US1`, and plain index references
@@ -192,8 +200,9 @@ flowchart TD
 - **Independent verification**: The verifier agent has no access to the dialectic context — it reads actual project files
 - **Fresh reimplementation**: Phase C uses a new agent with no prior context, only the failed checks
 - **Reasoning mode**: Verification and reimplementation agents use `reasoning=True` with `max_reasoning_attempts=2`
+- **Knowledge**: Crews are configured with `knowledge_sources=[vision_knowledge()]` for semantic vision access
 - **Planning and memory**: Dialectic crews run with `planning=True` and `memory=True` for better coordination
-- **Persistence**: SQLite-backed state persistence via `SQLiteFlowPersistence`
+- **Persistence**: Lazy-initialized SQLite-backed state persistence via `SQLiteFlowPersistence`
 
 ### State Fields (`TaskFlowState`)
 
@@ -284,7 +293,7 @@ flowchart TD
 | Feature | PRD Flow | Planning Flow | Task Execution Flow | Execution Orchestrator |
 |---------|----------|---------------|---------------------|------------------------|
 | CrewAI Flow class | Yes (`DialecticFlow`) | No (single Crew) | Yes (`TaskExecutionFlow`) | No (coordinator) |
-| Retry mechanism | `@router` loop | Single pass | Loop in `run_dialectic()` | N/A |
+| Retry mechanism | `@router` loop | Quality gate loop | Loop in `run_dialectic()` | N/A |
 | Verification | Score-based only | Score-based only | Independent agent + file reading | Post-execution PRD verification |
 | Reimplementation | Via retry | N/A | Fresh agent (Phase C) | N/A |
 | Status tracking | N/A | N/A | Internal (flow state) | Task + user story status persisted to plan JSON |

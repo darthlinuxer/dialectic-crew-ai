@@ -6,7 +6,7 @@ class UserStory(BaseModel):
     id: str = Field(..., description="US-001")
     title: str
     description: str
-    acceptance_criteria: List[str] = Field(..., min_items=3)
+    acceptance_criteria: List[str] = Field(..., min_length=3)
     effort: Literal["XS", "S", "M", "L", "XL"]
     dependencies: List[str] = []
 
@@ -28,8 +28,8 @@ class PRDSchema(BaseModel):
     version: str = "1.0"
     objective: str
     macro_impact: MacroImpact
-    user_stories: List[UserStory] = Field(..., min_items=1)
-    anti_drift_questions: List[AntiDriftQuestion] = Field(..., min_items=5)
+    user_stories: List[UserStory] = Field(..., min_length=1)
+    anti_drift_questions: List[AntiDriftQuestion] = Field(..., min_length=5)
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False
     final_validation_notes: str

@@ -82,9 +82,9 @@ All Pydantic data models live here. Every module imports from this single file, 
 
 | File | Responsibility |
 |------|---------------|
-| `agents.py` | Defines 5 CrewAI agents with LLM tiers, MCP servers (conditionally loaded), and tools |
-| `prd_flow.py` | Main `DialecticFlow` (CrewAI Flow) for PRD generation with retry and SQLite persistence |
-| `state.py` | `DialecticState` Pydantic model for flow state management (incl. file attachments) |
+| `agents.py` | Agent factory functions (5 agents with LLM tiers, MCP servers, tools) + `vision_knowledge()` for RAG-based VISION.md access |
+| `prd_flow.py` | Main `DialecticFlow` (CrewAI Flow) for PRD generation with retry and lazy SQLite persistence |
+| `state.py` | `DialecticState` Pydantic model for flow state management (feature objective, file attachments) |
 | `config.py` | `ExportConfig` loader with pydantic-settings + fallback |
 | `export.py` | `PRDExporter` (JSON+MD), markdown rendering, consistency validation |
 | `tools.py` | CrewAI tools (FileRead, FileWrite, DirectoryRead, JSONSearch, CodeDocs) used by agents |
@@ -99,7 +99,7 @@ All Pydantic data models live here. Every module imports from this single file, 
 
 | File | Responsibility |
 |------|---------------|
-| `dialectic_execution.py` | Orchestrates `TaskExecutionFlow` per task with topological sort, runs post-execution PRD verification, computes and persists user story status |
+| `dialectic_execution.py` | Orchestrates `TaskExecutionFlow` per task with topological sort and dependency failure propagation, runs post-execution PRD verification, computes and persists user story status |
 | `task_flow.py` | Per-task CrewAI Flow: dialectic → verify → reimplement |
 | `runner.py` | Generates spec Markdown from a plan (no LLM, static) |
 | `verify.py` | Task/story status tracking and display, reusable LLM verification core (`_run_verification`), story-level verification (`verify_user_story`), manual overrides (`mark_task`, `verify_task`) |
@@ -123,8 +123,9 @@ sequenceDiagram
     participant FileSystem
 
     User->>CLI: dialectic-crew prd "Feature X"
-    CLI->>CLI: Read VISION.md
-    CLI->>DialecticFlow: kickoff(feature, vision)
+    CLI->>CLI: Check knowledge/VISION.md exists
+    CLI->>DialecticFlow: kickoff(feature)
+    Note over DialecticFlow: Crews access VISION.md via TextFileKnowledgeSource
     loop Until score ≥ 9.0 or max retries
         DialecticFlow->>DialecticFlow: Thesis → Antithesis → Synthesis → Validation
     end
@@ -132,13 +133,15 @@ sequenceDiagram
     FileSystem-->>User: prd_output/PRD_*.json + .md
 
     User->>CLI: dialectic-crew plan
-    CLI->>PlanningFlow: run(prd, user_story, vision)
-    PlanningFlow->>PlanningFlow: Dialectic cycle for plan
+    CLI->>PlanningFlow: run(prd, user_story)
+    loop Until score ≥ 7.0 or max retries
+        PlanningFlow->>PlanningFlow: Dialectic cycle for plan
+    end
     PlanningFlow->>FileSystem: Export plan (JSON + MD)
     FileSystem-->>User: prd_output/exec_*.json + .md
 
     User->>CLI: dialectic-crew execute
-    CLI->>ExecutionOrchestrator: run(plan, vision)
+    CLI->>ExecutionOrchestrator: run(plan)
     ExecutionOrchestrator->>FileSystem: Mark story in_progress
     loop For each task (topological order)
         ExecutionOrchestrator->>TaskFlow: kickoff(task)
@@ -168,19 +171,22 @@ Every generative step (PRD, planning, execution) follows the same four-phase pat
 
 ```mermaid
 graph LR
-    VISION["VISION.md"] --> A1["Visionary reads it"]
-    VISION --> A2["Critic checks alignment"]
-    VISION --> A3["Synthesizer respects it"]
-    VISION --> A4["Validator gates against it"]
+    VISION["knowledge/VISION.md"] --> KS["TextFileKnowledgeSource<br/>(semantic chunking + RAG)"]
+    KS --> CREW["Crew knowledge_sources"]
+    CREW --> A1["Visionary queries it"]
+    CREW --> A2["Critic checks alignment"]
+    CREW --> A3["Synthesizer respects it"]
+    CREW --> A4["Validator gates against it"]
     A4 --> ADQ["Anti-Drift Questions<br/>(mandatory in PRD)"]
     A4 --> VH["vision_hash<br/>(SHA-256 in MD frontmatter)"]
 
     style VISION fill:#FF6B6B,stroke:#C0392B,color:#fff
+    style KS fill:#DDA0DD,stroke:#9B59B6,color:#fff
     style ADQ fill:#74B9FF,stroke:#0984E3,color:#fff
     style VH fill:#74B9FF,stroke:#0984E3,color:#fff
 ```
 
-All agents are instructed to read `VISION.md`. Anti-drift questions are mandatory in every PRD. The exported Markdown includes a SHA-256 hash of the vision file, enabling automated drift detection.
+All agents access `knowledge/VISION.md` via CrewAI's `TextFileKnowledgeSource`, which provides semantic chunking and vector retrieval. Relevant sections of the vision are automatically surfaced to agents based on query context, rather than injecting the full document text. Anti-drift questions are mandatory in every PRD. The exported Markdown includes a SHA-256 hash of the vision file, enabling automated drift detection.
 
 ### 3. Tiered LLM Strategy
 
@@ -222,17 +228,17 @@ MCP (Model Context Protocol) servers are loaded only when their prerequisites ar
 
 If CrewAI's `output_pydantic` fails to produce structured output, the system falls back to regex-based JSON extraction from raw text. If that also fails, placeholder objects are created and the flow continues.
 
-### 7. SQLite Flow Persistence
+### 7. SQLite Flow Persistence (Lazy)
 
-Both `DialecticFlow` and `TaskExecutionFlow` use `SQLiteFlowPersistence` from CrewAI. Flow state is persisted to a local SQLite database, enabling recovery after interruptions and providing an audit trail of dialectic iterations.
+Both `DialecticFlow` and `TaskExecutionFlow` use `SQLiteFlowPersistence` from CrewAI. Persistence is lazily initialized on first use (not at module import) to avoid side effects during imports or testing. Flow state is persisted to a local SQLite database, enabling recovery after interruptions and providing an audit trail of dialectic iterations.
 
 ### 8. Crew Planning and Memory
 
 Crews are configured with `planning=True` and `memory=True`. CrewAI's built-in planning step (using `LLM_MODEL_PLANNING`) generates a plan before agents execute, improving task coordination. Memory enables agents to learn from earlier interactions within a crew run.
 
-### 9. Topological Sort for Task Ordering
+### 9. Topological Sort with Dependency Propagation
 
-Tasks with dependencies are ordered using a topological sort algorithm. If cycles are detected (invalid state), the system falls back to ordering by the `order` field.
+Tasks with dependencies are ordered using a topological sort algorithm. If cycles are detected (invalid state), the system falls back to ordering by the `order` field. Tasks whose dependencies have failed are automatically skipped and marked as failed, preventing cascading wasted LLM calls.
 
 ### 10. Automated Post-Execution Verification
 
@@ -241,6 +247,14 @@ The execution flow does not trust its own dialectic score as the final word. Aft
 ### 11. User Story-Level Status Tracking
 
 User story status is computed automatically from task verification results and persisted in the plan JSON alongside task-level statuses. This closes the tracking loop: the plan file is the single source of truth for both task and story completion, eliminating the need to cross-reference separate report files. CLI commands (`status`, `verify-story`) and the execution flow all read and write status through the same `verify.py` functions.
+
+### 12. Agent Factory Functions
+
+Agents are defined as factory functions (`create_visionario()`, `create_critico_socratico()`, etc.) rather than module-level singletons. Each call returns a fresh `Agent` instance, preventing cross-flow memory contamination when `memory=True`. The `vision_knowledge()` factory creates a `TextFileKnowledgeSource` pointing to `knowledge/VISION.md` via CrewAI's standard knowledge directory convention.
+
+### 13. RAG-Based Vision Access
+
+Instead of injecting the full `VISION.md` text into every task description (which was repeated 4 times per dialectic round), the system uses CrewAI's `TextFileKnowledgeSource` for semantic chunking and vector retrieval. Each Crew is configured with `knowledge_sources=[vision_knowledge()]`, and agents receive only the vision sections relevant to their current query context.
 
 ---
 

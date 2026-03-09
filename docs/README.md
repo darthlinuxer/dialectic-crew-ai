@@ -4,6 +4,8 @@ Dialectic Crew AI is an automated **PRD (Product Requirement Document) generator
 
 Every proposal passes through a rigorous cycle of **Thesis → Antithesis → Synthesis → Validation**, producing high-quality, well-vetted PRDs and execution plans.
 
+> **Pre-production notice:** This application is currently self-evolving — it uses its own dialectic pipeline to implement features from its own vision document ([`knowledge/VISION.md`](../knowledge/VISION.md)). Once all features are implemented and tested, it will be generalized into an advanced REPL-style platform with full observability, capable of ingesting any external project.
+
 ---
 
 ## Documentation Index
@@ -61,22 +63,23 @@ graph TD
 ```
 dialectic-crew-ai/
 ├── main.py                    # Bootstrap entry point
-├── VISION.md                  # System macro vision (read by all agents)
 ├── pyproject.toml             # Build config and dependencies
+├── knowledge/
+│   └── VISION.md              # System macro vision (accessed via TextFileKnowledgeSource)
 ├── .env                       # API keys and runtime config
 ├── src/
 │   ├── schemas.py             # Pydantic data models (source of truth)
 │   ├── dialectic/             # Core dialectic engine
-│   │   ├── agents.py          # 5 CrewAI agents with LLM tiers + MCP servers
+│   │   ├── agents.py          # Agent factory functions + vision_knowledge()
 │   │   ├── prd_flow.py        # PRD generation flow (with SQLite persistence)
 │   │   ├── state.py           # DialecticState model
 │   │   ├── config.py          # Export config loader
 │   │   ├── export.py          # PRD/plan export (JSON+MD)
 │   │   └── tools.py           # CrewAI tools (FileRead, FileWrite, DirRead, etc.)
 │   ├── planning/              # User story planning
-│   │   └── flow.py            # Dialectic planning flow
+│   │   └── flow.py            # Dialectic planning flow with retry loop
 │   ├── execution/             # Plan execution engine
-│   │   ├── dialectic_execution.py  # Orchestrator
+│   │   ├── dialectic_execution.py  # Orchestrator with dependency propagation
 │   │   ├── task_flow.py       # Per-task CrewAI Flow
 │   │   ├── runner.py          # Spec markdown generation
 │   │   └── verify.py          # Task tracking and verification

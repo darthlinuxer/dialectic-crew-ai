@@ -87,9 +87,9 @@ vision_hash: a1b2c3d4...
 | `quality_score` | `PRDSchema.quality_score` | The validation score |
 | `validation_status` | Derived from `consensus_reached` | `"approved"` or `"unapproved"` |
 | `generated_at` | Current UTC time | ISO 8601 timestamp |
-| `vision_hash` | SHA-256 of `VISION.md` | Enables drift detection |
+| `vision_hash` | SHA-256 of `knowledge/VISION.md` | Enables drift detection |
 
-The `vision_hash` is only included if `VISION.md` can be read. If the file is unavailable, the field is omitted silently.
+The `vision_hash` is only included if `knowledge/VISION.md` can be read. If the file is unavailable, the field is omitted silently.
 
 #### Body Sections
 
@@ -160,13 +160,13 @@ flowchart TD
 |-------|----------|-------------|
 | Required headers in MD | Error | `# Objective`, `## Macro Impact`, `## User Stories`, `## Anti-Drift Questions` |
 | `quality_score` match | Error | Frontmatter score must match PRD score |
-| `vision_hash` match | Error | Frontmatter hash must match current `VISION.md` SHA-256 |
+| `vision_hash` match | Error | Frontmatter hash must match current `knowledge/VISION.md` SHA-256 |
 | `feature_name` match | Error | JSON field must match PRD |
 | `version` match | Error | JSON field must match PRD |
 | `consensus_reached` match | Error | JSON field must match PRD |
 | Missing `quality_score` in frontmatter | Warning | Acceptable but noted |
 | Missing `vision_hash` in frontmatter | Warning | Acceptable but noted |
-| Cannot read `VISION.md` | Warning | Hash check skipped |
+| Cannot read `knowledge/VISION.md` | Warning | Hash check skipped |
 
 ### Frontmatter Parsing
 
