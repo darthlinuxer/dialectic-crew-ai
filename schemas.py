@@ -33,3 +33,76 @@ class PRDSchema(BaseModel):
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False
     final_validation_notes: str
+
+
+# --- Planos de execução (dialética por user story) ---
+
+
+class ImplementationTask(BaseModel):
+    id: str = Field(..., description="ex: T-001")
+    title: str
+    description: str
+    order: int = 0
+    dependencies: List[str] = []
+    acceptance_checks: List[str] = Field(
+        default_factory=list,
+        description="Verifiable criteria: e.g. 'arquivo X existe', 'função Y definida em Z'",
+    )
+    status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
+    completed_at: Optional[str] = None
+    verification_notes: str = ""
+
+
+class UserStoryExecutionPlan(BaseModel):
+    """Plano de implementação aprovado para uma user story (saída do fluxo dialético de execução)."""
+    user_story_id: str
+    user_story_title: str
+    approach_summary: str = Field(..., description="Resumo da abordagem técnica")
+    tasks: List[ImplementationTask] = Field(..., min_length=1)
+    risks_mitigated: List[str] = []
+    tech_notes: str = ""
+    quality_score: float = Field(..., ge=0.0, le=10.0)
+    consensus_reached: bool = False
+    final_validation_notes: str = ""
+
+
+# --- Resultados de execução dialética ---
+
+
+class ValidationOutput(BaseModel):
+    """Structured output from the Validador agent (used with output_pydantic)."""
+    quality_score: float = Field(..., ge=0.0, le=10.0)
+    consensus_reached: bool = False
+    final_validation_notes: str = ""
+
+
+class VerificationResult(BaseModel):
+    """Result of post-execution verification (Phase A)."""
+    verified: bool = False
+    checks_passed: List[str] = Field(default_factory=list)
+    checks_failed: List[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+class TaskExecutionResult(BaseModel):
+    task_id: str
+    title: str
+    success: bool
+    score: float
+    retry_count: int
+    output_paths: List[str] = Field(default_factory=list)
+    validation_notes: str = ""
+    output_summary: str = ""
+    verification: Optional[VerificationResult] = None
+    execution_phases: List[str] = Field(
+        default_factory=list,
+        description="Phases executed: dialectic, verify, reimplement",
+    )
+
+
+class ExecutionReport(BaseModel):
+    plan_id: str
+    plan_title: str
+    run_id: str
+    task_results: List[TaskExecutionResult] = Field(default_factory=list)
+    overall_success: bool = False

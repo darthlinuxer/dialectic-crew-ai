@@ -18,6 +18,7 @@ ENV/
 # Environment
 .env
 .env.local
+.env.*.local
 
 # Logs
 *.log
@@ -25,4 +26,12 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Output dirs
 prd_output/
+exec_output/
+
+# Build / egg-info
+*.egg-info/
+dist/
+build/
