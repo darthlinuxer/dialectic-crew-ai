@@ -5,9 +5,11 @@ Dialectic Crew AI provides a command-line interface with six commands covering t
 **Entry points:**
 
 ```bash
-python main.py <command> [arguments...]
-dialectic-crew <command> [arguments...]   # if installed via pip
+uv run dialectic-crew <command> [arguments...]   # recommended (uses uv)
+python main.py <command> [arguments...]           # alternative (direct Python)
 ```
+
+> Throughout this document, examples show both forms. They are fully interchangeable — use whichever fits your setup.
 
 ---
 
@@ -48,7 +50,8 @@ flowchart LR
 Generates a Product Requirement Document using the full dialectic method with automatic retries until the quality score reaches 9.0.
 
 ```bash
-python main.py prd "your feature request"
+uv run dialectic-crew prd "your feature request"
+# or: python main.py prd "your feature request"
 ```
 
 **Requirements:**
@@ -60,7 +63,8 @@ python main.py prd "your feature request"
 **Example:**
 
 ```bash
-python main.py prd "Login with two-factor authentication"
+uv run dialectic-crew prd "Login with two-factor authentication"
+# or: python main.py prd "Login with two-factor authentication"
 ```
 
 **Compatibility shortcut:** Passing a string without a command is equivalent to `prd`:
@@ -77,7 +81,8 @@ python main.py "Login with 2FA"
 Plans the execution of a specific user story from a PRD. Uses the dialectic method to produce a `UserStoryExecutionPlan` with implementation tasks.
 
 ```bash
-python main.py plan [prd.json] [US-001|index]
+uv run dialectic-crew plan [prd.json] [US-001|index]
+# or: python main.py plan [prd.json] [US-001|index]
 ```
 
 **Arguments:**
@@ -93,13 +98,13 @@ python main.py plan [prd.json] [US-001|index]
 
 ```bash
 # Plan the first user story from the latest PRD
-python main.py plan
+uv run dialectic-crew plan
 
 # Plan a specific user story from a specific PRD
-python main.py plan prd_output/PRD_20260308_1640.json US-002
+uv run dialectic-crew plan prd_output/PRD_20260308_1640.json US-002
 
 # Use numeric index (0-based)
-python main.py plan prd_output/PRD_20260308_1640.json 1
+uv run dialectic-crew plan prd_output/PRD_20260308_1640.json 1
 ```
 
 **User story references are flexible:**
@@ -112,7 +117,8 @@ python main.py plan prd_output/PRD_20260308_1640.json 1
 Executes the plan with CrewAI, running a full dialectic cycle per task. Each task goes through: Dialectic → Verify → Reimplement (if needed).
 
 ```bash
-python main.py execute [plan.json|--latest] [--spec-only]
+uv run dialectic-crew execute [plan.json|--latest] [--spec-only]
+# or: python main.py execute [plan.json|--latest] [--spec-only]
 ```
 
 **Arguments:**
@@ -128,13 +134,13 @@ python main.py execute [plan.json|--latest] [--spec-only]
 
 ```bash
 # Execute the latest plan with full dialectic
-python main.py execute
+uv run dialectic-crew execute
 
 # Execute a specific plan
-python main.py execute prd_output/exec_US-001_20260308_1200.json
+uv run dialectic-crew execute prd_output/exec_US-001_20260308_1200.json
 
 # Generate only a static spec (no LLM calls)
-python main.py execute --spec-only
+uv run dialectic-crew execute --spec-only
 ```
 
 ---
@@ -144,7 +150,8 @@ python main.py execute --spec-only
 Displays the completion status of all tasks in a plan.
 
 ```bash
-python main.py status [plan.json|--latest]
+uv run dialectic-crew status [plan.json|--latest]
+# or: python main.py status [plan.json|--latest]
 ```
 
 **Output example:**
@@ -179,7 +186,8 @@ python main.py status [plan.json|--latest]
 Manually updates the status of a task in the plan.
 
 ```bash
-python main.py mark <task_id> <status> [plan.json]
+uv run dialectic-crew mark <task_id> <status> [plan.json]
+# or: python main.py mark <task_id> <status> [plan.json]
 ```
 
 **Arguments:**
@@ -193,8 +201,8 @@ python main.py mark <task_id> <status> [plan.json]
 **Examples:**
 
 ```bash
-python main.py mark T-001 completed
-python main.py mark T-003 failed prd_output/exec_US-001_20260308_1750.json
+uv run dialectic-crew mark T-001 completed
+uv run dialectic-crew mark T-003 failed prd_output/exec_US-001_20260308_1750.json
 ```
 
 ---
@@ -204,7 +212,8 @@ python main.py mark T-003 failed prd_output/exec_US-001_20260308_1750.json
 Uses an LLM agent to verify whether a task was correctly implemented by reading the actual project files.
 
 ```bash
-python main.py verify <task_id> [plan.json] [--prd prd.json]
+uv run dialectic-crew verify <task_id> [plan.json] [--prd prd.json]
+# or: python main.py verify <task_id> [plan.json] [--prd prd.json]
 ```
 
 **Arguments:**
@@ -225,10 +234,10 @@ python main.py verify <task_id> [plan.json] [--prd prd.json]
 
 ```bash
 # Verify using latest plan
-python main.py verify T-001
+uv run dialectic-crew verify T-001
 
 # Verify with PRD acceptance criteria
-python main.py verify T-002 --prd prd_output/PRD_20260308_1640.json
+uv run dialectic-crew verify T-002 --prd prd_output/PRD_20260308_1640.json
 ```
 
 ---
@@ -236,9 +245,9 @@ python main.py verify T-002 --prd prd_output/PRD_20260308_1640.json
 ### `help` — Show Help
 
 ```bash
-python main.py help
-python main.py -h
-python main.py --help
+uv run dialectic-crew help
+# or: python main.py help
+# or: python main.py -h / --help
 ```
 
 ---
@@ -247,13 +256,13 @@ python main.py --help
 
 ```mermaid
 flowchart TD
-    A["1. Generate PRD<br/>python main.py prd 'Feature X'"] --> B["2. Review PRD<br/>(prd_output/PRD_*.md)"]
-    B --> C["3. Plan user story<br/>python main.py plan"]
+    A["1. Generate PRD<br/>dialectic-crew prd 'Feature X'"] --> B["2. Review PRD<br/>(prd_output/PRD_*.md)"]
+    B --> C["3. Plan user story<br/>dialectic-crew plan"]
     C --> D["4. Review plan<br/>(prd_output/exec_*.md)"]
-    D --> E["5. Execute plan<br/>python main.py execute"]
-    E --> F["6. Check status<br/>python main.py status"]
+    D --> E["5. Execute plan<br/>dialectic-crew execute"]
+    E --> F["6. Check status<br/>dialectic-crew status"]
     F --> G{All tasks done?}
-    G -->|No| H["7. Verify/fix tasks<br/>python main.py verify T-001"]
+    G -->|No| H["7. Verify/fix tasks<br/>dialectic-crew verify T-001"]
     H --> F
     G -->|Yes| I["Done!<br/>(exec_output/report.json)"]
 

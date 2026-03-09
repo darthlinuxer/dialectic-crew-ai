@@ -95,20 +95,26 @@ dialectic-crew-ai/
 # Clone and install
 git clone <repo-url>
 cd dialectic-crew-ai
-pip install -e .
+uv sync              # recommended
+# or: pip install -e .
 
 # Configure
 cp .env.example .env
 # Add your OPENAI_API_KEY to .env
 
 # Generate a PRD
-python main.py prd "Login with two-factor authentication"
+uv run dialectic-crew prd "Login with two-factor authentication"
 
 # Plan a user story
-python main.py plan
+uv run dialectic-crew plan
 
 # Execute the plan
-python main.py execute
+uv run dialectic-crew execute
 ```
+
+> **Alternative:** If you prefer not to use `uv`, all commands also work with `python main.py`:
+> ```bash
+> python main.py prd "Login with two-factor authentication"
+> ```
 
 See [Getting Started](getting-started.md) for detailed setup instructions.

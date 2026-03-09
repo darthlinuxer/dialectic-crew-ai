@@ -78,7 +78,8 @@ See [Configuration](configuration.md) for all available options.
 ### Step 1: Generate a PRD
 
 ```bash
-python main.py prd "User authentication with two-factor authentication"
+uv run dialectic-crew prd "User authentication with two-factor authentication"
+# or: python main.py prd "User authentication with two-factor authentication"
 ```
 
 The system will:
@@ -111,7 +112,8 @@ The PRD includes:
 Select a user story from the PRD and generate an implementation plan:
 
 ```bash
-python main.py plan
+uv run dialectic-crew plan
+# or: python main.py plan
 ```
 
 This will:
@@ -126,7 +128,8 @@ This will:
 Run the plan with full dialectic execution per task:
 
 ```bash
-python main.py execute
+uv run dialectic-crew execute
+# or: python main.py execute
 ```
 
 Each task goes through:
@@ -139,7 +142,8 @@ Each task goes through:
 ### Step 5: Check Status
 
 ```bash
-python main.py status
+uv run dialectic-crew status
+# or: python main.py status
 ```
 
 ---
@@ -148,17 +152,17 @@ python main.py status
 
 ```mermaid
 flowchart TD
-    START(["Start"]) --> PRD["python main.py prd<br/>'Feature request'"]
+    START(["Start"]) --> PRD["dialectic-crew prd<br/>'Feature request'"]
     PRD --> REVIEW1["Review PRD<br/>(prd_output/*.md)"]
-    REVIEW1 --> PLAN["python main.py plan"]
+    REVIEW1 --> PLAN["dialectic-crew plan"]
     PLAN --> REVIEW2["Review plan<br/>(prd_output/exec_*.md)"]
     REVIEW2 --> DECIDE{Execute with LLM<br/>or spec only?}
-    DECIDE -->|"Full execution"| EXEC["python main.py execute"]
-    DECIDE -->|"Spec only"| SPEC["python main.py execute<br/>--spec-only"]
-    EXEC --> STATUS["python main.py status"]
+    DECIDE -->|"Full execution"| EXEC["dialectic-crew execute"]
+    DECIDE -->|"Spec only"| SPEC["dialectic-crew execute<br/>--spec-only"]
+    EXEC --> STATUS["dialectic-crew status"]
     STATUS --> CHECK{All tasks<br/>completed?}
     CHECK -->|"Yes"| DONE(["Done!"])
-    CHECK -->|"No"| FIX["python main.py verify T-XXX<br/>python main.py mark T-XXX completed"]
+    CHECK -->|"No"| FIX["dialectic-crew verify T-XXX<br/>dialectic-crew mark T-XXX completed"]
     FIX --> STATUS
     SPEC --> DONE2(["Manual implementation<br/>using spec"])
 
@@ -178,9 +182,9 @@ For quick testing, the repository includes convenience scripts:
 
 | Script | Equivalent | Description |
 |--------|-----------|-------------|
-| `python run_dialectic.py` | `python main.py prd "..."` | Full dialectic with hardcoded feature |
-| `python run_simple.py` | `python main.py prd "..." --max-retries=0` | Single pass, no retry |
-| `python run_user_story_dialectic.py` | `python main.py plan` | Plans a user story |
+| `python run_dialectic.py` | `uv run dialectic-crew prd "..."` | Full dialectic with hardcoded feature |
+| `python run_simple.py` | `uv run dialectic-crew prd "..."` (single pass) | Single pass, no retry |
+| `python run_user_story_dialectic.py` | `uv run dialectic-crew plan` | Plans a user story |
 
 ---
 

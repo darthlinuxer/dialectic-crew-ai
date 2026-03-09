@@ -121,7 +121,7 @@ sequenceDiagram
     participant TaskFlow
     participant FileSystem
 
-    User->>CLI: python main.py prd "Feature X"
+    User->>CLI: dialectic-crew prd "Feature X"
     CLI->>CLI: Read VISION.md
     CLI->>DialecticFlow: kickoff(feature, vision)
     loop Until score ≥ 9.0 or max retries
@@ -130,13 +130,13 @@ sequenceDiagram
     DialecticFlow->>FileSystem: Export PRD (JSON + MD)
     FileSystem-->>User: prd_output/PRD_*.json + .md
 
-    User->>CLI: python main.py plan
+    User->>CLI: dialectic-crew plan
     CLI->>PlanningFlow: run(prd, user_story, vision)
     PlanningFlow->>PlanningFlow: Dialectic cycle for plan
     PlanningFlow->>FileSystem: Export plan (JSON + MD)
     FileSystem-->>User: prd_output/exec_*.json + .md
 
-    User->>CLI: python main.py execute
+    User->>CLI: dialectic-crew execute
     CLI->>ExecutionOrchestrator: run(plan, vision)
     loop For each task (topological order)
         ExecutionOrchestrator->>TaskFlow: kickoff(task)
