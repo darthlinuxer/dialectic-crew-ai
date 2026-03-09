@@ -1,6 +1,6 @@
 # Agents
 
-Dialectic Crew AI defines five specialized agents, each with a distinct role in the dialectic process. Agents are configured in `src/dialectic/agents.py`.
+Dialectic Crew AI defines five specialized agents, each with a distinct role in the dialectic process. Agents are defined as **factory functions** in `src/dialectic/agents.py` — each call returns a fresh `Agent` instance to prevent cross-flow memory contamination. The module also exports `vision_knowledge()`, which creates a `TextFileKnowledgeSource` for `knowledge/VISION.md`.
 
 ---
 
@@ -66,7 +66,7 @@ graph LR
 | **MCP Servers** | Context7, Brave Search |
 | **Phase** | Thesis |
 
-The Visionary generates bold, comprehensive initial proposals. With 18 years of simulated architectural experience, it always reads `VISION.md` first and considers the system holistically: affected modules, non-functional requirements, and the ideal speed-quality tradeoff. Has access to Context7 for up-to-date library documentation and Brave Search for real-time web research.
+The Visionary generates bold, comprehensive initial proposals. With 18 years of simulated architectural experience, it always consults `knowledge/VISION.md` (available via the Crew's knowledge sources) and considers the system holistically: affected modules, non-functional requirements, and the ideal speed-quality tradeoff. Has access to Context7 for up-to-date library documentation and Brave Search for real-time web research.
 
 ### 2. Socratic Critic (`critico_socratico`)
 
@@ -82,7 +82,7 @@ The Visionary generates bold, comprehensive initial proposals. With 18 years of 
 
 The Critic is the devil's advocate. Its fundamental rule is to evaluate **only** what the task requests — never expanding scope. Uses the Sequential Thinking MCP server for structured reasoning. It checks for:
 - Point-by-point task fulfillment
-- Contradictions with `VISION.md`
+- Contradictions with the macro vision (accessed via knowledge sources)
 - Overscope (doing more than requested)
 - Technical bugs or errors
 - Fair scoring within the task's scope
@@ -118,7 +118,7 @@ The synthesis is not a mediocre middle ground — it is a **dialectical transcen
 | **MCP Servers** | None |
 | **Phase** | Validation |
 
-The Validator is the final gate. It always reads `VISION.md` for comparison and scores against a checklist:
+The Validator is the final gate. It always consults the macro vision (via knowledge sources) for comparison and scores against a checklist:
 
 1. Feature aligned with macro vision?
 2. Affected modules considered?
@@ -142,7 +142,7 @@ If score < 9.0, it explains exactly what needs improvement.
 | **Phase** | Thesis (in execution context) |
 
 The Implementer executes tasks during the execution phase. It:
-- Reads `VISION.md` before implementing
+- Consults the macro vision (via knowledge sources) before implementing
 - Uses file tools to create, modify, and explore files and directories
 - Has access to Context7 and Brave Search for documentation and research
 - Implements exactly what is asked (no overscope)
@@ -247,7 +247,7 @@ Optional tools (`JSONSearchTool`, `CodeDocsSearchTool`) are wrapped in `try/exce
 
 ## Dynamically Created Agents
 
-In addition to the five persistent agents, two agents are created dynamically during task execution:
+In addition to the five factory-defined agents, two agents are created dynamically during task execution:
 
 ### Independent Verifier
 

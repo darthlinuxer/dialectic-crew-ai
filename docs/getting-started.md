@@ -8,7 +8,7 @@ This guide covers installation, prerequisites, and running your first dialectic 
 
 - **Python 3.10–3.13**
 - **An LLM API key** (OpenAI, Anthropic, or Groq)
-- **`VISION.md`** in your project root (already included in the repository)
+- **`knowledge/VISION.md`** in the project root (already included in the repository)
 - **Docker** (optional) — required for Brave Search and Sequential Thinking MCP servers
 
 ---
@@ -95,7 +95,7 @@ uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
 ```
 
 The system will:
-1. Read `VISION.md` for context
+1. Load `knowledge/VISION.md` as a semantic knowledge source (via `TextFileKnowledgeSource`)
 2. Run the Visionary agent to propose an initial solution (thesis)
 3. Run the Socratic Critic to challenge it (antithesis)
 4. Run the Synthesizer to merge them (synthesis)
@@ -221,9 +221,9 @@ exec_output/
 
 ## Troubleshooting
 
-### "VISION.md not found"
+### "knowledge/VISION.md not found"
 
-Make sure you're running from the project root directory where `VISION.md` exists.
+Make sure you're running from the project root directory where `knowledge/VISION.md` exists. This file must be inside the `knowledge/` directory (CrewAI convention for file-based knowledge sources).
 
 ### "Configure your API key first!"
 
@@ -241,7 +241,7 @@ CREW_KICKOFF_TIMEOUT=600
 ### Low quality scores
 
 The system retries up to `MAX_RETRIES` (default: 5) times. If scores consistently stay below 9.0:
-- Review `VISION.md` — agents use it as their primary reference
+- Review `knowledge/VISION.md` — agents use it as their primary reference via semantic retrieval
 - Try a stronger reasoning model: `LLM_MODEL_REASONING=o3`
 - Check that your feature request is clear and specific
 

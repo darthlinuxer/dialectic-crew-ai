@@ -296,7 +296,6 @@ State for the PRD generation flow.
 classDiagram
     class DialecticState {
         +str feature_objective
-        +str vision_content
         +dict prd_data
         +float quality_score
         +int retry_count
@@ -310,7 +309,6 @@ classDiagram
 | Field | Type | Description |
 |-------|------|-------------|
 | `feature_objective` | `str` | The feature request from the user |
-| `vision_content` | `str` | Contents of VISION.md |
 | `prd_data` | `dict` | Serialized PRD data |
 | `quality_score` | `float` | Current quality score (0-10) |
 | `retry_count` | `int` | Number of retries so far |
@@ -330,7 +328,6 @@ classDiagram
         +str task_title
         +str task_description
         +str context_str
-        +str vision_content
         +List~str~ acceptance_checks
         +float min_score = 7.5
         +int max_retries = 3
