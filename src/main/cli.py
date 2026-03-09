@@ -19,7 +19,7 @@ load_dotenv()
 
 from dialectic import DialecticFlow, run_dialectic_flow
 from dialectic.state import DialecticState
-from dialectic.prd_flow import OUTPUT_DIR, _persistence
+from dialectic.prd_flow import OUTPUT_DIR, _get_persistence
 from planning.flow import run_user_story_planning
 from execution.runner import run_execution
 from execution.dialectic_execution import run_dialectic_execution
@@ -46,7 +46,7 @@ Commands:
 
   prd "your feature request" [--files file1.pdf file2.png ...]
       Generates a PRD (Product Requirement Document) using the dialectic method
-      (thesis → antithesis → synthesis → validation). Requires VISION.md in the current directory.
+      (thesis → antithesis → synthesis → validation). Requires knowledge/VISION.md.
       Saves to prd_output/ (JSON + Markdown).
       Use --files to attach reference documents (PDF, images, text) for agents to analyze.
       Ex.: python main.py prd "Login with 2FA"
@@ -104,12 +104,8 @@ Manual overrides (the execute command handles these automatically):
   help, -h, --help
       Shows this message.
 
-Compatibility:
-  python main.py "your feature"
-      Equivalent to: python main.py prd "your feature"
-
 Requirements:
-  - VISION.md in the current directory (for prd and plan)
+  - knowledge/VISION.md (for prd, plan, and execute)
   - API key in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY)
 """
 
@@ -126,19 +122,17 @@ def _check_api_key():
     return has
 
 
-def _read_vision():
-    if not os.path.exists("VISION.md"):
-        print("  VISION.md not found!")
+def _check_vision_exists():
+    if not os.path.exists("knowledge/VISION.md"):
+        print("  knowledge/VISION.md not found!")
+        print("  Place your vision document at knowledge/VISION.md (CrewAI convention).")
         sys.exit(1)
-    with open("VISION.md", "r", encoding="utf-8") as f:
-        return f.read()
 
 
 def cmd_prd(feature_request: str, file_paths: list[str] | None = None):
-    vision = _read_vision()
-    flow = DialecticFlow(persistence=_persistence)
+    _check_vision_exists()
+    flow = DialecticFlow(persistence=_get_persistence())
     flow.state.feature_objective = feature_request
-    flow.state.vision_content = vision
     if file_paths:
         flow.state.file_paths = file_paths
     flow.kickoff()
@@ -153,11 +147,11 @@ def cmd_prd(feature_request: str, file_paths: list[str] | None = None):
 
 
 def cmd_plan(prd_path: str | None, us_ref: str | None):
-    vision = _read_vision()
+    _check_vision_exists()
     if prd_path and not os.path.exists(prd_path):
         print(f"PRD not found: {prd_path}")
         sys.exit(1)
-    result = run_user_story_planning(prd_path, us_ref, vision)
+    result = run_user_story_planning(prd_path, us_ref)
     print(f"Score: {result['quality_score']}/10.0")
 
 
@@ -168,10 +162,9 @@ def cmd_execute(plan_path: str | None, spec_only: bool = False):
             print(f"\nSpec generated: {result['output_path']}")
             print(f"   Plan: {result['plan_id']} -- {result['plan_title']}")
         else:
-            vision = _read_vision()
+            _check_vision_exists()
             result = run_dialectic_execution(
                 plan_path=plan_path or "--latest",
-                vision_content=vision,
             )
             story_status = result.get("story_status", "unknown")
             print(f"\nExecution complete: {result['output_path']}")
@@ -254,7 +247,8 @@ def main():
         sys.exit(0)
 
     print(BANNER)
-    _check_api_key()
+    if not _check_api_key():
+        sys.exit(1)
 
     if sub == "prd":
         if len(args) < 2:
@@ -324,11 +318,7 @@ def main():
         cmd_verify(task_id, plan_path, prd_path)
         return
 
-    if len(args) == 1 and not args[0].startswith("-"):
-        cmd_prd(args[0])
-        return
-
-    print("Unknown command. Use: prd | plan | execute | status | verify-story | help")
+    print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | help")
     sys.exit(1)
 
 

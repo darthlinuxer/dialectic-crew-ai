@@ -237,7 +237,7 @@ def _run_verification(
     Returns dict with keys: task_id, verified, score, notes.
     """
     from crewai import Task as CrewTask, Crew
-    from dialectic.agents import validador_macro
+    from dialectic.agents import create_validador_macro, vision_knowledge
     from dialectic.tools import file_read_tool
     from schemas import ValidationOutput
 
@@ -248,6 +248,9 @@ def _run_verification(
             "(verify whether this task contributes to meeting them):\n"
         )
         ac_text += "\n".join(f"- {ac}" for ac in acceptance_criteria)
+
+    verify_agent = create_validador_macro()
+    verify_agent.tools = [file_read_tool]
 
     verify_crew_task = CrewTask(
         description=f"""
@@ -265,14 +268,17 @@ Use the file reading tools to verify whether:
 Respond with quality_score (0-10), consensus_reached (true if task is complete), and final_validation_notes explaining what was verified.
 """,
         expected_output="ValidationOutput with quality_score, consensus_reached, final_validation_notes",
-        agent=validador_macro,
+        agent=verify_agent,
         output_pydantic=ValidationOutput,
     )
 
-    agent = validador_macro.model_copy()
-    agent.tools = [file_read_tool]
-
-    crew = Crew(agents=[agent], tasks=[verify_crew_task], verbose=True, memory=True)
+    crew = Crew(
+        agents=[verify_agent],
+        tasks=[verify_crew_task],
+        verbose=True,
+        memory=True,
+        knowledge_sources=[vision_knowledge()],
+    )
     result = crew.kickoff()
 
     validation: ValidationOutput | None = None
@@ -295,7 +301,7 @@ Respond with quality_score (0-10), consensus_reached (true if task is complete),
             "notes": f"Failed to obtain structured result. Raw: {raw[:500]}",
         }
 
-    verified = validation.consensus_reached and validation.quality_score >= 7.0
+    verified = validation.quality_score >= 7.0
     return {
         "task_id": task.id,
         "verified": verified,

@@ -15,10 +15,13 @@ Uses native CrewAI features:
 """
 
 import json
+import logging
 import os
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
 from schemas import (
@@ -36,7 +39,7 @@ from execution.verify import (
     _extract_acceptance_criteria,
     load_plan,
 )
-from execution.task_flow import TaskExecutionFlow, TaskFlowState, _task_persistence
+from execution.task_flow import TaskExecutionFlow, _get_task_persistence
 
 EXEC_OUTPUT_DIR = "exec_output"
 DEFAULT_MAX_RETRIES_PER_TASK = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
@@ -128,7 +131,6 @@ def _build_task_context(
 
 def run_dialectic_execution(
     plan_path: str | None = None,
-    vision_content: str | None = None,
     max_retries_per_task: int = DEFAULT_MAX_RETRIES_PER_TASK,
     output_dir: str | None = None,
 ) -> dict:
@@ -137,19 +139,13 @@ def run_dialectic_execution(
 
     Each task runs through TaskExecutionFlow:
       dialectic → @router → verify (A+B) → @router → reimplement (C) if needed
+
+    VISION.md is loaded via TextFileKnowledgeSource on each Crew, not injected as text.
     """
     out_dir = Path(output_dir or EXEC_OUTPUT_DIR)
-    run_id = datetime.now().strftime("%Y%m%d_%H%M")
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = out_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-
-    if vision_content is None:
-        vision_path = Path("VISION.md")
-        if not vision_path.exists():
-            raise FileNotFoundError(
-                "VISION.md not found. Provide vision_content or run from the project directory."
-            )
-        vision_content = vision_path.read_text(encoding="utf-8")
 
     path = plan_path
     if path is None or path == "--latest":
@@ -162,8 +158,8 @@ def run_dialectic_execution(
 
     try:
         update_user_story_status(path, "in_progress")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to set story status to in_progress: %s", exc)
 
     print(f"\n{'='*60}")
     print(f"Executing plan — {plan.user_story_id} {plan.user_story_title}")
@@ -173,31 +169,49 @@ def run_dialectic_execution(
 
     task_results: list[TaskExecutionResult] = []
     completed_outputs: dict[str, str] = {}
+    failed_task_ids: set[str] = set()
 
     for task in ordered_tasks:
+        unmet_deps = [d for d in task.dependencies if d in failed_task_ids]
+        if unmet_deps:
+            print(f"\n>>> SKIPPING task {task.id} — {task.title} (failed deps: {', '.join(unmet_deps)})")
+            skip_result = TaskExecutionResult(
+                task_id=task.id,
+                title=task.title,
+                success=False,
+                score=0.0,
+                retry_count=0,
+                validation_notes=f"Skipped: dependencies failed: {unmet_deps}",
+            )
+            task_results.append(skip_result)
+            failed_task_ids.add(task.id)
+            try:
+                update_task_status(path, task.id, "failed", notes=f"Skipped: dependencies failed: {unmet_deps}")
+            except Exception as exc:
+                logger.warning("Failed to update status for skipped %s: %s", task.id, exc)
+            continue
+
         task_output_dir = run_dir / f"{task.id}_output"
         task_output_dir.mkdir(exist_ok=True)
         print(f"\n>>> Executing task {task.id} — {task.title}")
 
         try:
             update_task_status(path, task.id, "in_progress")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to set %s to in_progress: %s", task.id, exc)
 
         context_str = _build_task_context(plan, completed_outputs, task)
 
         try:
-            flow = TaskExecutionFlow(persistence=_task_persistence)
-            flow_result = flow.kickoff(inputs={
-                "task_id": task.id,
-                "task_title": task.title,
-                "task_description": task.description,
-                "context_str": context_str,
-                "vision_content": vision_content[:6000],
-                "acceptance_checks": task.acceptance_checks,
-                "min_score": DEFAULT_MIN_SCORE,
-                "max_retries": max_retries_per_task,
-            })
+            flow = TaskExecutionFlow(persistence=_get_task_persistence())
+            flow.state.task_id = task.id
+            flow.state.task_title = task.title
+            flow.state.task_description = task.description
+            flow.state.context_str = context_str
+            flow.state.acceptance_checks = task.acceptance_checks
+            flow.state.min_score = DEFAULT_MIN_SCORE
+            flow.state.max_retries = max_retries_per_task
+            flow_result = flow.kickoff()
 
             if isinstance(flow_result, TaskExecutionResult):
                 result = flow_result
@@ -238,18 +252,19 @@ def run_dialectic_execution(
                     path, task.id, "completed",
                     notes=f"Score: {result.score}/10 [{phases}]. {result.validation_notes[:200]}",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to update status for completed %s: %s", task.id, exc)
         else:
             phases = " → ".join(result.execution_phases) if result.execution_phases else "dialectic"
             print(f"   {task.id} FAILED ({result.score}/10) [{phases}]")
+            failed_task_ids.add(task.id)
             try:
                 update_task_status(
                     path, task.id, "failed",
                     notes=f"Score: {result.score}/10 [{phases}]. {result.validation_notes[:200]}",
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed to update status for failed %s: %s", task.id, exc)
 
     # ------------------------------------------------------------------
     # Post-execution: verify completed tasks against PRD acceptance criteria
@@ -283,8 +298,8 @@ def run_dialectic_execution(
                             path, task.id, "completed",
                             notes=f"[post-verified] score: {vr['score']}/10. {vr['notes'][:200]}",
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning("Failed to update post-verified status for %s: %s", task.id, exc)
                 else:
                     failed_verification_ids.append(task.id)
                     print(f"   {task.id} VERIFICATION FAILED (score: {vr['score']}/10)")
@@ -293,8 +308,8 @@ def run_dialectic_execution(
                             path, task.id, "failed",
                             notes=f"[post-verify failed] score: {vr['score']}/10. {vr['notes'][:200]}",
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.warning("Failed to update post-verify-failed status for %s: %s", task.id, exc)
             except Exception as exc:
                 failed_verification_ids.append(task_id)
                 print(f"   {task_id} verification error: {exc}")
@@ -316,8 +331,8 @@ def run_dialectic_execution(
 
     try:
         update_user_story_status(path, story_status)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to update story status to %s: %s", story_status, exc)
 
     overall_success = total_verified == total_tasks
     report = ExecutionReport(

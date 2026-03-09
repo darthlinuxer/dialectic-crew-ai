@@ -19,7 +19,14 @@ from crewai.flow import Flow, start, listen, router, or_
 from crewai.flow.persistence import SQLiteFlowPersistence
 from crewai import Task, Crew
 
-from dialectic.agents import visionario, critico_socratico, sintetizador, validador_macro, llm_planning
+from dialectic.agents import (
+    create_visionario,
+    create_critico_socratico,
+    create_sintetizador,
+    create_validador_macro,
+    llm_planning,
+    vision_knowledge,
+)
 from dialectic.state import DialecticState, MAX_RETRIES
 from dialectic.export import prd_to_markdown, PRDExporter
 from dialectic.config import get_export_config
@@ -74,14 +81,17 @@ class DialecticFlow(Flow[DialecticState]):
     def rodar_rodada_dialetica(self):
         print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
 
+        vis = create_visionario()
+        crit = create_critico_socratico()
+        sint = create_sintetizador()
+        val = create_validador_macro()
+
         task_vision = Task(
             description=f"""
 Objective: {self.state.feature_objective}
 
-SYSTEM MACRO VISION:
-{self.state.vision_content}
-
-Read VISION.md in its entirety. Generate the complete initial thesis (PRD proposal) including:
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Generate the complete initial thesis (PRD proposal) including:
 1. Feature name
 2. Clear objective
 3. Affected modules
@@ -91,16 +101,17 @@ Read VISION.md in its entirety. Generate the complete initial thesis (PRD propos
 7. Macro impact
 """,
             expected_output="Complete initial proposal in structured PRD format",
-            agent=visionario,
+            agent=vis,
         )
 
         task_critica = Task(
             description=f"""
 Apply the full Socratic method.
 
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 Analyze the Visionary's proposal (in context) and list ALL:
 1. Flaws and weak points
-2. Contradictions with VISION.md
+2. Contradictions with the macro vision
 3. Drift risks
 4. Overscope and technical debt
 5. Forgotten non-functional requirements
@@ -109,37 +120,40 @@ Analyze the Visionary's proposal (in context) and list ALL:
 Be relentless. Each critique must be specific and actionable.
 """,
             expected_output="Detailed critique with list of issues and score",
-            agent=critico_socratico,
+            agent=crit,
             context=[task_vision],
         )
 
         task_sintese = Task(
-            description=f"""
+            description="""
 Produce the final synthesis incorporating ALL critiques (thesis and antithesis are in context).
 
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 The synthesis must:
 1. Preserve what was good in the thesis
 2. Incorporate ALL critiques from the antithesis
 3. Eliminate ALL identified weaknesses
 4. Be better than both individual proposals
-5. Be aligned with VISION.md
+5. Be aligned with the macro vision
 
 Output: Complete PRD with corrected user stories, in structured format (objective, macro_impact, user_stories, anti_drift_questions). Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
 """,
             expected_output="Final refined version of the PRD",
-            agent=sintetizador,
+            agent=sint,
             context=[task_vision, task_critica],
         )
 
         task_validacao = Task(
-            description=f"""
+            description="""
 Evaluate the FINAL SYNTHESIS (output from the Synthesizer in context) and produce the final PRD.
+
+Consult the system's macro vision (VISION.md is available via your knowledge sources).
 
 The PRD must follow exactly the PRDSchema structure:
 - feature_name, version, objective
-- macro_impact: {{ modules_affected, risk_level, performance_impact, security_impact }}
-- user_stories: [ {{ id, title, description, acceptance_criteria, effort, dependencies }} ]
-- anti_drift_questions: [ {{ question, answer }} ]
+- macro_impact: { modules_affected, risk_level, performance_impact, security_impact }
+- user_stories: [ { id, title, description, acceptance_criteria, effort, dependencies } ]
+- anti_drift_questions: [ { question, answer } ]
 - quality_score: float (one decimal place, 0-10)
 - consensus_reached: true or false
 - final_validation_notes: string
@@ -153,7 +167,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
 - effort: only "XS", "S", "M", "L" or "XL"
 """,
             expected_output="Valid PRDSchema with quality_score and consensus_reached",
-            agent=validador_macro,
+            agent=val,
             output_pydantic=PRDSchema,
             guardrail=_prd_guardrail,
             guardrail_max_retries=2,
@@ -161,19 +175,19 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         )
 
         crew = Crew(
-            agents=[visionario, critico_socratico, sintetizador, validador_macro],
+            agents=[vis, crit, sint, val],
             tasks=[task_vision, task_critica, task_sintese, task_validacao],
             process="sequential",
             verbose=True,
             memory=True,
             planning=True,
             planning_llm=llm_planning,
+            knowledge_sources=[vision_knowledge()],
         )
 
         kickoff_kwargs: dict[str, Any] = {
             "inputs": {
                 "feature_objective": self.state.feature_objective,
-                "vision_content": self.state.vision_content,
             },
         }
 
@@ -215,8 +229,8 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
                     raw_text = last_raw
             try:
                 import re
-                match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
-                json_str = match.group(1).strip() if match else raw_text
+                matches = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
+                json_str = matches[-1].strip() if matches else raw_text
                 start_idx = json_str.find("{")
                 if start_idx >= 0:
                     json_str = json_str[start_idx:]
@@ -227,10 +241,14 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
                 self.state.consensus_reached = prd.consensus_reached
                 self.state.final_validation_notes = prd.final_validation_notes
             except Exception:
-                self.state.prd_data = {"raw": raw_text[:5000]}
-                self.state.quality_score = 5.0
+                self.state.prd_data = {"_parse_failed": True, "raw": raw_text[:5000]}
+                self.state.quality_score = 0.0
                 self.state.consensus_reached = False
-                self.state.final_validation_notes = "Failed to extract PRD (output_pydantic and parsing both failed)."
+                self.state.final_validation_notes = (
+                    "PARSE FAILURE: The output could not be parsed as PRDSchema JSON. "
+                    "On retry, the Validator MUST return ONLY valid JSON matching PRDSchema "
+                    "with all required fields."
+                )
                 os.makedirs(OUTPUT_DIR, exist_ok=True)
                 debug_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 debug_path = os.path.join(OUTPUT_DIR, f"debug_crew_output_{debug_ts}.txt")
@@ -238,7 +256,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
                     with open(debug_path, "w", encoding="utf-8") as f:
                         f.write("# Raw crew output (parse failed)\n\n")
                         f.write(raw_text if isinstance(raw_text, str) else str(raw_text))
-                    print(f"   Debug: raw output saved to {debug_path}")
+                    logger.warning("Parse failed; raw output saved to %s", debug_path)
                 except OSError:
                     pass
 
@@ -271,32 +289,21 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
     def salvar_prd_final(self):
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-        # Build PRD from state data
         data = self.state.prd_data if isinstance(self.state.prd_data, dict) else {}
+
+        if data.get("_parse_failed"):
+            print(f"\nPRD generation FAILED: could not extract structured output.")
+            print(f"Score: {self.state.quality_score}/10.0")
+            print("No PRD artifact saved. Check debug files in prd_output/.")
+            return None
+
         try:
             prd = PRDSchema.model_validate(data)
         except Exception:
-            prd = PRDSchema(
-                feature_name=data.get("feature_name") or self.state.feature_objective,
-                version=data.get("version") or "1.0",
-                objective=data.get("objective") or self.state.feature_objective,
-                macro_impact=data.get("macro_impact") or {
-                    "modules_affected": ["N/A"],
-                    "risk_level": "MEDIUM",
-                    "performance_impact": "N/A",
-                    "security_impact": "N/A",
-                },
-                user_stories=data.get("user_stories") or [
-                    {"id": "US-001", "title": "Placeholder", "description": "N/A",
-                     "acceptance_criteria": ["N/A", "N/A", "N/A"], "effort": "M"}
-                ],
-                anti_drift_questions=data.get("anti_drift_questions") or [
-                    {"question": "N/A", "answer": "N/A"} for _ in range(5)
-                ],
-                quality_score=float(self.state.quality_score),
-                consensus_reached=bool(self.state.consensus_reached),
-                final_validation_notes=str(self.state.final_validation_notes or ""),
-            )
+            logger.error("Failed to validate prd_data as PRDSchema: %s", data.keys())
+            print(f"\nPRD generation FAILED: state data is not a valid PRDSchema.")
+            print(f"Score: {self.state.quality_score}/10.0")
+            return None
 
         prd.quality_score = self.state.quality_score
         prd.consensus_reached = self.state.consensus_reached
@@ -316,7 +323,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
                 logger.exception("Failed to export PRD via PRDExporter: %s", e)
                 print("Failed to export PRD via PRDExporter; falling back to local save.")
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{OUTPUT_DIR}/PRD_{timestamp}.json"
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(prd.model_dump(), f, indent=2, ensure_ascii=False)
@@ -331,22 +338,27 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         return prd
 
 
-_persistence = SQLiteFlowPersistence()
+_persistence: SQLiteFlowPersistence | None = None
 
 
-def run_dialectic_flow(feature_request: str, vision_content: str) -> dict:
-    state = DialecticState(
-        feature_objective=feature_request,
-        vision_content=vision_content,
-        max_retries=MAX_RETRIES,
-    )
-    flow = DialecticFlow(state, persistence=_persistence)
-    result = flow.kickoff()
+def _get_persistence() -> SQLiteFlowPersistence:
+    global _persistence
+    if _persistence is None:
+        _persistence = SQLiteFlowPersistence()
+    return _persistence
+
+
+def run_dialectic_flow(feature_request: str) -> dict:
+    flow = DialecticFlow(persistence=_get_persistence())
+    flow.state.feature_objective = feature_request
+    flow.state.max_retries = MAX_RETRIES
+    flow.kickoff()
+    s = flow.state
     return {
-        "success": result.consensus_reached or result.quality_score >= 9.0,
-        "quality_score": result.quality_score,
-        "iterations": result.retry_count + 1,
-        "prd": result.prd_data,
-        "consensus_reached": result.consensus_reached,
-        "validation": result.final_validation_notes,
+        "success": s.consensus_reached or s.quality_score >= 9.0,
+        "quality_score": s.quality_score,
+        "iterations": s.retry_count + 1,
+        "prd": s.prd_data,
+        "consensus_reached": s.consensus_reached,
+        "validation": s.final_validation_notes,
     }

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Union, List
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import re
 import hashlib
@@ -336,7 +336,7 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
     if validation_status is None:
         validation_status = "approved" if getattr(prd, "consensus_reached", False) else "unapproved"
 
-    generated_at = datetime.utcnow().isoformat() + "Z"
+    generated_at = datetime.now(tz=timezone.utc).isoformat()
 
     front: List[str] = ["---",]
     if quality is not None:
