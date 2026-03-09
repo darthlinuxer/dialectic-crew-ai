@@ -29,7 +29,7 @@ from schemas import (
 )
 from execution.runner import _artifact_markdown
 from execution.verify import update_task_status
-from execution.task_flow import TaskExecutionFlow, TaskFlowState
+from execution.task_flow import TaskExecutionFlow, TaskFlowState, _task_persistence
 
 EXEC_OUTPUT_DIR = "exec_output"
 DEFAULT_MAX_RETRIES_PER_TASK = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
@@ -175,7 +175,7 @@ def run_dialectic_execution(
         context_str = _build_task_context(plan, completed_outputs, task)
 
         try:
-            flow = TaskExecutionFlow()
+            flow = TaskExecutionFlow(persistence=_task_persistence)
             flow_result = flow.kickoff(inputs={
                 "task_id": task.id,
                 "task_title": task.title,

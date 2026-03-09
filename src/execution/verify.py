@@ -240,6 +240,7 @@ Respond with quality_score (0-10), consensus_reached (true if task is complete),
         agents=[validador_macro_with_tools],
         tasks=[verify_task_desc],
         verbose=True,
+        memory=True,
     )
 
     print(f"\n  Verifying {task.id} — {task.title}...")

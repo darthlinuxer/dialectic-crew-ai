@@ -21,6 +21,7 @@ from typing import Any
 
 from crewai import Task, Crew, Agent
 from crewai.flow.flow import Flow, start, listen, router
+from crewai.flow.persistence import SQLiteFlowPersistence
 from pydantic import BaseModel, Field
 
 from dialectic.agents import (
@@ -28,8 +29,9 @@ from dialectic.agents import (
     validador_macro,
     critico_socratico,
     sintetizador,
+    llm_planning,
 )
-from dialectic.tools import file_read_tool, file_write_tool
+from dialectic.tools import file_read_tool, file_write_tool, directory_read_tool
 from schemas import (
     ValidationOutput,
     VerificationResult,
@@ -95,9 +97,12 @@ def _verification_guardrail(result) -> tuple[bool, Any]:
 # TaskExecutionFlow
 # ---------------------------------------------------------------------------
 
+_task_persistence = SQLiteFlowPersistence()
+
+
 class TaskExecutionFlow(Flow[TaskFlowState]):
     """
-    Per-task execution with three phases:
+    Per-task execution with three phases and state persistence:
     1. Dialectic cycle (implement → critique → synthesize → validate)
     2. Post-execution verification (A) with acceptance criteria (B)
     3. Independent re-implementation (C) if verification fails
@@ -176,6 +181,9 @@ Minimum score for approval: {self.state.min_score}
                 tasks=[task_impl, task_critica, task_sintese, task_val],
                 process="sequential",
                 verbose=True,
+                memory=True,
+                planning=True,
+                planning_llm=llm_planning,
             )
 
             result = crew.kickoff()
@@ -244,7 +252,7 @@ Minimum score for approval: {self.state.min_score}
             reasoning=True,
             max_reasoning_attempts=2,
             llm=validador_macro.llm,
-            tools=[file_read_tool],
+            tools=[file_read_tool, directory_read_tool],
         )
 
         task_verify = Task(
@@ -271,7 +279,7 @@ Fill in:
             guardrail_max_retries=2,
         )
 
-        crew = Crew(agents=[verify_agent], tasks=[task_verify], verbose=True)
+        crew = Crew(agents=[verify_agent], tasks=[task_verify], verbose=True, memory=True)
         result = crew.kickoff()
 
         vr: VerificationResult | None = None
@@ -325,7 +333,7 @@ Fill in:
             reasoning=True,
             max_reasoning_attempts=2,
             llm=implementer.llm,
-            tools=[file_read_tool, file_write_tool],
+            tools=[file_read_tool, file_write_tool, directory_read_tool],
         )
 
         task_fix = Task(
@@ -365,6 +373,7 @@ Minimum score: {self.state.min_score}
             tasks=[task_fix, task_revalidate],
             process="sequential",
             verbose=True,
+            memory=True,
         )
 
         result = crew.kickoff()

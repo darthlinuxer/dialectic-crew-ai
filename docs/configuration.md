@@ -36,7 +36,6 @@ At least one API key must be set. The system checks for any of these:
 |----------|-------------|
 | `OPENAI_API_KEY` | OpenAI API key |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
-| `MINIMAX_API_KEY` | MiniMax API key |
 | `GROQ_API_KEY` | Groq API key |
 
 ### LLM Model Configuration

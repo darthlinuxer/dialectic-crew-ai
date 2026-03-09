@@ -22,8 +22,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "crewai[tools,litellm]>=1.10.0",
-    "crewai-tools>=1.10.0",
+    "crewai[tools,litellm,file-processing]>=1.10.0",
+    "crewai-tools[mcp]>=1.10.0",
+    "mcp",
     "pydantic>=2.10.0",
     "python-dotenv",
 ]

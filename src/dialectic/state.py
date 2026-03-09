@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 MAX_RETRIES = 5
 
@@ -13,3 +13,4 @@ class DialecticState(BaseModel):
     max_retries: int = MAX_RETRIES
     consensus_reached: bool = False
     final_validation_notes: str = ""
+    file_paths: list[str] = Field(default_factory=list)

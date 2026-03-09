@@ -38,7 +38,7 @@
 
 - **Input:** CLI arguments, VISION.md content, environment variables (API keys).
 - **Output:** Files in `prd_output/` (PRDs and plans in **JSON + Markdown**); execution artifacts in `exec_output/`.
-- **LLM:** Support for multiple providers (OpenAI, Anthropic, Groq, MiniMax, etc.) configurable in `dialectic/agents.py`.
+- **LLM:** Support for multiple providers (OpenAI, Anthropic, Groq, etc.) configurable in `dialectic/agents.py`.
 
 ---
 

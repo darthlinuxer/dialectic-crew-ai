@@ -16,13 +16,20 @@ import logging
 from typing import Any
 
 from crewai.flow import Flow, start, listen, router, or_
+from crewai.flow.persistence import SQLiteFlowPersistence
 from crewai import Task, Crew
 
-from dialectic.agents import visionario, critico_socratico, sintetizador, validador_macro
+from dialectic.agents import visionario, critico_socratico, sintetizador, validador_macro, llm_planning
 from dialectic.state import DialecticState, MAX_RETRIES
 from dialectic.export import prd_to_markdown, PRDExporter
 from dialectic.config import get_export_config
 from schemas import PRDSchema
+
+try:
+    from crewai_files import File
+    _HAS_FILES = True
+except ImportError:
+    _HAS_FILES = False
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +58,7 @@ def _prd_guardrail(result) -> tuple[bool, Any]:
 
 
 class DialecticFlow(Flow[DialecticState]):
-    """Dialectic flow with automatic retry"""
+    """Dialectic flow with automatic retry and state persistence"""
 
     @start()
     def iniciar_dialetica(self):
@@ -158,14 +165,28 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
             tasks=[task_vision, task_critica, task_sintese, task_validacao],
             process="sequential",
             verbose=True,
+            memory=True,
+            planning=True,
+            planning_llm=llm_planning,
         )
 
-        resultado = crew.kickoff(
-            inputs={
+        kickoff_kwargs: dict[str, Any] = {
+            "inputs": {
                 "feature_objective": self.state.feature_objective,
                 "vision_content": self.state.vision_content,
-            }
-        )
+            },
+        }
+
+        if _HAS_FILES and self.state.file_paths:
+            input_files = {}
+            for i, path in enumerate(self.state.file_paths):
+                if os.path.exists(path):
+                    key = os.path.splitext(os.path.basename(path))[0] or f"file_{i}"
+                    input_files[key] = File(source=path)
+            if input_files:
+                kickoff_kwargs["input_files"] = input_files
+
+        resultado = crew.kickoff(**kickoff_kwargs)
 
         # Extract PRD via output_pydantic (native CrewAI structured output)
         prd: PRDSchema | None = None
@@ -310,13 +331,16 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         return prd
 
 
+_persistence = SQLiteFlowPersistence()
+
+
 def run_dialectic_flow(feature_request: str, vision_content: str) -> dict:
     state = DialecticState(
         feature_objective=feature_request,
         vision_content=vision_content,
         max_retries=MAX_RETRIES,
     )
-    flow = DialecticFlow(state)
+    flow = DialecticFlow(state, persistence=_persistence)
     result = flow.kickoff()
     return {
         "success": result.consensus_reached or result.quality_score >= 9.0,

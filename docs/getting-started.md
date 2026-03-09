@@ -7,7 +7,7 @@ This guide covers installation, prerequisites, and running your first dialectic 
 ## Prerequisites
 
 - **Python 3.10–3.13**
-- **An LLM API key** (OpenAI, Anthropic, Groq, or MiniMax)
+- **An LLM API key** (OpenAI, Anthropic, or Groq)
 - **`VISION.md`** in your project root (already included in the repository)
 
 ---

@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-if not (os.getenv("OPENAI_API_KEY") or os.getenv("MINIMAX_API_KEY") or os.getenv("ANTHROPIC_API_KEY")):
+if not (os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY")):
     print("No API key set in .env — skipping test.")
     sys.exit(0)
 

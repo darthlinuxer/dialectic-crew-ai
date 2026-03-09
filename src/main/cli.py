@@ -16,7 +16,7 @@ load_dotenv()
 
 from dialectic import DialecticFlow, run_dialectic_flow
 from dialectic.state import DialecticState
-from dialectic.prd_flow import OUTPUT_DIR
+from dialectic.prd_flow import OUTPUT_DIR, _persistence
 from planning.flow import run_user_story_planning
 from execution.runner import run_execution
 from execution.dialectic_execution import run_dialectic_execution
@@ -41,11 +41,13 @@ Usage:
 
 Commands:
 
-  prd "your feature request"
+  prd "your feature request" [--files file1.pdf file2.png ...]
       Generates a PRD (Product Requirement Document) using the dialectic method
       (thesis → antithesis → synthesis → validation). Requires VISION.md in the current directory.
       Saves to prd_output/ (JSON + Markdown).
+      Use --files to attach reference documents (PDF, images, text) for agents to analyze.
       Ex.: python main.py prd "Login with 2FA"
+           python main.py prd "Dashboard redesign" --files wireframe.png spec.pdf
 
   plan [prd.json] [US-001|index]
       Plans the execution of a user story with dialectic. Generates a plan
@@ -94,7 +96,7 @@ Compatibility:
 
 Requirements:
   - VISION.md in the current directory (for prd and plan)
-  - API key in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, MINIMAX_API_KEY or GROQ_API_KEY)
+  - API key in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY)
 """
 
 
@@ -102,7 +104,6 @@ def _check_api_key():
     has = bool(
         os.getenv("OPENAI_API_KEY")
         or os.getenv("ANTHROPIC_API_KEY")
-        or os.getenv("MINIMAX_API_KEY")
         or os.getenv("GROQ_API_KEY")
     )
     if not has:
@@ -119,11 +120,13 @@ def _read_vision():
         return f.read()
 
 
-def cmd_prd(feature_request: str):
+def cmd_prd(feature_request: str, file_paths: list[str] | None = None):
     vision = _read_vision()
-    flow = DialecticFlow()
+    flow = DialecticFlow(persistence=_persistence)
     flow.state.feature_objective = feature_request
     flow.state.vision_content = vision
+    if file_paths:
+        flow.state.file_paths = file_paths
     flow.kickoff()
     state = flow.state
     print("\n" + "=" * 60)
@@ -223,7 +226,19 @@ def main():
         if len(args) < 2:
             print("Provide the feature: python main.py prd 'your feature here'")
             sys.exit(1)
-        cmd_prd(" ".join(args[1:]))
+        file_paths: list[str] = []
+        rest = args[1:]
+        if "--files" in rest:
+            idx = rest.index("--files")
+            feature_parts = rest[:idx]
+            file_paths = [f for f in rest[idx + 1:] if not f.startswith("-")]
+            invalid = [f for f in file_paths if not os.path.exists(f)]
+            if invalid:
+                print(f"  File(s) not found: {', '.join(invalid)}")
+                sys.exit(1)
+        else:
+            feature_parts = rest
+        cmd_prd(" ".join(feature_parts), file_paths=file_paths or None)
         return
     if sub == "plan":
         prd_path = args[1] if len(args) > 1 else None

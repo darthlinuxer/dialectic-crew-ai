@@ -17,7 +17,7 @@ from typing import Any
 
 from crewai import Task, Crew
 
-from dialectic.agents import visionario, critico_socratico, sintetizador, validador_macro
+from dialectic.agents import visionario, critico_socratico, sintetizador, validador_macro, llm_planning
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_flow import OUTPUT_DIR
 from schemas import PRDSchema, UserStoryExecutionPlan
@@ -226,6 +226,9 @@ Fill in:
         tasks=[task_tese, task_antitese, task_sintese, task_validacao],
         process="sequential",
         verbose=True,
+        memory=True,
+        planning=True,
+        planning_llm=llm_planning,
     )
 
     print(f"\n{'='*60}")
