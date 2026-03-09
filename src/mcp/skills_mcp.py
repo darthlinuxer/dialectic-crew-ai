@@ -138,6 +138,13 @@ async def skills_list_skills(params: ListSkillsInput) -> str:
     This tool scans the local filesystem for `SKILL.md` files and returns
     a paginated list of skills that agents can use, including basic metadata
     such as `skill_id`, `display_name`, `description`, and `source`.
+
+    Typical CrewAI usage:
+    - Connect to this MCP server via `mcps` using `MCPServerStdio` (local) or
+      `MCPServerHTTP` (streamable HTTP).
+    - Call `skills_list_skills` to discover relevant skills (for example,
+      `using-superpowers`, `sequential-thinking`), then call `skills_get_skill`
+      to load the chosen SKILL content before acting.
     """
 
     skills = _INDEX.search(query=params.query, source=params.source)
@@ -249,7 +256,9 @@ async def skills_search_skills(params: SearchSkillsInput) -> str:
     """Search within SKILL.md contents for a query string.
 
     This tool performs a simple full-text search across all discovered skills
-    and returns snippets showing where the query appears.
+    and returns snippets showing where the query appears. CrewAI agents can
+    use it when they do not yet know which specific skill to load with
+    `skills_get_skill`.
     """
 
     query_lower = params.query.lower()
@@ -311,7 +320,9 @@ async def skills_resource(skill_id: str) -> str:
     """Expose SKILL.md content as an MCP resource.
 
     Use the `skills://{skill_id}` URI to retrieve the raw markdown content
-    for a given skill without additional metadata.
+    for a given skill without additional metadata. This is useful when a
+    client wants direct access to the skill file outside the higher-level
+    tools.
     """
 
     skill = _INDEX.get(skill_id)
@@ -328,5 +339,26 @@ async def skills_resource(skill_id: str) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import os
+    import sys
+
+    transport = os.getenv("SKILLS_MCP_TRANSPORT", "stdio").lower()
+
+    # Command-line override: --http or --streamable-http imply HTTP transport.
+    http_flags = {"--http", "--streamable-http"}
+    argv_flags = {arg for arg in sys.argv[1:] if arg.startswith("--")}
+    if http_flags & argv_flags:
+        transport = "streamable_http"
+
+    if transport == "streamable_http":
+        port_str = os.getenv("SKILLS_MCP_PORT", "8001")
+        try:
+            port = int(port_str)
+        except ValueError:
+            port = 8001
+        mcp.run(transport="streamable_http", port=port)
+    else:
+        # Default: stdio transport for local MCPServerStdio integration.
+        mcp.run()
+
 

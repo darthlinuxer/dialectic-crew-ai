@@ -84,6 +84,13 @@ mcp_brave_search = _make_mcp(
     env={"BRAVE_API_KEY": os.getenv("BRAVE_API_KEY", "")},
 )
 
+# MCP server exposing local SKILL.md files via skills_mcp (skills_list_skills / skills_get_skill).
+mcp_skills = _make_mcp(
+    MCPServerStdio,
+    command="python",
+    args=["-m", "src.mcp.skills_mcp"],
+)
+
 
 # ---------------------------------------------------------------------------
 # Knowledge source: vision document loaded via semantic chunking + vector
@@ -132,7 +139,7 @@ def create_visionario() -> Agent:
         reasoning=True,
         max_reasoning_attempts=3,
         tools=[t for t in [file_read_tool, directory_read_tool, code_docs_tool] if t],
-        mcps=[m for m in [mcp_context7, mcp_brave_search] if m],
+        mcps=[m for m in [mcp_context7, mcp_brave_search, mcp_skills] if m],
     )
 
 
@@ -160,7 +167,7 @@ def create_critico_socratico() -> Agent:
         reasoning=True,
         max_reasoning_attempts=2,
         tools=[],
-        mcps=[m for m in [mcp_sequential_thinking] if m],
+        mcps=[m for m in [mcp_sequential_thinking, mcp_skills] if m],
     )
 
 
@@ -190,7 +197,7 @@ def create_sintetizador() -> Agent:
         reasoning=True,
         max_reasoning_attempts=2,
         tools=[],
-        mcps=[m for m in [mcp_context7] if m],
+        mcps=[m for m in [mcp_context7, mcp_skills] if m],
     )
 
 
@@ -244,5 +251,5 @@ def create_implementer() -> Agent:
         allow_delegation=False,
         llm=llm_complex,
         tools=[file_read_tool, file_write_tool, directory_read_tool],
-        mcps=[m for m in [mcp_context7, mcp_brave_search] if m],
+        mcps=[m for m in [mcp_context7, mcp_brave_search, mcp_skills] if m],
     )
