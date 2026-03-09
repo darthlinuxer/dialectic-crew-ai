@@ -19,9 +19,10 @@ Dialectic Crew AI uses the [CrewAI Flow API](https://docs.crewai.com/en/concepts
 
 **Source:** `src/dialectic/prd_flow.py`
 **State:** `DialecticState` (`src/dialectic/state.py`)
+**Persistence:** `SQLiteFlowPersistence` (automatic state recovery)
 **Output:** `PRDSchema` → exported to `prd_output/PRD_*.json` + `.md`
 
-This is the main flow. It takes a feature request and produces a complete, validated PRD through iterative dialectic cycles.
+This is the main flow. It takes a feature request (and optional file attachments) and produces a complete, validated PRD through iterative dialectic cycles.
 
 ### Flow Diagram
 
@@ -62,6 +63,10 @@ flowchart TD
 - **Guardrail**: `_prd_guardrail` validates that the output is a valid `PRDSchema` with at least 1 user story
 - **Fallback parsing**: If `output_pydantic` fails, regex-based JSON extraction from raw text is attempted
 - **Configurable**: Max retries via `DialecticState.max_retries` (default: 5)
+- **Persistence**: SQLite-backed state persistence enables recovery after interruptions
+- **Planning**: Crews run with `planning=True` using the Planning LLM tier for coordination
+- **Memory**: Crews run with `memory=True` so agents learn from earlier interactions
+- **File attachments**: Optional reference files (PDFs, images, text) can be attached via `--files` and are passed to the crew as `input_files` (requires `crewai_files`)
 
 ### State Fields
 
@@ -75,6 +80,7 @@ flowchart TD
 | `max_retries` | `int` | Maximum retries allowed (default: 5) |
 | `consensus_reached` | `bool` | Whether consensus was reached |
 | `final_validation_notes` | `str` | Validator's notes |
+| `file_paths` | `list[str]` | Paths to attached reference files (optional) |
 
 ---
 
@@ -115,6 +121,8 @@ flowchart TD
 - **Guardrail**: `_plan_guardrail` ensures at least 1 implementation task in the plan
 - **Auto-discovery**: Finds the latest PRD if no path specified; resolves user story by ID or index
 - **Normalization**: Handles `US-001`, `US001`, `US1`, and plain index references
+- **Planning**: Crews run with `planning=True` using the Planning LLM tier for coordination
+- **Memory**: Crews run with `memory=True` so agents retain context within the planning session
 
 ---
 
@@ -122,6 +130,7 @@ flowchart TD
 
 **Source:** `src/execution/task_flow.py`
 **State:** `TaskFlowState`
+**Persistence:** `SQLiteFlowPersistence` (automatic state recovery)
 **Output:** `TaskExecutionResult`
 
 The most sophisticated flow — a three-phase pipeline per task with conditional routing. If the dialectic cycle passes, the result is independently verified. If verification fails, a fresh agent re-implements the missing parts.
@@ -183,6 +192,8 @@ flowchart TD
 - **Independent verification**: The verifier agent has no access to the dialectic context — it reads actual project files
 - **Fresh reimplementation**: Phase C uses a new agent with no prior context, only the failed checks
 - **Reasoning mode**: Verification and reimplementation agents use `reasoning=True` with `max_reasoning_attempts=2`
+- **Planning and memory**: Dialectic crews run with `planning=True` and `memory=True` for better coordination
+- **Persistence**: SQLite-backed state persistence via `SQLiteFlowPersistence`
 
 ### State Fields (`TaskFlowState`)
 

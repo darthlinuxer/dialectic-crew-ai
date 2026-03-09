@@ -81,12 +81,12 @@ All Pydantic data models live here. Every module imports from this single file, 
 
 | File | Responsibility |
 |------|---------------|
-| `agents.py` | Defines 5 CrewAI agents with LLM tier assignments |
-| `prd_flow.py` | Main `DialecticFlow` (CrewAI Flow) for PRD generation with retry |
-| `state.py` | `DialecticState` Pydantic model for flow state management |
+| `agents.py` | Defines 5 CrewAI agents with LLM tiers, MCP servers (conditionally loaded), and tools |
+| `prd_flow.py` | Main `DialecticFlow` (CrewAI Flow) for PRD generation with retry and SQLite persistence |
+| `state.py` | `DialecticState` Pydantic model for flow state management (incl. file attachments) |
 | `config.py` | `ExportConfig` loader with pydantic-settings + fallback |
 | `export.py` | `PRDExporter` (JSON+MD), markdown rendering, consistency validation |
-| `tools.py` | CrewAI tools (FileRead, FileWrite, JSONSearch) used by agents |
+| `tools.py` | CrewAI tools (FileRead, FileWrite, DirectoryRead, JSONSearch, CodeDocs) used by agents |
 
 ### `src/planning/` — User Story Planning
 
@@ -205,11 +205,23 @@ Expensive reasoning models handle architecture; mid-tier handles implementation 
 
 When exporting "both" formats, JSON is written first (safe for pipelines). If Markdown writing fails, the JSON file is automatically rolled back (deleted) and an exception is raised.
 
-### 5. Graceful Degradation
+### 5. Conditional MCP Loading
+
+MCP (Model Context Protocol) servers are loaded only when their prerequisites are met. The `_make_mcp()` helper checks for required environment variables and system commands (e.g., Docker) before instantiation. Missing prerequisites cause the server to be `None`, which is filtered from agent `mcps=` lists. This prevents runtime errors when API keys or Docker are unavailable.
+
+### 6. Graceful Degradation
 
 If CrewAI's `output_pydantic` fails to produce structured output, the system falls back to regex-based JSON extraction from raw text. If that also fails, placeholder objects are created and the flow continues.
 
-### 6. Topological Sort for Task Ordering
+### 7. SQLite Flow Persistence
+
+Both `DialecticFlow` and `TaskExecutionFlow` use `SQLiteFlowPersistence` from CrewAI. Flow state is persisted to a local SQLite database, enabling recovery after interruptions and providing an audit trail of dialectic iterations.
+
+### 8. Crew Planning and Memory
+
+Crews are configured with `planning=True` and `memory=True`. CrewAI's built-in planning step (using `LLM_MODEL_PLANNING`) generates a plan before agents execute, improving task coordination. Memory enables agents to learn from earlier interactions within a crew run.
+
+### 9. Topological Sort for Task Ordering
 
 Tasks with dependencies are ordered using a topological sort algorithm. If cycles are detected (invalid state), the system falls back to ordering by the `order` field.
 
@@ -221,8 +233,11 @@ Tasks with dependencies are ordered using a topological sort algorithm. If cycle
 |-----------|-----------|
 | Runtime | Python 3.10–3.13 |
 | Agent Framework | CrewAI (Flow API, Crew, Tasks, Agents) |
+| Tool Integration | MCP (Model Context Protocol) via `crewai.mcp` |
 | Data Validation | Pydantic v2 |
 | LLM Integration | LiteLLM (via CrewAI) |
+| State Persistence | SQLite (via CrewAI `SQLiteFlowPersistence`) |
 | Configuration | pydantic-settings + python-dotenv |
 | Build System | setuptools + pyproject.toml |
 | Package Manager | uv (recommended) |
+| Container Runtime | Docker (optional, for MCP Stdio servers) |

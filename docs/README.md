@@ -67,12 +67,12 @@ dialectic-crew-ai/
 ├── src/
 │   ├── schemas.py             # Pydantic data models (source of truth)
 │   ├── dialectic/             # Core dialectic engine
-│   │   ├── agents.py          # 5 CrewAI agents with LLM tiers
-│   │   ├── prd_flow.py        # PRD generation flow
+│   │   ├── agents.py          # 5 CrewAI agents with LLM tiers + MCP servers
+│   │   ├── prd_flow.py        # PRD generation flow (with SQLite persistence)
 │   │   ├── state.py           # DialecticState model
 │   │   ├── config.py          # Export config loader
 │   │   ├── export.py          # PRD/plan export (JSON+MD)
-│   │   └── tools.py           # CrewAI tools (FileRead, FileWrite)
+│   │   └── tools.py           # CrewAI tools (FileRead, FileWrite, DirRead, etc.)
 │   ├── planning/              # User story planning
 │   │   └── flow.py            # Dialectic planning flow
 │   ├── execution/             # Plan execution engine
@@ -104,6 +104,9 @@ cp .env.example .env
 
 # Generate a PRD
 uv run dialectic-crew prd "Login with two-factor authentication"
+
+# Generate a PRD with reference files
+uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
 
 # Plan a user story
 uv run dialectic-crew plan

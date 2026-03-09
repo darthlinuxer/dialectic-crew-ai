@@ -50,9 +50,16 @@ flowchart LR
 Generates a Product Requirement Document using the full dialectic method with automatic retries until the quality score reaches 9.0.
 
 ```bash
-uv run dialectic-crew prd "your feature request"
-# or: python main.py prd "your feature request"
+uv run dialectic-crew prd "your feature request" [--files file1.pdf file2.png ...]
+# or: python main.py prd "your feature request" [--files file1.pdf file2.png ...]
 ```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `"feature request"` | Yes | The feature description |
+| `--files` | No | One or more reference files (PDFs, images, text) for agents to analyze |
 
 **Requirements:**
 - `VISION.md` in the current directory
@@ -60,11 +67,14 @@ uv run dialectic-crew prd "your feature request"
 
 **Output:** `prd_output/PRD_YYYYMMDD_HHMM.json` and `.md`
 
-**Example:**
+**Examples:**
 
 ```bash
 uv run dialectic-crew prd "Login with two-factor authentication"
 # or: python main.py prd "Login with two-factor authentication"
+
+# Attach reference documents for agents to analyze
+uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
 ```
 
 **Compatibility shortcut:** Passing a string without a command is equivalent to `prd`:

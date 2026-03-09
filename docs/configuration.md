@@ -45,7 +45,21 @@ At least one API key must be set. The system checks for any of these:
 | `LLM_MODEL_SIMPLE` | `gpt-4o-mini` | Model for the Validator agent (Simple tier) |
 | `LLM_MODEL_COMPLEX` | `gpt-4o` | Model for Critic, Synthesizer, Implementer (Complex tier) |
 | `LLM_MODEL_REASONING` | `o3-mini` | Model for the Visionary Architect (Reasoning tier) |
+| `LLM_MODEL_PLANNING` | same as Reasoning | Model for CrewAI's built-in crew planning step |
 | `LLM_REQUEST_TIMEOUT` | `900` | Per-request LLM timeout in seconds |
+
+### MCP Server Configuration
+
+MCP (Model Context Protocol) servers provide agents with external tool capabilities. Each server is **conditionally loaded** — it is only instantiated when its required configuration is present. If a key or prerequisite is missing, the server is skipped with a warning log and agents operate without it.
+
+| Variable | Required For | Description |
+|----------|-------------|-------------|
+| `CONTEXT7_API_KEY` | Context7 MCP server | API key for up-to-date library/framework documentation |
+| `BRAVE_API_KEY` | Brave Search MCP server | API key for real-time web search |
+
+The Sequential Thinking MCP server requires only Docker (no API key).
+
+**Docker prerequisite:** The Brave Search and Sequential Thinking MCP servers run via Docker containers. If `docker` is not on your `PATH`, these servers are skipped automatically.
 
 ### Export Configuration
 
@@ -119,6 +133,7 @@ OPENAI_API_KEY=sk-your-key-here
 LLM_MODEL_SIMPLE=gpt-4o-mini
 LLM_MODEL_COMPLEX=gpt-4o
 LLM_MODEL_REASONING=o3-mini
+LLM_MODEL_PLANNING=o3
 LLM_REQUEST_TIMEOUT=900
 
 # Optional: export settings
@@ -129,6 +144,10 @@ PRD_OUTPUT_DIR=prd_output
 MAX_RETRIES_PER_TASK=3
 MIN_QUALITY_SCORE=7.5
 CREW_KICKOFF_TIMEOUT=300
+
+# Optional: MCP server API keys (agents work without these)
+CONTEXT7_API_KEY=ctx7sk-...
+BRAVE_API_KEY=...
 ```
 
 ---
@@ -142,10 +161,12 @@ flowchart TD
         LLM["LLM Models"]
         EXPORT["Export Settings"]
         EXEC["Execution Settings"]
+        MCP_KEYS["MCP Server Keys"]
     end
 
     API --> AGENTS["src/dialectic/agents.py<br/>Agent LLM configuration"]
     LLM --> AGENTS
+    MCP_KEYS --> AGENTS
     EXPORT --> CONFIG_MOD["src/dialectic/config.py<br/>ExportConfig loader"]
     CONFIG_MOD --> EXPORTER["src/dialectic/export.py<br/>PRDExporter"]
     EXEC --> TASK_FLOW["src/execution/task_flow.py<br/>TaskExecutionFlow"]

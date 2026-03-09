@@ -21,11 +21,24 @@ graph LR
         I["Technical Implementer"]
     end
 
+    subgraph MCP_Servers["MCP Servers (conditional)"]
+        CTX7["Context7<br/>(docs lookup)"]
+        BRAVE["Brave Search<br/>(web search)"]
+        SEQ["Sequential Thinking<br/>(reasoning)"]
+    end
+
     V -.->|"o3-mini"| LLM_R["Reasoning Tier"]
     C -.->|"gpt-4o"| LLM_C["Complex Tier"]
     S -.->|"gpt-4o"| LLM_C
     I -.->|"gpt-4o"| LLM_C
     Val -.->|"gpt-4o-mini"| LLM_S["Simple Tier"]
+
+    V --- CTX7
+    V --- BRAVE
+    C --- SEQ
+    S --- CTX7
+    I --- CTX7
+    I --- BRAVE
 
     style V fill:#6C5CE7,stroke:#4834D4,color:#fff
     style C fill:#E17055,stroke:#D63031,color:#fff
@@ -48,10 +61,12 @@ graph LR
 | **Role** | Senior Visionary Architect |
 | **Goal** | Propose the most elegant initial solution aligned with the system's macro vision |
 | **LLM Tier** | Reasoning (`o3-mini`) |
-| **Tools** | None |
+| **Reasoning** | `True` (max 3 attempts) |
+| **Tools** | CodeDocsSearchTool (optional) |
+| **MCP Servers** | Context7, Brave Search |
 | **Phase** | Thesis |
 
-The Visionary generates bold, comprehensive initial proposals. With 18 years of simulated architectural experience, it always reads `VISION.md` first and considers the system holistically: affected modules, non-functional requirements, and the ideal speed-quality tradeoff.
+The Visionary generates bold, comprehensive initial proposals. With 18 years of simulated architectural experience, it always reads `VISION.md` first and considers the system holistically: affected modules, non-functional requirements, and the ideal speed-quality tradeoff. Has access to Context7 for up-to-date library documentation and Brave Search for real-time web research.
 
 ### 2. Socratic Critic (`critico_socratico`)
 
@@ -60,10 +75,12 @@ The Visionary generates bold, comprehensive initial proposals. With 18 years of 
 | **Role** | Relentless Socratic Critic |
 | **Goal** | Rigorously evaluate whether the implementation meets what was requested, without expanding scope |
 | **LLM Tier** | Complex (`gpt-4o`) |
+| **Reasoning** | `True` (max 2 attempts) |
 | **Tools** | None |
+| **MCP Servers** | Sequential Thinking |
 | **Phase** | Antithesis |
 
-The Critic is the devil's advocate. Its fundamental rule is to evaluate **only** what the task requests — never expanding scope. It checks for:
+The Critic is the devil's advocate. Its fundamental rule is to evaluate **only** what the task requests — never expanding scope. Uses the Sequential Thinking MCP server for structured reasoning. It checks for:
 - Point-by-point task fulfillment
 - Contradictions with `VISION.md`
 - Overscope (doing more than requested)
@@ -77,7 +94,9 @@ The Critic is the devil's advocate. Its fundamental rule is to evaluate **only**
 | **Role** | Dialectic Synthesizer |
 | **Goal** | Transform thesis + antithesis into a superior version, eliminating ALL weaknesses |
 | **LLM Tier** | Complex (`gpt-4o`) |
+| **Reasoning** | `True` (max 2 attempts) |
 | **Tools** | None |
+| **MCP Servers** | Context7 |
 | **Phase** | Synthesis |
 
 The Synthesizer is "Hegel in code form." It receives both the proposal and the critiques, producing a synthesis that:
@@ -95,7 +114,8 @@ The synthesis is not a mediocre middle ground — it is a **dialectical transcen
 | **Role** | Macro & Quality Validator |
 | **Goal** | Assign a final score of 0–10 and decide whether to approve or force a retry |
 | **LLM Tier** | Simple (`gpt-4o-mini`) |
-| **Tools** | None |
+| **Tools** | JSONSearchTool (optional) |
+| **MCP Servers** | None |
 | **Phase** | Validation |
 
 The Validator is the final gate. It always reads `VISION.md` for comparison and scores against a checklist:
@@ -117,14 +137,62 @@ If score < 9.0, it explains exactly what needs improvement.
 | **Role** | Technical Implementer |
 | **Goal** | Execute the task as described, generating code/config/files aligned with VISION.md |
 | **LLM Tier** | Complex (`gpt-4o`) |
-| **Tools** | FileReadTool, FileWriterTool |
+| **Tools** | FileReadTool, FileWriterTool, DirectoryReadTool |
+| **MCP Servers** | Context7, Brave Search |
 | **Phase** | Thesis (in execution context) |
 
 The Implementer executes tasks during the execution phase. It:
 - Reads `VISION.md` before implementing
-- Uses file tools to create and modify files
+- Uses file tools to create, modify, and explore files and directories
+- Has access to Context7 and Brave Search for documentation and research
 - Implements exactly what is asked (no overscope)
 - Documents changes clearly
+
+---
+
+## MCP Server Integration
+
+Agents can use [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers as additional tool providers. MCP servers are **conditionally loaded** — they are only instantiated when their required configuration is present.
+
+### Conditional Loading
+
+The `_make_mcp()` helper function in `agents.py` guards each MCP server behind prerequisite checks:
+
+| Check | Behavior |
+|-------|----------|
+| `required_env` | Skips the server if the specified env var is unset or empty |
+| `required_cmd` | Skips the server if the specified command (e.g., `docker`) is not on `PATH` |
+| Constructor failure | Catches exceptions and returns `None` with a warning log |
+
+When a server is `None`, it is filtered out of the agent's `mcps=` list automatically. Agents degrade gracefully — they function normally, just without the MCP tools.
+
+### Available MCP Servers
+
+| Server | Type | Requires | Used By |
+|--------|------|----------|---------|
+| **Context7** | `MCPServerHTTP` | `CONTEXT7_API_KEY` env var | Visionary, Synthesizer, Implementer |
+| **Brave Search** | `MCPServerStdio` | `BRAVE_API_KEY` env var + Docker | Visionary, Implementer |
+| **Sequential Thinking** | `MCPServerStdio` | Docker | Socratic Critic |
+
+### Adding New MCP Servers
+
+Follow the established pattern:
+
+```python
+mcp_new_server = _make_mcp(
+    MCPServerHTTP,             # or MCPServerStdio
+    required_env="NEW_API_KEY",
+    required_cmd="docker",     # optional, for Docker-based servers
+    url="https://...",
+    # ... other constructor kwargs
+)
+```
+
+Then add to the relevant agent(s) with filtering:
+
+```python
+mcps=[m for m in [mcp_context7, mcp_new_server] if m],
+```
 
 ---
 
@@ -153,8 +221,27 @@ graph TD
 | **Reasoning** | `o3-mini` | High | Visionary | Architecture and macro decisions need the strongest reasoning |
 | **Complex** | `gpt-4o` | Medium | Critic, Synthesizer, Implementer | Critique, synthesis, and implementation require nuanced understanding |
 | **Simple** | `gpt-4o-mini` | Low | Validator | Validation is structured scoring — a simpler model suffices |
+| **Planning** | defaults to Reasoning | High | Crew planning step | Used by CrewAI's built-in planning when `planning=True` is set on a Crew |
 
-All tiers are configurable via environment variables (`LLM_MODEL_REASONING`, `LLM_MODEL_COMPLEX`, `LLM_MODEL_SIMPLE`).
+All tiers are configurable via environment variables (`LLM_MODEL_REASONING`, `LLM_MODEL_COMPLEX`, `LLM_MODEL_SIMPLE`, `LLM_MODEL_PLANNING`).
+
+---
+
+## Tools
+
+Agents use two categories of tools: **CrewAI tools** (file operations) and **MCP servers** (external services).
+
+### CrewAI Tools (`src/dialectic/tools.py`)
+
+| Tool | Always Available | Used By |
+|------|------------------|---------|
+| `FileReadTool` | Yes | Implementer, dynamic agents |
+| `FileWriterTool` | Yes | Implementer, dynamic agents |
+| `DirectoryReadTool` | Yes | Implementer, dynamic agents |
+| `JSONSearchTool` | No (degrades to `None`) | Validator |
+| `CodeDocsSearchTool` | No (degrades to `None`) | Visionary |
+
+Optional tools (`JSONSearchTool`, `CodeDocsSearchTool`) are wrapped in `try/except` and fall back to `None` if initialization fails (e.g., missing embedding dependencies). They are filtered from agent `tools=` lists via `[t for t in [...] if t]`.
 
 ---
 
@@ -170,7 +257,7 @@ Created in `TaskExecutionFlow.verify_implementation()` (Phase A+B):
 |----------|-------|
 | **Role** | Independent Verifier |
 | **LLM** | Same as Validator |
-| **Tools** | FileReadTool |
+| **Tools** | FileReadTool, DirectoryReadTool |
 | **Special** | `reasoning=True`, `max_reasoning_attempts=2` |
 
 Reads actual project files to verify that artifacts described by the task actually exist. Has no access to the dialectic context.
@@ -183,7 +270,7 @@ Created in `TaskExecutionFlow.independent_reimplement()` (Phase C):
 |----------|-------|
 | **Role** | Independent Implementer |
 | **LLM** | Same as Implementer |
-| **Tools** | FileReadTool, FileWriterTool |
+| **Tools** | FileReadTool, FileWriterTool, DirectoryReadTool |
 | **Special** | `reasoning=True`, `max_reasoning_attempts=2` |
 
 A fresh agent with no prior context that focuses specifically on fixing the checks that failed during verification.
@@ -198,4 +285,5 @@ All agents share these settings:
 |---------|-------|---------|
 | `allow_delegation` | `False` | Prevents agents from delegating to each other |
 | `verbose` | `True` | Enables detailed output for debugging |
+| `reasoning` | `True` | Enables multi-step reasoning on all persistent agents |
 | `timeout` | 900s (default) | Per-request LLM timeout |

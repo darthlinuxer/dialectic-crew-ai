@@ -9,6 +9,7 @@ This guide covers installation, prerequisites, and running your first dialectic 
 - **Python 3.10–3.13**
 - **An LLM API key** (OpenAI, Anthropic, or Groq)
 - **`VISION.md`** in your project root (already included in the repository)
+- **Docker** (optional) — required for Brave Search and Sequential Thinking MCP servers
 
 ---
 
@@ -64,9 +65,14 @@ OPENAI_API_KEY=sk-your-key-here
 LLM_MODEL_SIMPLE=gpt-4o-mini
 LLM_MODEL_COMPLEX=gpt-4o
 LLM_MODEL_REASONING=o3-mini
+LLM_MODEL_PLANNING=o3
 
 # Export format: json, md, or both
 PRD_OUTPUT_FORMAT=both
+
+# MCP server keys (optional — agents work without these)
+CONTEXT7_API_KEY=ctx7sk-...
+BRAVE_API_KEY=...
 ```
 
 See [Configuration](configuration.md) for all available options.
@@ -80,6 +86,12 @@ See [Configuration](configuration.md) for all available options.
 ```bash
 uv run dialectic-crew prd "User authentication with two-factor authentication"
 # or: python main.py prd "User authentication with two-factor authentication"
+```
+
+You can also attach reference files (PDFs, images, text documents) for agents to analyze:
+
+```bash
+uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
 ```
 
 The system will:

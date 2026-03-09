@@ -295,8 +295,21 @@ classDiagram
         +int max_retries = 5
         +bool consensus_reached
         +str final_validation_notes
+        +List~str~ file_paths
     }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `feature_objective` | `str` | The feature request from the user |
+| `vision_content` | `str` | Contents of VISION.md |
+| `prd_data` | `dict` | Serialized PRD data |
+| `quality_score` | `float` | Current quality score (0-10) |
+| `retry_count` | `int` | Number of retries so far |
+| `max_retries` | `int` | Maximum retries allowed (default: 5) |
+| `consensus_reached` | `bool` | Whether consensus was reached |
+| `final_validation_notes` | `str` | Validator's notes |
+| `file_paths` | `list[str]` | Paths to attached reference files (optional, via `--files` CLI flag) |
 
 ### `TaskFlowState` (`src/execution/task_flow.py`)
 
