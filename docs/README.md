@@ -1,126 +1,73 @@
 # Dialectic Crew AI — Documentation
 
-Dialectic Crew AI is an automated **PRD (Product Requirement Document) generator** that applies the **Socratic/Hegelian dialectic method** through multi-agent orchestration powered by [CrewAI](https://docs.crewai.com).
+Dialectic Crew AI is a **CrewAI-based dialectic delivery engine**. It generates PRDs, plans user stories, executes implementation tasks, verifies outcomes, and can improve itself against its internal roadmap.
 
-Every proposal passes through a rigorous cycle of **Thesis → Antithesis → Synthesis → Validation**, producing high-quality, well-vetted PRDs and execution plans.
+Two vision documents anchor the system:
 
-> **Pre-production notice:** This application is currently self-evolving — it uses its own dialectic pipeline to implement features from its own vision document ([`knowledge/VISION.md`](../knowledge/VISION.md)). Once all features are implemented and tested, it will be generalized into an advanced REPL-style platform with full observability, capable of ingesting any external project.
+- [`../knowledge/VISION.md`](../knowledge/VISION.md) — the active project vision for normal runs
+- [`../internal/SELF_VISION.md`](../internal/SELF_VISION.md) — the app's own roadmap for `--self` and `self-improve`
 
----
-
-## Documentation Index
+## Documentation index
 
 | Document | Description |
-|----------|-------------|
-| [Getting Started](getting-started.md) | Installation, prerequisites, and first run |
-| [Architecture](architecture.md) | System architecture, module layout, and design decisions |
-| [Flows](flows.md) | CrewAI Flow pipelines (PRD, Planning, Task Execution) with diagrams |
-| [Agents](agents.md) | Agent definitions, roles, LLM tier strategy |
-| [Data Models](schemas.md) | Pydantic schemas and data flow |
-| [CLI Reference](cli.md) | All commands and usage examples |
-| [Configuration](configuration.md) | Environment variables and export settings |
-| [Export System](export.md) | Dual export (JSON + Markdown), validation, rollback |
+|---|---|
+| [Getting Started](getting-started.md) | Installation, prerequisites, first workflow, and self-improve basics |
+| [Architecture](architecture.md) | Module layout, data flow, self-improve orchestration, and MCP/skills integration |
+| [Flows](flows.md) | PRD, planning, task execution, orchestrator, and self-improve flow behavior |
+| [Agents](agents.md) | Agent roles, tools, LLM tiers, and MCP wiring |
+| [Data Models](schemas.md) | Pydantic schemas used across PRD, planning, execution, and self-improvement |
+| [CLI Reference](cli.md) | Command reference for `prd`, `plan`, `execute`, `status`, `verify-story`, `verify`, `mark`, and `self-improve` |
+| [Configuration](configuration.md) | Environment variables for models, exports, metrics, MCP, hooks, and self-improve |
+| [Export System](export.md) | JSON/Markdown export behavior, validation, and rollback semantics |
 
----
-
-## How It Works (High-Level)
+## What the codebase currently does
 
 ```mermaid
 graph LR
-    A["Feature Request"] --> B["PRD Generation<br/>(Dialectic Flow)"]
-    B --> C["User Story Planning<br/>(Dialectic Flow)"]
-    C --> D["Task Execution<br/>(Per-task Dialectic + Verify)"]
-    D --> E["Artifacts<br/>(JSON + MD)"]
+    A[Feature request] --> B[PRD dialectic]
+    B --> C[User-story planning]
+    C --> D[Task execution]
+    D --> E[Verification + status]
+    E --> F[Artifacts]
 
-    style A fill:#4A90D9,stroke:#2C5F8A,color:#fff
-    style B fill:#E8A838,stroke:#B8862D,color:#fff
-    style C fill:#E8A838,stroke:#B8862D,color:#fff
-    style D fill:#E8A838,stroke:#B8862D,color:#fff
-    style E fill:#50C878,stroke:#3A9D5C,color:#fff
+    G[Self vision] --> H[self-improve]
+    H --> B
+    H --> C
+    H --> D
+    H --> I[Tests + metrics + PR gate]
 ```
 
-Each stage uses the same dialectic pattern with four specialized AI agents:
+Key shipped capabilities:
 
-```mermaid
-graph TD
-    V["Visionary Architect<br/>(Thesis)"] --> C["Socratic Critic<br/>(Antithesis)"]
-    C --> S["Dialectic Synthesizer<br/>(Synthesis)"]
-    S --> Val["Macro Validator<br/>(Validation)"]
-    Val -->|"score < 9.0"| V
-    Val -->|"score ≥ 9.0"| Approved["Approved Output"]
+- PRD generation with retry-to-threshold validation
+- User-story planning with dialectic refinement
+- Task execution using dialectic → verify → reimplement
+- Story-level re-verification via `verify-story`
+- Passive metrics and hook-based token / cost tracking
+- Four-lens introspection and dialectic prioritization
+- Built-in local `skills_mcp` server wired into four core agents
 
-    style V fill:#6C5CE7,stroke:#4834D4,color:#fff
-    style C fill:#E17055,stroke:#D63031,color:#fff
-    style S fill:#00B894,stroke:#00896B,color:#fff
-    style Val fill:#FDCB6E,stroke:#E1A517,color:#333
-    style Approved fill:#55EFC4,stroke:#00B894,color:#333
-```
+## Project structure
 
----
-
-## Project Structure
-
-```
+```text
 dialectic-crew-ai/
-├── main.py                    # Bootstrap entry point
-├── pyproject.toml             # Build config and dependencies
-├── knowledge/
-│   └── VISION.md              # System macro vision (accessed via TextFileKnowledgeSource)
-├── .env                       # API keys and runtime config
+├── internal/SELF_VISION.md
+├── knowledge/VISION.md
+├── docs/
 ├── src/
-│   ├── schemas.py             # Pydantic data models (source of truth)
-│   ├── dialectic/             # Core dialectic engine
-│   │   ├── agents.py          # Agent factory functions + vision_knowledge()
-│   │   ├── prd_flow.py        # PRD generation flow (with SQLite persistence)
-│   │   ├── state.py           # DialecticState model
-│   │   ├── config.py          # Export config loader
-│   │   ├── export.py          # PRD/plan export (JSON+MD)
-│   │   └── tools.py           # CrewAI tools (FileRead, FileWrite, DirRead, etc.)
-│   ├── planning/              # User story planning
-│   │   └── flow.py            # Dialectic planning flow with retry loop
-│   ├── execution/             # Plan execution engine
-│   │   ├── dialectic_execution.py  # Orchestrator with dependency propagation
-│   │   ├── task_flow.py       # Per-task CrewAI Flow
-│   │   ├── runner.py          # Spec markdown generation
-│   │   └── verify.py          # Task tracking and verification
-│   └── main/
-│       └── cli.py             # CLI commands
-├── tests/                     # Test suite
-└── docs/                      # This documentation
-    └── plots/                 # Auto-generated CrewAI flow visualizations
+│   ├── dialectic/
+│   ├── execution/
+│   ├── main/
+│   ├── mcp/
+│   └── planning/
+├── tests/
+├── exec_output/
+└── prd_output/
 ```
 
----
+If you're deciding where to dive in:
 
-## Quick Start
-
-```bash
-# Clone and install
-git clone <repo-url>
-cd dialectic-crew-ai
-uv sync              # recommended
-# or: pip install -e .
-
-# Configure
-cp .env.example .env
-# Add your OPENAI_API_KEY to .env
-
-# Generate a PRD
-uv run dialectic-crew prd "Login with two-factor authentication"
-
-# Generate a PRD with reference files
-uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
-
-# Plan a user story
-uv run dialectic-crew plan
-
-# Execute the plan
-uv run dialectic-crew execute
-```
-
-> **Alternative:** If you prefer not to use `uv`, all commands also work with `python main.py`:
-> ```bash
-> python main.py prd "Login with two-factor authentication"
-> ```
-
-See [Getting Started](getting-started.md) for detailed setup instructions.
+- start with [`architecture.md`](architecture.md) for system shape
+- use [`agents.md`](agents.md) for MCP and model wiring
+- use [`cli.md`](cli.md) when driving the tool from the terminal
+- use [`flows.md`](flows.md) for execution behavior and routing details

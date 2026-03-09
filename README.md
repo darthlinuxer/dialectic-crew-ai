@@ -1,261 +1,260 @@
 # Dialectic Crew AI
 
-> Automated PRD generation using Socratic/Hegelian dialectics with CrewAI.
+> CrewAI-powered dialectic PRD generation, user-story planning, execution, verification, and self-improvement.
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10--3.13-blue.svg)](https://www.python.org/)
 [![CrewAI](https://img.shields.io/badge/CrewAI-1.10+-purple.svg)](https://crewai.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Project Status
+## Overview
 
-**This is a pre-production, self-evolving application.** The system uses a dual-vision architecture: [`internal/SELF_VISION.md`](internal/SELF_VISION.md) drives the app's own evolution (via `--self` mode), while [`knowledge/VISION.md`](knowledge/VISION.md) is the user-facing project vision that anchors all generated artifacts. The app generates PRDs for its own roadmap items, plans user stories, and produces execution artifacts to build itself — all through `--self` mode.
+Dialectic Crew AI applies the same structured pattern across product definition and delivery:
 
-With the vision split in place, the application is now becoming a **general-purpose dialectic platform** that works like an advanced REPL loop with full observability — capable of ingesting any external project via `knowledge/VISION.md`, generating PRDs, planning implementation, and executing tasks against it, while continuing to evolve itself through `internal/SELF_VISION.md`.
+$$
+\text{Thesis} \rightarrow \text{Antithesis} \rightarrow \text{Synthesis} \rightarrow \text{Validation}
+$$
 
-**Current phase:** Phase 1 (core engine) complete. Phase 2 (passive metrics) and Phase 3 (introspection engine) are operational. The `self-improve` command provides a semi-autonomous improvement cycle with human PR gate.
+It can:
 
-## What is it?
+- generate PRDs from a feature request
+- plan implementation for a selected user story
+- execute tasks with dialectic review, independent verification, and reimplementation
+- track task and story status in plan artifacts
+- run a guarded `self-improve` cycle against the app's own roadmap
+- expose local agent skills through a built-in MCP server wired into core agents
 
-**Dialectic Crew AI** generates high-quality PRDs (Product Requirement Documents) through a dialectic process:
+## Current state
 
-```
-THESIS -> ANTITHESIS -> SYNTHESIS -> VALIDATION -> (RETRY UNTIL 9.0)
-```
+This repository is **beta / pre-production** and already ships the end-to-end engine:
 
-- **Thesis (Visionary)**: Proposes the initial solution
-- **Antithesis (Critic)**: Challenges the proposal with rigorous critique
-- **Synthesis (Synthesizer)**: Merges ideas into a superior version
-- **Validation (Gate)**: Approves if score >= 9.0
+- dual-vision architecture:
+  - `knowledge/VISION.md` for the user's project
+  - `internal/SELF_VISION.md` for the app's own evolution
+- PRD, planning, execution, verification, and status commands
+- passive metrics in `.dialectic/metrics.db` by default
+- four-lens introspection plus dialectic prioritization for self-improvement
+- guarded self-improvement with git cleanliness checks, test gates, metric gates, token budgets, and optional PR creation via `gh`
+- built-in `skills_mcp` server for local `SKILL.md` discovery
 
-## Features
+The broader roadmap still lives in [`internal/SELF_VISION.md`](internal/SELF_VISION.md), but the codebase is already more than a PRD generator—it is a dialectic delivery loop with observability and self-reflection.
 
-- 5 AI agents as factory functions (fresh per flow, no cross-run contamination)
-- Automatic retry until quality score reaches 9.0
-- Pydantic validation with native CrewAI `output_pydantic`
-- Task Guardrails for automatic output validation
-- RAG-based vision access via CrewAI `TextFileKnowledgeSource` (semantic retrieval from `knowledge/VISION.md`)
-- Anti-drift: all agents consult the macro vision via knowledge sources before acting
-- Planning flow with retry loop and quality gate
-- Task tracking: status, LLM-based verification, acceptance criteria
-- Three-phase execution pipeline: Dialectic -> Verify (A+B) -> Reimplement (C) via `@router`
-- Dual export: JSON + Markdown with YAML frontmatter
-- SQLite persistence with lazy initialization for flow state recovery
-- Dependency-aware task ordering via topological sort
-- Dual-vision architecture: separate internal and project visions
-- `--self` mode for self-improvement using the app's own dialectic pipeline
-- `self-improve` command: introspection -> PRD -> plan -> execute -> validate -> PR
-- SQLite-backed passive metrics collection (PRD scores, retries, guardrail rejections)
-- 4-lens introspection engine (vision gaps, metric trends, code health, failure patterns)
-- CrewAI execution hooks for token budgeting, cost-per-PRD tracking, and tool safety
-- Dialectic prioritization of improvement opportunities (3-agent debate)
-- Conditional MCP server loading (Context7, Brave Search, Sequential Thinking)
+## Core capabilities
+
+- **Five persistent agent factories** in `src/dialectic/agents.py`
+- **Planning and memory enabled** on dialectic crews
+- **Pydantic-first outputs** with guardrails and fallbacks
+- **Semantic vision retrieval** through CrewAI `TextFileKnowledgeSource`
+- **Execution pipeline**: dialectic → verify → reimplement
+- **Story-level verification** via `verify-story`
+- **Hook-based safety** for token budgets, cost tracking, and protected paths
+- **Artifact lineage** across self-improve PRD/plan/execution stages
+- **Conditional MCP loading** for Context7, Brave Search, Sequential Thinking, plus local skills MCP
 
 ## Installation
+
+### Using `uv` (recommended)
 
 ```bash
 git clone <repo-url>
 cd dialectic-crew-ai
 uv sync
-
-# Configure API key
+source .venv/bin/activate
 cp .env.example .env
-# Edit .env and add OPENAI_API_KEY=sk-...
 ```
 
-## Usage (CLI)
+### Using `pip`
 
-### Generate PRD
+```bash
+git clone <repo-url>
+cd dialectic-crew-ai
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+cp .env.example .env
+```
+
+Then add at least one API key to `.env`:
+
+```env
+OPENAI_API_KEY=sk-...
+```
+
+## Quick start
+
+### 1. Generate a PRD
 
 ```bash
 uv run dialectic-crew prd "Login with 2FA"
-# or: python main.py prd "Login with 2FA"
-
-# With reference files
 uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
 ```
 
-### Plan user story execution
+### 2. Plan a user story
 
 ```bash
-# Latest PRD, first user story
 uv run dialectic-crew plan
-
-# Specific PRD and user story
 uv run dialectic-crew plan prd_output/PRD_20260308_164012.json US1
 ```
 
-### Execute plan with dialectic
+### 3. Execute the plan
 
 ```bash
-# Uses the latest plan
 uv run dialectic-crew execute
-
-# Specific plan
 uv run dialectic-crew execute prd_output/exec_US1_20260308_175030.json
-
-# Generate spec Markdown only (no LLM)
 uv run dialectic-crew execute --spec-only
 ```
 
-### Check task status
+### 4. Inspect or re-verify status
 
 ```bash
-# Status of all tasks from the latest plan
 uv run dialectic-crew status
-
-# Specific plan
-uv run dialectic-crew status prd_output/exec_US1_20260308_175030.json
-```
-
-### Manually mark a task
-
-```bash
-uv run dialectic-crew mark T0 completed
-uv run dialectic-crew mark T3 failed prd_output/exec_US1_20260308_175030.json
-```
-
-### Verify task with LLM agent
-
-```bash
-# Verify if a task was implemented correctly
+uv run dialectic-crew verify-story
 uv run dialectic-crew verify T0
-
-# With PRD to check acceptance criteria
-uv run dialectic-crew verify T2 --prd prd_output/PRD_20260308_164012.json
+uv run dialectic-crew mark T0 completed
 ```
 
-### Self-improvement
+### 5. Run self-improvement
 
 ```bash
-# Dry run: inspect improvement opportunities without making changes
 uv run dialectic-crew self-improve --dry-run
-
-# Run one improvement cycle (introspect -> PRD -> plan -> execute -> validate -> PR)
 uv run dialectic-crew self-improve
-
-# Run up to 3 improvements in one cycle
 uv run dialectic-crew self-improve --max 3
 ```
 
-## Configuration (.env)
+## Self-improvement workflow
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key | (required) |
-| `LLM_MODEL_SIMPLE` | Model for lightweight tasks (validation) | `gpt-4o-mini` |
-| `LLM_MODEL_COMPLEX` | Model for complex tasks (implementation, critique) | `gpt-4o` |
-| `LLM_MODEL_REASONING` | Model for architecture and macro decisions | `o3-mini` |
-| `LLM_REQUEST_TIMEOUT` | Timeout per LLM request (seconds) | `900` |
-| `PRD_OUTPUT_FORMAT` | PRD export format: `json`, `md`, `both` | `json` |
-| `PRD_OUTPUT_DIR` | PRD output directory | `prd_output` |
-| `MAX_RETRIES_PER_TASK` | Retries per task in dialectic cycle | `3` |
-| `MIN_QUALITY_SCORE` | Minimum score to approve a task (0-10) | `7.5` |
+`self-improve` targets `internal/SELF_VISION.md` and runs:
 
-## Execution Pipeline
+1. baseline test snapshot
+2. introspection across vision gaps, metrics, code health, and failure patterns
+3. dialectic prioritization of opportunities
+4. PRD generation with `VisionContext.SELF`
+5. planning with explicit PRD artifact handoff
+6. execution with exact artifact lineage capture
+7. validation with tests + metric retention
+8. optional PR creation through `gh`
 
-Each task runs through a CrewAI Flow (`TaskExecutionFlow`) with conditional routing:
+Safety rails currently enforced by code:
 
-```
-@start() run_dialectic
-    |
-    v
-@router evaluate_dialectic
-    +-- "verify"  -> verify_implementation (Phase A + B)
-    |                    |
-    |              @router evaluate_verification
-    |                    +-- "completed" -> done
-    |                    +-- "reimplement" -> independent_reimplement (Phase C)
-    |                                        +-- "completed"
-    |                                        +-- "failed"
-    +-- "failed" -> done
-```
+- clean git worktree required before branch creation
+- isolated `self-improve/<timestamp>` branches
+- immutable protected files during hook-scoped execution
+- token budget via `SELF_IMPROVE_TOKEN_BUDGET`
+- per-agent iteration cap via `SELF_IMPROVE_MAX_ITERATIONS`
+- metrics retention gate via `MIN_METRIC_RETENTION`
+- `uv run pytest` when available, with Python fallback when `uv` is absent
 
-## Exported Markdown Format
+## MCP and skills integration
 
-Generated Markdown includes YAML frontmatter with audit metadata:
+`src/dialectic/agents.py` conditionally wires external MCP servers and always attempts to start the local skills server:
 
-```yaml
----
-quality_score: 9.2
-validation_status: approved
-generated_at: 2026-03-08T20:00:00Z
-vision_hash: a1b2c3d4...  # SHA-256 of the active vision document
----
-```
+- **Context7** — optional HTTP MCP, requires `CONTEXT7_API_KEY`
+- **Brave Search** — optional stdio MCP, requires `BRAVE_API_KEY` and Docker
+- **Sequential Thinking** — optional stdio MCP, requires Docker
+- **skills_mcp** — local stdio MCP backed by `src/mcp/skills_mcp.py`
 
-Body sections: `# Objective`, `## Macro Impact`, `## User Stories`, `## Anti-Drift Questions`
+The built-in skills server indexes `SKILL.md` files from:
 
-## Project Structure
+- `src/mcp/skills`
+- `~/.agents/skills`
+- `~/.cursor/skills-cursor`
 
-```
+It exposes:
+
+- `skills_list_skills`
+- `skills_get_skill`
+- `skills_search_skills`
+- `skills://{skill_id}` resources
+
+Current agent wiring:
+
+- `create_visionario()` → Context7, Brave, Skills
+- `create_critico_socratico()` → Sequential Thinking, Skills
+- `create_sintetizador()` → Context7, Skills
+- `create_implementer()` → Context7, Brave, Skills
+- `create_validador_macro()` → no MCP servers
+
+## Configuration highlights
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LLM_MODEL_SIMPLE` | `gpt-4o-mini` | Validator model |
+| `LLM_MODEL_COMPLEX` | `gpt-4o` | Critic, Synthesizer, Implementer |
+| `LLM_MODEL_REASONING` | `o3-mini` | Visionary model |
+| `LLM_MODEL_PLANNING` | same as reasoning | CrewAI planning step |
+| `PRD_OUTPUT_FORMAT` | `json` | `json`, `md`, or `both` |
+| `PRD_OUTPUT_DIR` | `prd_output` | PRD and plan export directory |
+| `MIN_PLAN_SCORE` | `7.5` | Planning approval threshold |
+| `MIN_QUALITY_SCORE` | `7.5` | Task execution approval threshold |
+| `DIALECTIC_METRICS_DB` | `.dialectic/metrics.db` | Metrics database path override |
+| `SELF_IMPROVE_TOKEN_BUDGET` | `500000` | Self-improve token budget |
+| `SELF_IMPROVE_MAX_ITERATIONS` | `25` | Self-improve per-agent iteration cap |
+| `MIN_METRIC_RETENTION` | `0.95` | Metric regression gate |
+| `SKILLS_MCP_TRANSPORT` | `stdio` | Skills MCP transport |
+| `SKILLS_MCP_PORT` | `8001` | Skills MCP HTTP port when enabled |
+
+For the full list, see [`docs/configuration.md`](docs/configuration.md).
+
+## Repository layout
+
+```text
 dialectic-crew-ai/
-+-- main.py                        # Bootstrap entry point
-+-- pyproject.toml                 # Project config (uv/pip, package-dir=src)
-+-- internal/
-|   +-- SELF_VISION.md             # App's own evolution vision (--self mode)
-+-- knowledge/
-|   +-- VISION.md                  # User's project vision (template provided, accessed via TextFileKnowledgeSource)
-+-- .env                           # API keys and config (not committed)
-+-- tests/                         # Unit tests
-|   +-- test_*.py
-+-- docs/                          # Full documentation
-+-- src/                           # All packages
-    +-- schemas.py                 # Pydantic models (PRD, tasks, execution)
-    +-- dialectic/                 # Dialectic core
-    |   +-- agents.py              # Agent factory functions + vision_knowledge()
-    |   +-- prd_flow.py            # Main flow (thesis->antithesis->synthesis->validation)
-    |   +-- state.py               # Flow state
-    |   +-- export.py              # Dual exporter (JSON+MD) with atomicity
-    |   +-- config.py              # Export configuration
-    |   +-- tools.py               # CrewAI tools (FileRead, FileWrite)
-    |   +-- hooks.py               # CrewAI execution hooks (token budget, cost, tool safety)
-    |   +-- prioritize.py          # Dialectic prioritization of improvement opportunities
-    +-- planning/                  # User story planning
-    |   +-- flow.py                # Dialectic planning flow with retry loop
-    +-- execution/                 # Plan execution
-    |   +-- dialectic_execution.py # Orchestrator with dependency propagation
-    |   +-- task_flow.py           # Per-task CrewAI Flow
-    |   +-- runner.py              # Spec Markdown generation
-    |   +-- verify.py              # Task tracking and LLM verification
-    |   +-- metrics.py             # SQLite-backed passive metrics store
-    |   +-- introspect.py          # 4-lens introspection engine
-    +-- main/                      # CLI and orchestration
-        +-- cli.py                 # Full CLI (prd, plan, execute, status, mark, verify, self-improve)
-        +-- self_improve.py        # Self-improvement cycle orchestrator
+├── main.py
+├── pyproject.toml
+├── README.md
+├── internal/
+│   └── SELF_VISION.md
+├── knowledge/
+│   └── VISION.md
+├── docs/
+├── exec_output/
+├── prd_output/
+├── src/
+│   ├── schemas.py
+│   ├── dialectic/
+│   │   ├── agents.py
+│   │   ├── config.py
+│   │   ├── export.py
+│   │   ├── hooks.py
+│   │   ├── introspect.py
+│   │   ├── metrics.py
+│   │   ├── prd_flow.py
+│   │   ├── prd_output.py
+│   │   ├── prioritize.py
+│   │   ├── state.py
+│   │   ├── tools.py
+│   │   └── vision.py
+│   ├── execution/
+│   │   ├── dialectic_execution.py
+│   │   ├── runner.py
+│   │   ├── task_flow.py
+│   │   └── verify.py
+│   ├── main/
+│   │   ├── cli.py
+│   │   └── self_improve.py
+│   ├── mcp/
+│   │   ├── skills_index.py
+│   │   ├── skills_mcp.py
+│   │   └── skills/
+│   └── planning/
+│       └── flow.py
+└── tests/
 ```
-
-## Self-Evolution Roadmap
-
-The application evolves itself through its own dialectic pipeline. The self-evolution roadmap lives in [`internal/SELF_VISION.md`](internal/SELF_VISION.md) and is accessed via the `--self` flag or the `self-improve` command:
-
-- **Phase 1** (complete): Core dialectic engine, planning, execution, CLI, dual-vision architecture
-- **Phase 2** (complete): Passive metrics collection (PRD scores, retries, guardrail rejections via SQLite)
-- **Phase 3** (complete): Introspection engine (vision gaps, metric trends, code health, failure patterns)
-- **Phase 4** (complete): Semi-autonomous self-improvement cycle (`self-improve` command) with test gate, metric gate, and human PR gate
-- **Phase 5** (planned): CrewAI feature adoption (Memory, Reasoning, Training, Event Listeners)
-- **Phase 6** (planned): REST API, PostgreSQL, Web UI
-
-The dual-vision architecture keeps the app's own evolution (`internal/SELF_VISION.md`) separate from user projects (`knowledge/VISION.md`). All default commands operate against the user's project vision; use `--self` to switch to self-improvement mode, or use `self-improve` for the full automated cycle.
 
 ## Tests
 
 ```bash
-# Run all unit tests
-uv run python -m pytest tests/ -v --ignore=tests/test_llm_tooling.py
-
-# Run tool calling test (requires API key)
-uv run python tests/test_llm_tooling.py
+uv run pytest --tb=short -q
 ```
+
+Real LLM integration tests are marked separately in the test suite and may require configured provider credentials.
 
 ## Documentation
 
-Full documentation is available in the [`docs/`](docs/) directory:
-
-- [Getting Started](docs/getting-started.md) — Installation, prerequisites, first run
-- [Architecture](docs/architecture.md) — System design, module layout, design decisions
-- [Flows](docs/flows.md) — CrewAI Flow pipelines with diagrams
-- [Agents](docs/agents.md) — Agent definitions, LLM tiers, MCP servers
-- [Data Models](docs/schemas.md) — Pydantic schemas and data flow
-- [CLI Reference](docs/cli.md) — All commands and usage examples
-- [Configuration](docs/configuration.md) — Environment variables and export settings
-- [Export System](docs/export.md) — Dual export (JSON + Markdown), validation, rollback
+- [`docs/getting-started.md`](docs/getting-started.md) — setup and first workflow
+- [`docs/architecture.md`](docs/architecture.md) — system design and module boundaries
+- [`docs/flows.md`](docs/flows.md) — PRD, planning, execution, and self-improve orchestration
+- [`docs/agents.md`](docs/agents.md) — agent roles, tools, and MCP wiring
+- [`docs/cli.md`](docs/cli.md) — full CLI reference
+- [`docs/configuration.md`](docs/configuration.md) — environment variables and runtime knobs
+- [`docs/export.md`](docs/export.md) — JSON/Markdown export behavior
+- [`docs/schemas.md`](docs/schemas.md) — Pydantic schema reference
