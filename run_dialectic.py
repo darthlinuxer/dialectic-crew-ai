@@ -6,8 +6,10 @@ Delega para dialectic.prd_flow que usa features nativas do CrewAI
 
 import os
 import sys
-from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+
+from dotenv import load_dotenv
 load_dotenv()
 
 from dialectic.prd_flow import run_dialectic_flow

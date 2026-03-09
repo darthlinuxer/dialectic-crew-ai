@@ -32,7 +32,7 @@ dependencies = [
 dev = []
 
 [project.scripts]
-dialectic-crew = "main:main"
+dialectic-crew = "main.cli:main"
 
 [dependency-groups]
 dev = [
@@ -40,5 +40,11 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["dialectic", "planning", "execution"]
-py-modules = ["main", "schemas"]
+package-dir = {"" = "src"}
+py-modules = ["schemas"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

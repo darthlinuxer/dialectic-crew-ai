@@ -5,8 +5,10 @@ Delega para dialectic.prd_flow com max_retries=0.
 
 import os
 import sys
-from dotenv import load_dotenv
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+
+from dotenv import load_dotenv
 load_dotenv()
 
 from dialectic.state import DialecticState
