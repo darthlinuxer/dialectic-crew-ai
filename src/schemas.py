@@ -64,6 +64,10 @@ class UserStoryExecutionPlan(BaseModel):
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False
     final_validation_notes: str = ""
+    status: Literal[
+        "pending", "in_progress", "completed", "partially_completed", "failed"
+    ] = "pending"
+    completed_at: Optional[str] = None
 
 
 # --- Dialectic execution results ---
@@ -106,3 +110,5 @@ class ExecutionReport(BaseModel):
     run_id: str
     task_results: List[TaskExecutionResult] = Field(default_factory=list)
     overall_success: bool = False
+    verified_tasks: List[str] = Field(default_factory=list)
+    failed_verification_tasks: List[str] = Field(default_factory=list)

@@ -2,10 +2,12 @@
 Task verification and status tracking for execution plans.
 
 Provides:
-- show_status(): display task completion table
+- show_status(): display task/story completion table
 - mark_task(): manually set task status
-- verify_task(): use LLM agent to verify acceptance criteria
-- update_task_status(): programmatic status update with persistence
+- verify_task(): use LLM agent to verify a single task's acceptance criteria
+- verify_user_story(): verify all completed tasks and update story-level status
+- update_task_status(): programmatic task status update with persistence
+- update_user_story_status(): programmatic story status update with persistence
 """
 
 import json
@@ -17,6 +19,10 @@ from typing import Literal
 from schemas import UserStoryExecutionPlan, PRDSchema, ImplementationTask
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+
+_STORY_STATUS = Literal[
+    "pending", "in_progress", "completed", "partially_completed", "failed"
+]
 
 
 # ---------------------------------------------------------------------------
@@ -70,15 +76,20 @@ _STATUS_ICONS = {
     "in_progress": "[~]",
     "completed": "[x]",
     "failed": "[!]",
+    "partially_completed": "[/]",
 }
 
 
 def show_status(plan_path: str | None = None) -> dict:
-    """Display task status table. Returns summary dict."""
+    """Display task and user story status table. Returns summary dict."""
     plan, resolved = load_plan(plan_path)
 
+    story_icon = _STATUS_ICONS.get(plan.status, "[ ]")
+    story_completed = f"  ({plan.completed_at})" if plan.completed_at else ""
+
     print(f"\n{'='*65}")
-    print(f"  {plan.user_story_id} — {plan.user_story_title}")
+    print(f"  {story_icon} {plan.user_story_id} — {plan.user_story_title}")
+    print(f"  Story status: {plan.status}{story_completed}")
     print(f"  Score: {plan.quality_score}/10.0  |  Plan: {resolved}")
     print(f"{'='*65}")
 
@@ -103,6 +114,7 @@ def show_status(plan_path: str | None = None) -> dict:
     return {
         "plan_path": resolved,
         "total": total,
+        "story_status": plan.status,
         **counts,
     }
 
@@ -159,6 +171,24 @@ def update_task_status(
 
 
 # ---------------------------------------------------------------------------
+# Update user story status (programmatic)
+# ---------------------------------------------------------------------------
+
+def update_user_story_status(
+    plan_path: str,
+    status: _STORY_STATUS,
+) -> None:
+    """Update user story-level status in the plan and save."""
+    plan, resolved = load_plan(plan_path)
+    plan.status = status
+    if status == "completed":
+        plan.completed_at = datetime.now().isoformat(timespec="seconds")
+    elif status in ("pending", "in_progress"):
+        plan.completed_at = None
+    save_plan(plan, resolved)
+
+
+# ---------------------------------------------------------------------------
 # Verify task with LLM (acceptance criteria check)
 # ---------------------------------------------------------------------------
 
@@ -178,41 +208,48 @@ def _load_prd_for_plan(plan: UserStoryExecutionPlan, prd_path: str | None) -> PR
         return PRDSchema.model_validate(json.load(f))
 
 
-def verify_task(
-    task_id: str,
-    plan_path: str | None = None,
-    prd_path: str | None = None,
+def _extract_acceptance_criteria(
+    plan: UserStoryExecutionPlan,
+    prd: PRDSchema | None,
+) -> list[str]:
+    """Extract PRD acceptance criteria for the user story in this plan."""
+    if not prd:
+        return []
+    us_id_norm = plan.user_story_id.strip().upper().replace("-", "").replace("_", "")
+    for us in prd.user_stories:
+        id_norm = us.id.strip().upper().replace("-", "").replace("_", "")
+        if id_norm == us_id_norm:
+            return us.acceptance_criteria
+    return []
+
+
+# ---------------------------------------------------------------------------
+# Core verification (reusable by both CLI and execution flow)
+# ---------------------------------------------------------------------------
+
+def _run_verification(
+    task: ImplementationTask,
+    acceptance_criteria: list[str] | None = None,
 ) -> dict:
     """
-    Verify task completion using an LLM agent that checks:
-    1. Task description fulfillment (files exist, code correct)
-    2. Acceptance criteria from PRD (if available)
+    Run LLM-based verification on a single task. Pure logic, no plan I/O.
 
-    Updates plan status based on verification result.
+    Returns dict with keys: task_id, verified, score, notes.
     """
-    plan, resolved = load_plan(plan_path)
-    task = _find_task(plan, task_id)
-
-    prd = _load_prd_for_plan(plan, prd_path)
-    acceptance_criteria: list[str] = []
-    if prd:
-        us_id_norm = plan.user_story_id.strip().upper().replace("-", "").replace("_", "")
-        for us in prd.user_stories:
-            id_norm = us.id.strip().upper().replace("-", "").replace("_", "")
-            if id_norm == us_id_norm:
-                acceptance_criteria = us.acceptance_criteria
-                break
+    from crewai import Task as CrewTask, Crew
+    from dialectic.agents import validador_macro
+    from dialectic.tools import file_read_tool
+    from schemas import ValidationOutput
 
     ac_text = ""
     if acceptance_criteria:
-        ac_text = "\n\nACCEPTANCE CRITERIA for the User Story (verify whether this task contributes to meeting them):\n"
+        ac_text = (
+            "\n\nACCEPTANCE CRITERIA for the User Story "
+            "(verify whether this task contributes to meeting them):\n"
+        )
         ac_text += "\n".join(f"- {ac}" for ac in acceptance_criteria)
 
-    from crewai import Task, Crew
-    from dialectic.agents import validador_macro
-    from schemas import ValidationOutput
-
-    verify_task_desc = Task(
+    verify_crew_task = CrewTask(
         description=f"""
 Verify whether the task below was correctly implemented in the codebase.
 
@@ -232,18 +269,10 @@ Respond with quality_score (0-10), consensus_reached (true if task is complete),
         output_pydantic=ValidationOutput,
     )
 
-    from dialectic.tools import file_read_tool
-    validador_macro_with_tools = validador_macro.model_copy()
-    validador_macro_with_tools.tools = [file_read_tool]
+    agent = validador_macro.model_copy()
+    agent.tools = [file_read_tool]
 
-    crew = Crew(
-        agents=[validador_macro_with_tools],
-        tasks=[verify_task_desc],
-        verbose=True,
-        memory=True,
-    )
-
-    print(f"\n  Verifying {task.id} — {task.title}...")
+    crew = Crew(agents=[agent], tasks=[verify_crew_task], verbose=True, memory=True)
     result = crew.kickoff()
 
     validation: ValidationOutput | None = None
@@ -259,29 +288,153 @@ Respond with quality_score (0-10), consensus_reached (true if task is complete),
 
     if validation is None:
         raw = getattr(result, "raw", str(result))
-        print(f"  Failed to obtain structured result. Raw: {raw[:500]}")
-        return {"task_id": task.id, "verified": False, "notes": "Verification failed"}
+        return {
+            "task_id": task.id,
+            "verified": False,
+            "score": 0.0,
+            "notes": f"Failed to obtain structured result. Raw: {raw[:500]}",
+        }
 
     verified = validation.consensus_reached and validation.quality_score >= 7.0
-    new_status: Literal["completed", "failed"] = "completed" if verified else "failed"
+    return {
+        "task_id": task.id,
+        "verified": verified,
+        "score": validation.quality_score,
+        "notes": validation.final_validation_notes,
+    }
 
+
+# ---------------------------------------------------------------------------
+# CLI-facing: verify single task
+# ---------------------------------------------------------------------------
+
+def verify_task(
+    task_id: str,
+    plan_path: str | None = None,
+    prd_path: str | None = None,
+) -> dict:
+    """
+    Verify task completion using an LLM agent that checks:
+    1. Task description fulfillment (files exist, code correct)
+    2. Acceptance criteria from PRD (if available)
+
+    Updates plan status based on verification result.
+    """
+    plan, resolved = load_plan(plan_path)
+    task = _find_task(plan, task_id)
+
+    prd = _load_prd_for_plan(plan, prd_path)
+    acceptance_criteria = _extract_acceptance_criteria(plan, prd)
+
+    print(f"\n  Verifying {task.id} — {task.title}...")
+    vr = _run_verification(task, acceptance_criteria)
+
+    new_status: Literal["completed", "failed"] = "completed" if vr["verified"] else "failed"
     task.status = new_status
-    task.verification_notes = validation.final_validation_notes
-    if verified:
+    task.verification_notes = vr["notes"]
+    if vr["verified"]:
         task.completed_at = datetime.now().isoformat(timespec="seconds")
 
     save_plan(plan, resolved)
 
     icon = _STATUS_ICONS.get(new_status, "[ ]")
-    print(f"\n  {icon} {task.id} — score: {validation.quality_score}/10")
+    print(f"\n  {icon} {task.id} — score: {vr['score']}/10")
     print(f"      Status: {new_status}")
-    print(f"      Notes: {validation.final_validation_notes[:300]}")
+    print(f"      Notes: {vr['notes'][:300]}")
 
     return {
         "task_id": task.id,
-        "verified": verified,
-        "score": validation.quality_score,
+        "verified": vr["verified"],
+        "score": vr["score"],
         "status": new_status,
-        "notes": validation.final_validation_notes,
+        "notes": vr["notes"],
         "plan_path": resolved,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Verify all tasks in a user story and update story-level status
+# ---------------------------------------------------------------------------
+
+def verify_user_story(
+    plan_path: str | None = None,
+    prd_path: str | None = None,
+) -> dict:
+    """
+    Verify all completed tasks against PRD acceptance criteria and compute
+    user story-level status. Used both by the execution flow and the CLI.
+
+    Returns dict with story_status, verified_tasks, failed_tasks, etc.
+    """
+    plan, resolved = load_plan(plan_path)
+    prd = _load_prd_for_plan(plan, prd_path)
+    acceptance_criteria = _extract_acceptance_criteria(plan, prd)
+
+    completed_tasks = [t for t in plan.tasks if t.status == "completed"]
+    failed_before = [t.id for t in plan.tasks if t.status == "failed"]
+
+    if not completed_tasks and not failed_before:
+        plan.status = "pending"
+        plan.completed_at = None
+        save_plan(plan, resolved)
+        return {
+            "plan_path": resolved,
+            "story_status": "pending",
+            "verified_tasks": [],
+            "failed_verification_tasks": [],
+            "already_failed_tasks": failed_before,
+        }
+
+    print(f"\n{'='*60}")
+    print(f"  Verifying user story: {plan.user_story_id} — {plan.user_story_title}")
+    print(f"  Tasks to verify: {len(completed_tasks)}")
+    print(f"{'='*60}")
+
+    verified_ids: list[str] = []
+    failed_verification_ids: list[str] = []
+
+    for task in completed_tasks:
+        print(f"\n  Verifying {task.id} — {task.title}...")
+        vr = _run_verification(task, acceptance_criteria)
+
+        if vr["verified"]:
+            verified_ids.append(task.id)
+            task.verification_notes = f"[auto-verified] {vr['notes']}"
+            icon = _STATUS_ICONS["completed"]
+        else:
+            failed_verification_ids.append(task.id)
+            task.status = "failed"
+            task.verification_notes = f"[post-verify failed] {vr['notes']}"
+            icon = _STATUS_ICONS["failed"]
+
+        print(f"  {icon} {task.id} — score: {vr['score']}/10")
+
+    total = len(plan.tasks)
+    all_failed = failed_before + failed_verification_ids
+    total_verified = len(verified_ids)
+
+    if total_verified == total:
+        plan.status = "completed"
+        plan.completed_at = datetime.now().isoformat(timespec="seconds")
+    elif total_verified > 0:
+        plan.status = "partially_completed"
+        plan.completed_at = None
+    else:
+        plan.status = "failed"
+        plan.completed_at = None
+
+    save_plan(plan, resolved)
+
+    icon = _STATUS_ICONS.get(plan.status, "[ ]")
+    print(f"\n  {icon} Story {plan.user_story_id}: {plan.status}")
+    print(f"      Verified: {verified_ids}")
+    if all_failed:
+        print(f"      Failed:   {all_failed}")
+
+    return {
+        "plan_path": resolved,
+        "story_status": plan.status,
+        "verified_tasks": verified_ids,
+        "failed_verification_tasks": failed_verification_ids,
+        "already_failed_tasks": failed_before,
     }

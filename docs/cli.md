@@ -1,6 +1,6 @@
 # CLI Reference
 
-Dialectic Crew AI provides a command-line interface with six commands covering the full PRD lifecycle.
+Dialectic Crew AI provides a command-line interface covering the full PRD lifecycle: generation, planning, execution with automatic verification, and status tracking.
 
 **Entry points:**
 
@@ -17,28 +17,35 @@ python main.py <command> [arguments...]           # alternative (direct Python)
 
 ```mermaid
 flowchart LR
-    subgraph Commands
+    subgraph main_cmds ["Primary Commands"]
         PRD["prd"]
         PLAN["plan"]
         EXEC["execute"]
         STATUS["status"]
+        VSTORY["verify-story"]
+    end
+
+    subgraph overrides ["Manual Overrides"]
         MARK["mark"]
         VERIFY["verify"]
     end
 
     PRD -->|"Generates"| PRD_OUT["prd_output/<br/>PRD_*.json + .md"]
     PLAN -->|"Generates"| PLAN_OUT["prd_output/<br/>exec_*.json + .md"]
-    EXEC -->|"Generates"| EXEC_OUT["exec_output/<br/>&lt;run_id&gt;/report.json"]
+    EXEC -->|"Executes + auto-verifies<br/>Updates story status"| PLAN_OUT
+    EXEC -->|"Generates"| EXEC_OUT["exec_output/<br/>run_id/report.json"]
     STATUS -->|"Reads"| PLAN_OUT
-    MARK -->|"Updates"| PLAN_OUT
-    VERIFY -->|"Reads + Updates"| PLAN_OUT
+    VSTORY -->|"Re-verifies + updates"| PLAN_OUT
+    MARK -->|"Manual update"| PLAN_OUT
+    VERIFY -->|"Manual re-check"| PLAN_OUT
 
     style PRD fill:#6C5CE7,stroke:#4834D4,color:#fff
     style PLAN fill:#00B894,stroke:#00896B,color:#fff
     style EXEC fill:#E17055,stroke:#D63031,color:#fff
     style STATUS fill:#FDCB6E,stroke:#E1A517,color:#333
-    style MARK fill:#FDCB6E,stroke:#E1A517,color:#333
-    style VERIFY fill:#FDCB6E,stroke:#E1A517,color:#333
+    style VSTORY fill:#FDCB6E,stroke:#E1A517,color:#333
+    style MARK fill:#A0A0A0,stroke:#707070,color:#fff
+    style VERIFY fill:#A0A0A0,stroke:#707070,color:#fff
 ```
 
 ---
@@ -124,7 +131,7 @@ uv run dialectic-crew plan prd_output/PRD_20260308_1640.json 1
 
 ### `execute` — Execute the Plan
 
-Executes the plan with CrewAI, running a full dialectic cycle per task. Each task goes through: Dialectic → Verify → Reimplement (if needed).
+Executes the plan with CrewAI, running a full dialectic cycle per task. Each task goes through: Dialectic → Verify → Reimplement (if needed). After all tasks complete, a **post-execution verification phase** independently checks each completed task against PRD acceptance criteria and computes the user story status automatically.
 
 ```bash
 uv run dialectic-crew execute [plan.json|--latest] [--spec-only]
@@ -138,12 +145,24 @@ uv run dialectic-crew execute [plan.json|--latest] [--spec-only]
 | `plan.json` | No | `--latest` | Path to the plan JSON or `--latest` |
 | `--spec-only` | No | `false` | Generate only a Markdown spec (no LLM execution) |
 
+**What happens during execution:**
+
+1. The user story is marked `in_progress` in the plan JSON
+2. Each task runs through the dialectic flow (implement → critique → synthesize → validate → verify → reimplement if needed)
+3. Task statuses are updated in real-time (`in_progress` → `completed`/`failed`)
+4. After all tasks finish, each completed task is independently verified against PRD acceptance criteria
+5. Tasks that fail post-verification are downgraded to `failed`
+6. The user story status is computed and persisted:
+   - All tasks verified → `completed`
+   - Some tasks verified → `partially_completed`
+   - No tasks verified → `failed`
+
 **Output:** `exec_output/<run_id>/report.json` and `spec_*.md`
 
 **Examples:**
 
 ```bash
-# Execute the latest plan with full dialectic
+# Execute the latest plan with full dialectic + auto-verify
 uv run dialectic-crew execute
 
 # Execute a specific plan
@@ -155,9 +174,9 @@ uv run dialectic-crew execute --spec-only
 
 ---
 
-### `status` — View Task Status
+### `status` — View Story and Task Status
 
-Displays the completion status of all tasks in a plan.
+Displays the user story status and the completion status of all tasks in a plan.
 
 ```bash
 uv run dialectic-crew status [plan.json|--latest]
@@ -168,13 +187,14 @@ uv run dialectic-crew status [plan.json|--latest]
 
 ```
 =================================================================
-  US-001 — User Authentication
+  [/] US-001 — User Authentication
+  Story status: partially_completed
   Score: 9.2/10.0  |  Plan: prd_output/exec_US-001_20260308_1750.json
 =================================================================
-  [x] T-001 — Set up auth module  (2026-03-08T18:30:00)
+  [x] T-001 — Set up auth module  (2026-03-08T18:30:00)  -- [post-verified] score: 8.5/10...
   [~] T-002 — Implement login endpoint
   [ ] T-003 — Add 2FA support  (deps: T-002)
-  [!] T-004 — Write integration tests  -- Score: 5.0/10
+  [!] T-004 — Write integration tests  -- [post-verify failed] score: 4.0/10...
 
   Progress: 1/4 completed, 1 failed, 1 in progress
 =================================================================
@@ -187,13 +207,54 @@ uv run dialectic-crew status [plan.json|--latest]
 | `[ ]` | Pending |
 | `[~]` | In progress |
 | `[x]` | Completed |
+| `[/]` | Partially completed (story-level only) |
 | `[!]` | Failed |
 
 ---
 
+### `verify-story` — Verify All Tasks in a User Story
+
+Verifies all completed tasks in the plan against PRD acceptance criteria using LLM agents and updates the user story status. This is useful for re-checking a story after manual changes or for debugging.
+
+> **Note:** The `execute` command runs this automatically. Use `verify-story` only for manual re-checks.
+
+```bash
+uv run dialectic-crew verify-story [plan.json] [--prd prd.json]
+# or: python main.py verify-story [plan.json] [--prd prd.json]
+```
+
+**Arguments:**
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `plan.json` | No | Latest plan | Path to the plan JSON |
+| `--prd prd.json` | No | Latest PRD | PRD to load acceptance criteria from |
+
+**What it does:**
+1. Loads all completed tasks from the plan
+2. For each completed task, runs an independent LLM verification against the task description and PRD acceptance criteria
+3. Tasks that fail verification are downgraded to `failed`
+4. Computes and persists the user story status: `completed`, `partially_completed`, or `failed`
+
+**Examples:**
+
+```bash
+# Verify all tasks in the latest plan
+uv run dialectic-crew verify-story
+
+# Verify with a specific PRD
+uv run dialectic-crew verify-story --prd prd_output/PRD_20260308_1640.json
+```
+
+---
+
+## Manual Override Commands
+
+The following commands are manual overrides. The `execute` command handles task verification and status tracking automatically; these are available for edge cases and debugging.
+
 ### `mark` — Manually Set Task Status
 
-Manually updates the status of a task in the plan.
+Manually overrides the status of a task in the plan. Useful when a human decides a task is done or needs to be reset.
 
 ```bash
 uv run dialectic-crew mark <task_id> <status> [plan.json]
@@ -217,9 +278,9 @@ uv run dialectic-crew mark T-003 failed prd_output/exec_US-001_20260308_1750.jso
 
 ---
 
-### `verify` — LLM-Based Task Verification
+### `verify` — Manually Re-verify a Single Task
 
-Uses an LLM agent to verify whether a task was correctly implemented by reading the actual project files.
+Manually re-verifies a single task using an LLM agent. The `execute` command does this automatically for all tasks; use this for targeted re-checks.
 
 ```bash
 uv run dialectic-crew verify <task_id> [plan.json] [--prd prd.json]
@@ -243,10 +304,10 @@ uv run dialectic-crew verify <task_id> [plan.json] [--prd prd.json]
 **Examples:**
 
 ```bash
-# Verify using latest plan
+# Re-verify a specific task
 uv run dialectic-crew verify T-001
 
-# Verify with PRD acceptance criteria
+# Re-verify with PRD acceptance criteria
 uv run dialectic-crew verify T-002 --prd prd_output/PRD_20260308_1640.json
 ```
 
@@ -269,12 +330,13 @@ flowchart TD
     A["1. Generate PRD<br/>dialectic-crew prd 'Feature X'"] --> B["2. Review PRD<br/>(prd_output/PRD_*.md)"]
     B --> C["3. Plan user story<br/>dialectic-crew plan"]
     C --> D["4. Review plan<br/>(prd_output/exec_*.md)"]
-    D --> E["5. Execute plan<br/>dialectic-crew execute"]
+    D --> E["5. Execute plan<br/>dialectic-crew execute<br/>(auto-verifies + updates story status)"]
     E --> F["6. Check status<br/>dialectic-crew status"]
-    F --> G{All tasks done?}
-    G -->|No| H["7. Verify/fix tasks<br/>dialectic-crew verify T-001"]
-    H --> F
-    G -->|Yes| I["Done!<br/>(exec_output/report.json)"]
+    F --> G{"Story status?"}
+    G -->|"completed"| I["Done!<br/>(exec_output/report.json)"]
+    G -->|"partially_completed<br/>or failed"| H["7. Debug/fix manually<br/>dialectic-crew verify T-001<br/>dialectic-crew mark T-001 completed"]
+    H --> J["8. Re-verify story<br/>dialectic-crew verify-story"]
+    J --> F
 
     style A fill:#6C5CE7,stroke:#4834D4,color:#fff
     style C fill:#00B894,stroke:#00896B,color:#fff

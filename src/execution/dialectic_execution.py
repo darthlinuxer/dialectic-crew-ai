@@ -28,7 +28,14 @@ from schemas import (
     ExecutionReport,
 )
 from execution.runner import _artifact_markdown
-from execution.verify import update_task_status
+from execution.verify import (
+    update_task_status,
+    update_user_story_status,
+    _run_verification,
+    _load_prd_for_plan,
+    _extract_acceptance_criteria,
+    load_plan,
+)
 from execution.task_flow import TaskExecutionFlow, TaskFlowState, _task_persistence
 
 EXEC_OUTPUT_DIR = "exec_output"
@@ -153,10 +160,15 @@ def run_dialectic_execution(
     plan = _load_plan(path)
     ordered_tasks = _topological_sort(plan.tasks)
 
+    try:
+        update_user_story_status(path, "in_progress")
+    except Exception:
+        pass
+
     print(f"\n{'='*60}")
     print(f"Executing plan — {plan.user_story_id} {plan.user_story_title}")
     print(f"Tasks: {len(ordered_tasks)} | Retries/task: {max_retries_per_task}")
-    print(f"Flow: dialectic → verify(A+B) → reimplement(C) if needed")
+    print(f"Flow: dialectic → verify(A+B) → reimplement(C) → post-verify(PRD)")
     print(f"{'='*60}\n")
 
     task_results: list[TaskExecutionResult] = []
@@ -239,13 +251,83 @@ def run_dialectic_execution(
             except Exception:
                 pass
 
-    overall_success = all(r.success for r in task_results)
+    # ------------------------------------------------------------------
+    # Post-execution: verify completed tasks against PRD acceptance criteria
+    # ------------------------------------------------------------------
+    plan = _load_plan(path)  # reload to pick up status changes
+    completed_task_ids = [r.task_id for r in task_results if r.success]
+    verified_ids: list[str] = []
+    failed_verification_ids: list[str] = []
+
+    if completed_task_ids:
+        print(f"\n{'='*60}")
+        print(f"Post-execution verification against PRD acceptance criteria")
+        print(f"Tasks to verify: {len(completed_task_ids)}")
+        print(f"{'='*60}")
+
+        prd = _load_prd_for_plan(plan, None)
+        acceptance_criteria = _extract_acceptance_criteria(plan, prd)
+
+        for task_id in completed_task_ids:
+            task = next((t for t in plan.tasks if t.id == task_id), None)
+            if task is None:
+                continue
+            print(f"\n  Post-verifying {task.id} — {task.title}...")
+            try:
+                vr = _run_verification(task, acceptance_criteria)
+                if vr["verified"]:
+                    verified_ids.append(task.id)
+                    print(f"   {task.id} VERIFIED (score: {vr['score']}/10)")
+                    try:
+                        update_task_status(
+                            path, task.id, "completed",
+                            notes=f"[post-verified] score: {vr['score']}/10. {vr['notes'][:200]}",
+                        )
+                    except Exception:
+                        pass
+                else:
+                    failed_verification_ids.append(task.id)
+                    print(f"   {task.id} VERIFICATION FAILED (score: {vr['score']}/10)")
+                    try:
+                        update_task_status(
+                            path, task.id, "failed",
+                            notes=f"[post-verify failed] score: {vr['score']}/10. {vr['notes'][:200]}",
+                        )
+                    except Exception:
+                        pass
+            except Exception as exc:
+                failed_verification_ids.append(task_id)
+                print(f"   {task_id} verification error: {exc}")
+
+    # ------------------------------------------------------------------
+    # Compute and persist user story-level status
+    # ------------------------------------------------------------------
+    total_tasks = len(plan.tasks)
+    already_failed = [r.task_id for r in task_results if not r.success]
+    all_failed = already_failed + failed_verification_ids
+    total_verified = len(verified_ids)
+
+    if total_verified == total_tasks:
+        story_status = "completed"
+    elif total_verified > 0:
+        story_status = "partially_completed"
+    else:
+        story_status = "failed"
+
+    try:
+        update_user_story_status(path, story_status)
+    except Exception:
+        pass
+
+    overall_success = total_verified == total_tasks
     report = ExecutionReport(
         plan_id=plan.user_story_id,
         plan_title=plan.user_story_title,
         run_id=run_id,
         task_results=task_results,
         overall_success=overall_success,
+        verified_tasks=verified_ids,
+        failed_verification_tasks=all_failed,
     )
 
     report_path = run_dir / "report.json"
@@ -257,6 +339,13 @@ def run_dialectic_execution(
     with open(spec_path, "w", encoding="utf-8") as f:
         f.write(_artifact_markdown(plan))
 
+    print(f"\n{'='*60}")
+    print(f"Story {plan.user_story_id}: {story_status}")
+    print(f"  Verified: {verified_ids}")
+    if all_failed:
+        print(f"  Failed:   {all_failed}")
+    print(f"{'='*60}")
+
     return {
         "run_id": run_id,
         "output_path": str(run_dir),
@@ -264,5 +353,8 @@ def run_dialectic_execution(
         "plan_id": plan.user_story_id,
         "plan_title": plan.user_story_title,
         "overall_success": overall_success,
+        "story_status": story_status,
+        "verified_tasks": verified_ids,
+        "failed_verification_tasks": all_failed,
         "report": report.model_dump(),
     }

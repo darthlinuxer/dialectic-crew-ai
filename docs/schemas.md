@@ -51,6 +51,8 @@ classDiagram
         +float quality_score [0.0–10.0]
         +bool consensus_reached
         +str final_validation_notes
+        +Literal status [pending|in_progress|completed|partially_completed|failed]
+        +Optional~str~ completed_at
     }
 
     class ImplementationTask {
@@ -97,6 +99,8 @@ classDiagram
         +str run_id
         +List~TaskExecutionResult~ task_results
         +bool overall_success
+        +List~str~ verified_tasks
+        +List~str~ failed_verification_tasks
     }
 
     PRDSchema --> MacroImpact
@@ -181,6 +185,8 @@ Approved implementation plan for a single user story. Produced by the planning d
 | `quality_score` | `float` | 0.0–10.0 | Plan quality score |
 | `consensus_reached` | `bool` | default `False` | Whether plan was approved |
 | `final_validation_notes` | `str` | default `""` | Validator's notes |
+| `status` | `Literal` | `pending\|in_progress\|completed\|partially_completed\|failed` | User story execution status. Updated automatically by the execution flow and post-execution verification |
+| `completed_at` | `Optional[str]` | ISO datetime | When the user story was verified as completed |
 
 #### `ImplementationTask`
 
@@ -250,7 +256,9 @@ Full report for a plan execution run.
 | `plan_title` | `str` | User story title |
 | `run_id` | `str` | Timestamp-based run identifier |
 | `task_results` | `List[TaskExecutionResult]` | Per-task results |
-| `overall_success` | `bool` | `True` only if all tasks succeeded |
+| `overall_success` | `bool` | `True` only if all tasks passed post-execution verification |
+| `verified_tasks` | `List[str]` | Task IDs that passed post-execution PRD verification |
+| `failed_verification_tasks` | `List[str]` | Task IDs that failed execution or post-execution verification |
 
 ---
 

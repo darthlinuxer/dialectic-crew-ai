@@ -11,8 +11,9 @@ graph TB
     subgraph CLI["CLI Layer (src/main/cli.py)"]
         CMD_PRD["prd command"]
         CMD_PLAN["plan command"]
-        CMD_EXEC["execute command"]
-        CMD_STATUS["status / mark / verify"]
+        CMD_EXEC["execute command<br/>(auto-verify + story status)"]
+        CMD_STATUS["status / verify-story"]
+        CMD_OVERRIDES["mark / verify<br/>(manual overrides)"]
     end
 
     subgraph Core["Dialectic Core (src/dialectic/)"]
@@ -98,14 +99,14 @@ All Pydantic data models live here. Every module imports from this single file, 
 
 | File | Responsibility |
 |------|---------------|
-| `dialectic_execution.py` | Orchestrates `TaskExecutionFlow` per task with topological sort |
+| `dialectic_execution.py` | Orchestrates `TaskExecutionFlow` per task with topological sort, runs post-execution PRD verification, computes and persists user story status |
 | `task_flow.py` | Per-task CrewAI Flow: dialectic → verify → reimplement |
 | `runner.py` | Generates spec Markdown from a plan (no LLM, static) |
-| `verify.py` | Task status tracking, display, manual marking, LLM verification |
+| `verify.py` | Task/story status tracking and display, reusable LLM verification core (`_run_verification`), story-level verification (`verify_user_story`), manual overrides (`mark_task`, `verify_task`) |
 
 ### `src/main/cli.py` — Command-Line Interface
 
-Parses CLI arguments and dispatches to the appropriate module. Six commands: `prd`, `plan`, `execute`, `status`, `mark`, `verify`.
+Parses CLI arguments and dispatches to the appropriate module. Primary commands: `prd`, `plan`, `execute`, `status`, `verify-story`. Manual overrides: `mark`, `verify`.
 
 ---
 
@@ -138,13 +139,21 @@ sequenceDiagram
 
     User->>CLI: dialectic-crew execute
     CLI->>ExecutionOrchestrator: run(plan, vision)
+    ExecutionOrchestrator->>FileSystem: Mark story in_progress
     loop For each task (topological order)
         ExecutionOrchestrator->>TaskFlow: kickoff(task)
         TaskFlow->>TaskFlow: Dialectic → Verify → Reimplement
         TaskFlow-->>ExecutionOrchestrator: TaskExecutionResult
+        ExecutionOrchestrator->>FileSystem: Update task status
     end
+    Note over ExecutionOrchestrator: Post-execution verification phase
+    loop For each completed task
+        ExecutionOrchestrator->>ExecutionOrchestrator: _run_verification(task, PRD criteria)
+        ExecutionOrchestrator->>FileSystem: Update task status (verified/failed)
+    end
+    ExecutionOrchestrator->>FileSystem: Compute + persist story status
     ExecutionOrchestrator->>FileSystem: Save report + spec
-    FileSystem-->>User: exec_output/<run_id>/report.json
+    FileSystem-->>User: exec_output/run_id/report.json
 ```
 
 ---
@@ -224,6 +233,14 @@ Crews are configured with `planning=True` and `memory=True`. CrewAI's built-in p
 ### 9. Topological Sort for Task Ordering
 
 Tasks with dependencies are ordered using a topological sort algorithm. If cycles are detected (invalid state), the system falls back to ordering by the `order` field.
+
+### 10. Automated Post-Execution Verification
+
+The execution flow does not trust its own dialectic score as the final word. After all tasks complete, an independent post-execution verification phase re-checks each completed task against PRD acceptance criteria using a separate LLM agent with file-reading tools. This provides a "second opinion" that catches cases where the dialectic cycle approved work that doesn't actually meet the acceptance criteria in the codebase. The verification core (`_run_verification`) is shared between the automated flow and the manual CLI commands (`verify`, `verify-story`), ensuring consistent behavior.
+
+### 11. User Story-Level Status Tracking
+
+User story status is computed automatically from task verification results and persisted in the plan JSON alongside task-level statuses. This closes the tracking loop: the plan file is the single source of truth for both task and story completion, eliminating the need to cross-reference separate report files. CLI commands (`status`, `verify-story`) and the execution flow all read and write status through the same `verify.py` functions.
 
 ---
 

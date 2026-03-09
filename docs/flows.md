@@ -219,13 +219,14 @@ flowchart TD
 
 **Source:** `src/execution/dialectic_execution.py`
 
-Not a CrewAI Flow itself, but the coordinator that runs `TaskExecutionFlow` for each task in the plan.
+Not a CrewAI Flow itself, but the coordinator that runs `TaskExecutionFlow` for each task in the plan. After all tasks complete, a **post-execution verification phase** independently checks each completed task against PRD acceptance criteria and computes user story-level status.
 
 ### Orchestration Diagram
 
 ```mermaid
 flowchart TD
-    LOAD["Load UserStoryExecutionPlan"] --> TOPO["Topological Sort<br/>(by dependencies)"]
+    LOAD["Load UserStoryExecutionPlan"] --> STORY_IP["Mark story: in_progress"]
+    STORY_IP --> TOPO["Topological Sort<br/>(by dependencies)"]
     TOPO --> LOOP
 
     subgraph LOOP["For each task (sequential)"]
@@ -237,13 +238,33 @@ flowchart TD
 
     STATUS --> MORE{More tasks?}
     MORE -->|Yes| CTX
-    MORE -->|No| REPORT["Generate ExecutionReport<br/>+ Spec Markdown"]
+    MORE -->|No| POST_VERIFY
 
-    REPORT --> OUTPUT["exec_output/<run_id>/<br/>report.json + spec.md"]
+    subgraph POST_VERIFY ["Post-Execution Verification (PRD)"]
+        PV_LOAD["Reload plan + load PRD"] --> PV_LOOP["For each completed task"]
+        PV_LOOP --> PV_CHECK["_run_verification<br/>against PRD acceptance criteria"]
+        PV_CHECK -->|"verified"| PV_OK["Keep completed"]
+        PV_CHECK -->|"failed"| PV_FAIL["Downgrade to failed"]
+    end
+
+    PV_OK --> STORY_STATUS
+    PV_FAIL --> STORY_STATUS
+
+    STORY_STATUS{"Compute story status"} -->|"all verified"| DONE_OK["Story: completed"]
+    STORY_STATUS -->|"some verified"| DONE_PARTIAL["Story: partially_completed"]
+    STORY_STATUS -->|"none verified"| DONE_FAIL["Story: failed"]
+
+    DONE_OK --> REPORT["Generate ExecutionReport<br/>+ Spec Markdown"]
+    DONE_PARTIAL --> REPORT
+    DONE_FAIL --> REPORT
+
+    REPORT --> OUTPUT["exec_output/run_id/<br/>report.json + spec.md"]
 
     style LOAD fill:#4A90D9,stroke:#2C5F8A,color:#fff
+    style STORY_IP fill:#74B9FF,stroke:#0984E3,color:#fff
     style TOPO fill:#FDCB6E,stroke:#E1A517,color:#333
     style FLOW fill:#E8A838,stroke:#B8862D,color:#fff
+    style STORY_STATUS fill:#FDCB6E,stroke:#E1A517,color:#333
     style REPORT fill:#55EFC4,stroke:#00B894,color:#333
 ```
 
@@ -252,18 +273,21 @@ flowchart TD
 - **Dependency awareness**: Tasks are topologically sorted; if cycles are detected, falls back to `order` field
 - **Context accumulation**: Each task receives output summaries from all previously completed tasks
 - **Live status tracking**: Task statuses (`pending` → `in_progress` → `completed`/`failed`) are written back to the plan JSON in real-time
-- **Final report**: Generates `ExecutionReport` with per-task results and overall success status
+- **Post-execution verification**: After all tasks finish, each completed task is independently verified against PRD acceptance criteria using `_run_verification()`. Tasks that fail are downgraded to `failed`
+- **User story status**: The orchestrator computes and persists a story-level status (`completed`, `partially_completed`, or `failed`) based on post-verification results
+- **Final report**: Generates `ExecutionReport` with per-task results, verification lists, and overall success status
 
 ---
 
 ## Flow Comparison
 
-| Feature | PRD Flow | Planning Flow | Task Execution Flow |
-|---------|----------|---------------|---------------------|
-| CrewAI Flow class | Yes (`DialecticFlow`) | No (single Crew) | Yes (`TaskExecutionFlow`) |
-| Retry mechanism | `@router` loop | Single pass | Loop in `run_dialectic()` |
-| Verification | Score-based only | Score-based only | Independent agent + file reading |
-| Reimplementation | Via retry | N/A | Fresh agent (Phase C) |
-| Output type | `PRDSchema` | `UserStoryExecutionPlan` | `TaskExecutionResult` |
-| Score threshold | 9.0 | 9.0 (in validation) | Configurable (default: 7.5) |
-| Guardrails | `_prd_guardrail` | `_plan_guardrail` | `_quality_guardrail`, `_verification_guardrail` |
+| Feature | PRD Flow | Planning Flow | Task Execution Flow | Execution Orchestrator |
+|---------|----------|---------------|---------------------|------------------------|
+| CrewAI Flow class | Yes (`DialecticFlow`) | No (single Crew) | Yes (`TaskExecutionFlow`) | No (coordinator) |
+| Retry mechanism | `@router` loop | Single pass | Loop in `run_dialectic()` | N/A |
+| Verification | Score-based only | Score-based only | Independent agent + file reading | Post-execution PRD verification |
+| Reimplementation | Via retry | N/A | Fresh agent (Phase C) | N/A |
+| Status tracking | N/A | N/A | Internal (flow state) | Task + user story status persisted to plan JSON |
+| Output type | `PRDSchema` | `UserStoryExecutionPlan` | `TaskExecutionResult` | `ExecutionReport` |
+| Score threshold | 9.0 | 9.0 (in validation) | Configurable (default: 7.5) | 7.0 (post-verification) |
+| Guardrails | `_prd_guardrail` | `_plan_guardrail` | `_quality_guardrail`, `_verification_guardrail` | N/A |

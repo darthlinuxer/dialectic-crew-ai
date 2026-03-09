@@ -3,9 +3,12 @@ Main entry point for Dialectic Crew AI.
 
 Commands:
   python main.py prd "your feature request"   — generates PRD with dialectic
-  python main.py plan [prd.json] [US-001]   — plans execution of a user story
-  python main.py execute [plan.json|--latest] — generates execution artifact from plan
-  python main.py "your feature request"       — compatible: equivalent to prd
+  python main.py plan [prd.json] [US-001]      — plans execution of a user story
+  python main.py execute [plan.json|--latest]  — executes plan with auto-verify
+  python main.py status [plan.json]            — shows story + task status
+  python main.py verify-story [plan.json]      — re-verifies all tasks in a story
+  python main.py mark <id> <status>            — manual task status override
+  python main.py verify <id>                   — manual single-task re-check
 """
 
 import sys
@@ -20,18 +23,18 @@ from dialectic.prd_flow import OUTPUT_DIR, _persistence
 from planning.flow import run_user_story_planning
 from execution.runner import run_execution
 from execution.dialectic_execution import run_dialectic_execution
-from execution.verify import show_status, mark_task, verify_task
+from execution.verify import show_status, mark_task, verify_task, verify_user_story
 
 
 BANNER = """
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║     DIALECTIC CREW AI - PRD & Planning v1.1                  ║
-║                                                              ║
-║     Dialectic: Thesis → Antithesis → Synthesis → Validation  ║
-║     Commands: prd | plan | execute | status | verify | help  ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                   ║
+║     DIALECTIC CREW AI - PRD & Planning v1.2                       ║
+║                                                                   ║
+║     Dialectic: Thesis → Antithesis → Synthesis → Validation       ║
+║     Commands: prd | plan | execute | status | verify-story | help ║
+║                                                                   ║
+╚══════════════════════════════════════════════════════════════════╝
 """
 
 HELP_TEXT = """
@@ -59,7 +62,10 @@ Commands:
 
   execute [plan.json|--latest] [--spec-only]
       Executes the plan with CrewAI and dialectic per task. Each task goes through
-      Thesis → Antithesis → Synthesis → Validation; retry until score >= 9.0.
+      Thesis → Antithesis → Synthesis → Validation with automatic retries.
+      After all tasks finish, a post-execution verification phase checks each
+      completed task against PRD acceptance criteria and updates the user story
+      status (completed, partially_completed, or failed) automatically.
       Use --spec-only to only generate a spec in Markdown (legacy behavior).
       By default uses the most recent plan in prd_output/ (exec_*.json).
       Saves to exec_output/<run_id>/ (report.json, outputs).
@@ -68,22 +74,30 @@ Commands:
            python main.py execute --spec-only
 
   status [plan.json|--latest]
-      Shows the status of all tasks in the plan (pending, in_progress,
-      completed, failed). By default uses the most recent plan.
+      Shows the status of the user story and all its tasks (pending, in_progress,
+      completed, partially_completed, failed). By default uses the most recent plan.
       Ex.: python main.py status
            python main.py status prd_output/exec_US1_20260308_1750.json
 
+  verify-story [plan.json] [--prd prd.json]
+      Verifies all completed tasks in the plan against PRD acceptance criteria
+      using LLM agents and updates the user story status. Useful for re-checking
+      a story after manual changes or debugging.
+      Ex.: python main.py verify-story
+           python main.py verify-story --prd prd_output/PRD_20260308_1640.json
+
+Manual overrides (the execute command handles these automatically):
+
   mark <task_id> <status> [plan.json]
-      Manually marks the status of a task.
+      Manually overrides the status of a task. Useful for edge cases where a
+      human decides a task is done or needs to be reset.
       Valid statuses: pending, in_progress, completed, failed
       Ex.: python main.py mark T0 completed
            python main.py mark T3 failed prd_output/exec_US1_20260308_1750.json
 
   verify <task_id> [plan.json] [--prd prd.json]
-      Verifies whether a task was correctly implemented using an LLM agent.
-      The agent reads the project files and validates against the task description
-      and the user story acceptance criteria (if --prd is provided).
-      Automatically updates the task status in the plan.
+      Manually re-verifies a single task using an LLM agent. The execute command
+      does this automatically for all tasks; use this for targeted re-checks.
       Ex.: python main.py verify T0
            python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 
@@ -159,10 +173,14 @@ def cmd_execute(plan_path: str | None, spec_only: bool = False):
                 plan_path=plan_path or "--latest",
                 vision_content=vision,
             )
-            status = "all tasks completed" if result["overall_success"] else "some tasks failed"
+            story_status = result.get("story_status", "unknown")
             print(f"\nExecution complete: {result['output_path']}")
             print(f"   Plan: {result['plan_id']} -- {result['plan_title']}")
-            print(f"   Status: {status}")
+            print(f"   Story status: {story_status}")
+            if result.get("verified_tasks"):
+                print(f"   Verified: {', '.join(result['verified_tasks'])}")
+            if result.get("failed_verification_tasks"):
+                print(f"   Failed:   {', '.join(result['failed_verification_tasks'])}")
             print(f"   Report: {result['report_path']}")
     except FileNotFoundError as e:
         print(f"{e}")
@@ -196,6 +214,22 @@ def cmd_verify(task_id: str, plan_path: str | None, prd_path: str | None):
             print(f"\n  Task {task_id} verified successfully!")
         else:
             print(f"\n  Task {task_id} did NOT pass verification.")
+    except (FileNotFoundError, ValueError) as e:
+        print(f"  {e}")
+        sys.exit(1)
+
+
+def cmd_verify_story(plan_path: str | None, prd_path: str | None):
+    try:
+        result = verify_user_story(plan_path, prd_path)
+        status = result["story_status"]
+        verified = result["verified_tasks"]
+        failed = result["failed_verification_tasks"]
+        print(f"\n  Story status: {status}")
+        if verified:
+            print(f"  Verified tasks: {', '.join(verified)}")
+        if failed:
+            print(f"  Failed verification: {', '.join(failed)}")
     except (FileNotFoundError, ValueError) as e:
         print(f"  {e}")
         sys.exit(1)
@@ -255,6 +289,16 @@ def main():
         plan_path = args[1] if len(args) > 1 else None
         cmd_status(plan_path)
         return
+    if sub == "verify-story":
+        remaining = [a for a in args[1:] if not a.startswith("-")]
+        plan_path = remaining[0] if remaining else None
+        prd_path = None
+        if "--prd" in args:
+            prd_idx = args.index("--prd")
+            if prd_idx + 1 < len(args):
+                prd_path = args[prd_idx + 1]
+        cmd_verify_story(plan_path, prd_path)
+        return
     if sub == "mark":
         if len(args) < 3:
             print("Usage: python main.py mark <task_id> <status> [plan.json]")
@@ -284,7 +328,7 @@ def main():
         cmd_prd(args[0])
         return
 
-    print("Unknown command. Use: prd | plan | execute | help")
+    print("Unknown command. Use: prd | plan | execute | status | verify-story | help")
     sys.exit(1)
 
 
