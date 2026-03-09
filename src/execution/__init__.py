@@ -1,5 +1,5 @@
 """
-Execução do plano aprovado: consumir UserStoryExecutionPlan e gerar artefatos.
+Execution of the approved plan: consume UserStoryExecutionPlan and generate artifacts.
 """
 
 from execution.runner import run_execution

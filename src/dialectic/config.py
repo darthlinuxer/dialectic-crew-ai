@@ -1,19 +1,19 @@
-"""Loader robusto para configuração de exportação PRD.
+"""Robust loader for PRD export configuration.
 
-Regras:
-- Lê PRD_OUTPUT_FORMAT e PRD_OUTPUT_DIR a partir do ambiente (.env via pydantic-settings quando disponível).
+Rules:
+- Reads PRD_OUTPUT_FORMAT and PRD_OUTPUT_DIR from the environment (.env via pydantic-settings when available).
 - PRD_OUTPUT_FORMAT:
-    * valores válidos (case-insensitive): 'md', 'json', 'both'
-    * se ausente OU inválido -> fallback seguro: 'json' (e log warning)
-    * valor retornado é normalizado para lowercase
+    * valid values (case-insensitive): 'md', 'json', 'both'
+    * if absent OR invalid -> safe fallback: 'json' (and log warning)
+    * returned value is normalized to lowercase
 - PRD_OUTPUT_DIR:
-    * se ausente -> Path('prd_output')
-    * deve ser retornado como pathlib.Path
+    * if absent -> Path('prd_output')
+    * must be returned as pathlib.Path
 
-O loader tenta usar pydantic-settings (BaseSettings). Se a dependência não estiver
-instalada ou for incompatível, o módulo faz um fallback gracioso usando os.environ
-(e não falha em import-time). Em todos os casos, situações de fallback são
-registradas via logger para visibilidade em CI/execuções locais.
+The loader tries to use pydantic-settings (BaseSettings). If the dependency is not
+installed or is incompatible, the module falls back gracefully to os.environ
+(and does not fail at import-time). In all cases, fallback situations are
+logged via logger for visibility in CI/local runs.
 """
 
 from __future__ import annotations
@@ -31,11 +31,11 @@ _VALID_FORMATS = ("md", "json", "both")
 
 @dataclass
 class ExportConfig:
-    """Dataclass representando a configuração de exportação.
+    """Dataclass representing the export configuration.
 
-    Possui validação mínima em __post_init__ para garantir que o objeto seja
-    confiável em runtime (mesmo que a fonte das variáveis de ambiente seja
-    questionável).
+    Has minimal validation in __post_init__ to ensure the object is
+    reliable at runtime (even if the source of environment variables is
+    questionable).
     """
 
     output_format: Literal["md", "json", "both"] = "both"
@@ -88,16 +88,16 @@ def _load_from_environ_fallback() -> tuple[Optional[str], Optional[str]]:
 
 
 def get_export_config() -> ExportConfig:
-    """Carrega a configuração de exportação e retorna ExportConfig.
+    """Load the export configuration and return an ExportConfig.
 
-    Regras de normalização/validação (implementadas):
-    - Se PRD_OUTPUT_FORMAT ausente OU inválido -> fallback 'json' e log WARNING
-    - Se presente e válido (case-insensitive) -> normaliza para lowercase
-    - PRD_OUTPUT_DIR é resolvido para Path; se ausente -> Path('prd_output')
+    Normalization/validation rules (implemented):
+    - If PRD_OUTPUT_FORMAT is absent OR invalid -> fallback 'json' and log WARNING
+    - If present and valid (case-insensitive) -> normalize to lowercase
+    - PRD_OUTPUT_DIR is resolved to Path; if absent -> Path('prd_output')
 
-    A função tenta usar pydantic-settings quando disponível; caso contrário faz
-    fallback para leitura direta de os.environ. Em ambos os casos, logs são
-    escritos quando aplicável.
+    The function tries to use pydantic-settings when available; otherwise falls
+    back to reading directly from os.environ. In both cases, logs are
+    written when applicable.
     """
 
     if _HAS_PYDANTIC_SETTINGS:

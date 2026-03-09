@@ -1,6 +1,6 @@
 """
-Script simplificado para executar uma única passagem do fluxo dialético (sem retry).
-Delega para dialectic.prd_flow com max_retries=0.
+Simplified script to run a single pass of the dialectic flow (no retry).
+Delegates to dialectic.prd_flow with max_retries=0.
 """
 
 import os
@@ -16,13 +16,13 @@ from dialectic.prd_flow import DialecticFlow
 
 
 if __name__ == "__main__":
-    feature = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Teste"
+    feature = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Test"
 
     if os.path.exists("VISION.md"):
         with open("VISION.md", "r", encoding="utf-8") as f:
             vision = f.read()
     else:
-        vision = "Projeto de gestão de projetos ágeis"
+        vision = "Agile project management project"
 
     state = DialecticState(
         feature_objective=feature,
@@ -32,5 +32,5 @@ if __name__ == "__main__":
     flow = DialecticFlow(state)
     result = flow.kickoff()
 
-    print(f"\nScore Final: {result.quality_score}/10.0")
-    print(f"Consenso: {result.consensus_reached}")
+    print(f"\nFinal Score: {result.quality_score}/10.0")
+    print(f"Consensus: {result.consensus_reached}")

@@ -84,7 +84,7 @@ def test_export_md_only(tmp_path, monkeypatch):
     assert len(created) == 1
     assert created[0].suffix == ".md"
     md_text = created[0].read_text(encoding="utf-8")
-    assert "# Objetivo" in md_text
+    assert "# Objective" in md_text
 
 
 def test_md_failure_triggers_json_rollback(tmp_path, monkeypatch):
@@ -115,14 +115,14 @@ def test_export_encoding_utf8(tmp_path, monkeypatch):
     (tmp_path / "VISION.md").write_text("Vision content", encoding="utf-8")
 
     prd = _make_prd()
-    prd.objective = "Teste com acentuação: é, ã, ç"
+    prd.objective = "Test with accented chars: é, ã, ç"
     config = ExportConfig(output_format="both", output_dir=tmp_path)
     exporter = PRDExporter()
     created = exporter.export(prd, config)
 
     for p in created:
         content = p.read_text(encoding="utf-8")
-        assert "acentuação" in content
+        assert "accented" in content
 
 
 def test_export_md_has_frontmatter(tmp_path, monkeypatch):

@@ -1,11 +1,11 @@
 """
-Fluxo dialético para planejamento da execução de uma user story.
-Produz UserStoryExecutionPlan (tese → antítese → síntese → validação).
+Dialectic flow for planning the execution of a user story.
+Produces UserStoryExecutionPlan (thesis → antithesis → synthesis → validation).
 
-Usa features nativas do CrewAI:
-- output_pydantic: structured output do Validador (elimina parsing manual de JSON)
-- Task guardrails: validação automática da estrutura do plano
-- akickoff() + asyncio.wait_for(): timeout nativo
+Uses native CrewAI features:
+- output_pydantic: structured output from Validator (eliminates manual JSON parsing)
+- Task guardrails: automatic plan structure validation
+- akickoff() + asyncio.wait_for(): native timeout
 """
 
 import asyncio
@@ -61,7 +61,7 @@ def _run_crew_with_timeout(crew: Crew, timeout: int):
 def _find_latest_prd() -> Path:
     jsons = list(Path(OUTPUT_DIR).glob("PRD_*.json"))
     if not jsons:
-        raise FileNotFoundError(f"Nenhum PRD em {OUTPUT_DIR}/")
+        raise FileNotFoundError(f"No PRD found in {OUTPUT_DIR}/")
     return max(jsons, key=lambda p: p.stat().st_mtime)
 
 
@@ -92,7 +92,7 @@ def _get_user_story(prd: PRDSchema, ref: str | None):
         idx = int(ref)
         return prd.user_stories[idx]
     except (ValueError, IndexError):
-        raise ValueError(f"User story não encontrada: {ref}. Disponíveis: {[u.id for u in prd.user_stories]}")
+        raise ValueError(f"User story not found: {ref}. Available: {[u.id for u in prd.user_stories]}")
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ def run_user_story_planning(
     vision_content: str,
 ) -> dict:
     """
-    Executa ciclo dialético para gerar plano de implementação de uma user story.
+    Execute dialectic cycle to generate an implementation plan for a user story.
 
     Uses native CrewAI features:
     - output_pydantic for structured plan output
@@ -119,101 +119,101 @@ def run_user_story_planning(
 
     us_context = f"""
 User Story: {us.id} — {us.title}
-Descrição: {us.description}
-Critérios de aceite: {chr(10).join('- ' + ac for ac in us.acceptance_criteria)}
-Esforço: {us.effort}
-Dependências: {', '.join(us.dependencies) or 'Nenhuma'}
+Description: {us.description}
+Acceptance criteria: {chr(10).join('- ' + ac for ac in us.acceptance_criteria)}
+Effort: {us.effort}
+Dependencies: {', '.join(us.dependencies) or 'None'}
 """
-    feature_context = f"Feature (PRD): {prd.feature_name}. Objetivo: {prd.objective}"
+    feature_context = f"Feature (PRD): {prd.feature_name}. Objective: {prd.objective}"
 
     task_tese = Task(
         description=f"""
-VISÃO MACRO (VISION.md):
+MACRO VISION (VISION.md):
 {vision_content}
 
-CONTEXTO DA FEATURE:
+FEATURE CONTEXT:
 {feature_context}
 
-USER STORY A IMPLEMENTAR:
+USER STORY TO IMPLEMENT:
 {us_context}
 
-Gere a TESE: um plano de implementação inicial para esta user story.
-Inclua:
-1. Abordagem técnica resumida (approach_summary)
-2. Lista de tasks de implementação (id, title, description, order, dependencies)
-3. Riscos que você já considera
-4. Notas técnicas relevantes
+Generate the THESIS: an initial implementation plan for this user story.
+Include:
+1. Summarized technical approach (approach_summary)
+2. List of implementation tasks (id, title, description, order, dependencies)
+3. Risks you already foresee
+4. Relevant technical notes
 
-Seja concreto e alinhado com a visão macro. Não invente módulos fora do escopo do PRD.
+Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
 """,
-        expected_output="Plano de implementação estruturado (abordagem + tasks + riscos + notas)",
+        expected_output="Structured implementation plan (approach + tasks + risks + notes)",
         agent=visionario,
     )
 
     task_antitese = Task(
         description=f"""
-VISÃO MACRO:
+MACRO VISION:
 {vision_content}
 
-A proposta de implementação (tese) para a user story foi:
-[output do Visionário]
+The implementation proposal (thesis) for the user story was:
+[Visionary's output]
 
-Aplique o método socrático. Liste TODAS:
-1. Falhas e pontos fracos do plano
-2. Contradições com VISION.md ou com o PRD da feature
-3. Riscos de dívida técnica ou overscope
-4. Tasks faltando ou mal ordenadas
-5. Critérios de aceite não cobertos pelo plano
+Apply the Socratic method. List ALL:
+1. Flaws and weak points of the plan
+2. Contradictions with VISION.md or the feature PRD
+3. Risks of technical debt or overscope
+4. Missing or poorly ordered tasks
+5. Acceptance criteria not covered by the plan
 
-Seja implacável. Cada crítica deve ser específica e acionável.
+Be relentless. Each critique must be specific and actionable.
 """,
-        expected_output="Crítica detalhada do plano de implementação",
+        expected_output="Detailed critique of the implementation plan",
         agent=critico_socratico,
         context=[task_tese],
     )
 
     task_sintese = Task(
         description=f"""
-VISÃO MACRO:
+MACRO VISION:
 {vision_content}
 
 USER STORY: {us.id} — {us.title}
 
-Você recebeu:
-- A tese: plano de implementação do Visionário
-- A antítese: críticas do Crítico Socrático
+You received:
+- The thesis: implementation plan from the Visionary
+- The antithesis: critiques from the Socratic Critic
 
-Produza a SÍNTESE: plano de implementação refinado que:
-1. Preserva o que havia de bom na tese
-2. Incorpora TODAS as críticas da antítese
-3. Lista tasks claras (id, title, description, order, dependencies)
-4. Inclui approach_summary, risks_mitigated, tech_notes
-5. Está alinhado com VISION.md e com o PRD
+Produce the SYNTHESIS: a refined implementation plan that:
+1. Preserves what was good in the thesis
+2. Incorporates ALL critiques from the antithesis
+3. Lists clear tasks (id, title, description, order, dependencies)
+4. Includes approach_summary, risks_mitigated, tech_notes
+5. Is aligned with VISION.md and the PRD
 
-Formato que o Validador espera: abordagem resumida, lista de tasks numeradas, riscos mitigados, notas técnicas.
+Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
 """,
-        expected_output="Plano de implementação refinado (abordagem + tasks + riscos mitigados + notas)",
+        expected_output="Refined implementation plan (approach + tasks + mitigated risks + notes)",
         agent=sintetizador,
         context=[task_tese, task_antitese],
     )
 
     task_validacao = Task(
         description=f"""
-Com base na SÍNTESE do plano de implementação para a user story {us.id} — {us.title},
-produza o documento final.
+Based on the SYNTHESIS of the implementation plan for user story {us.id} — {us.title},
+produce the final document.
 
-Preencha:
+Fill in:
 - user_story_id: "{us.id}"
 - user_story_title: "{us.title}"
-- approach_summary: resumo da abordagem (da síntese)
-- tasks: lista de ImplementationTask (id, title, description, order, dependencies)
-- risks_mitigated: lista de riscos que foram mitigados
-- tech_notes: notas técnicas
-- quality_score: float 0-10 (uma casa decimal). Aprove se >= 9.0
-- consensus_reached: true se o plano está pronto para execução
-- final_validation_notes: explicação breve
+- approach_summary: summary of the approach (from synthesis)
+- tasks: list of ImplementationTask (id, title, description, order, dependencies)
+- risks_mitigated: list of risks that were mitigated
+- tech_notes: technical notes
+- quality_score: float 0-10 (one decimal place). Approve if >= 9.0
+- consensus_reached: true if the plan is ready for execution
+- final_validation_notes: brief explanation
 """,
-        expected_output="UserStoryExecutionPlan válido com quality_score e consensus_reached",
+        expected_output="Valid UserStoryExecutionPlan with quality_score and consensus_reached",
         agent=validador_macro,
         output_pydantic=UserStoryExecutionPlan,
         guardrail=_plan_guardrail,
@@ -229,7 +229,7 @@ Preencha:
     )
 
     print(f"\n{'='*60}")
-    print(f"Planejamento dialético — {us.id} {us.title}")
+    print(f"Dialectic planning — {us.id} {us.title}")
     print(f"{'='*60}\n")
 
     result = _run_crew_with_timeout(crew, CREW_KICKOFF_TIMEOUT)
@@ -267,11 +267,11 @@ Preencha:
             plan_valid = UserStoryExecutionPlan(
                 user_story_id=us.id,
                 user_story_title=us.title,
-                approach_summary="Falha ao extrair plano estruturado do output.",
+                approach_summary="Failed to extract structured plan from output.",
                 tasks=[ImplementationTask(id="T-001", title="Placeholder", description="N/A", order=1)],
                 quality_score=0.0,
                 consensus_reached=False,
-                final_validation_notes="output_pydantic e parsing manual falharam",
+                final_validation_notes="output_pydantic and manual parsing both failed",
             )
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -281,7 +281,7 @@ Preencha:
         json.dump(plan_valid.model_dump(), f, indent=2, ensure_ascii=False)
     with open(f"{base}.md", "w", encoding="utf-8") as f:
         f.write(execution_plan_to_markdown(plan_valid))
-    print(f"\nPlano salvo: {base}.json e {base}.md")
+    print(f"\nPlan saved: {base}.json and {base}.md")
     return {
         "plan": plan_valid.model_dump(),
         "quality_score": plan_valid.quality_score,

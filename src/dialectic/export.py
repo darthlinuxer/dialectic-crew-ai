@@ -36,17 +36,17 @@ class ValidationResult:
 
 
 def execution_plan_to_markdown(plan: Union[UserStoryExecutionPlan, dict]) -> str:
-    """Converte plano de execução (user story) para Markdown."""
+    """Converts an execution plan (user story) to Markdown."""
     if isinstance(plan, dict):
         plan = UserStoryExecutionPlan.model_validate(plan)
     lines = [
-        f"# Plano de execução — {plan.user_story_id} {plan.user_story_title}",
+        f"# Execution Plan — {plan.user_story_id} {plan.user_story_title}",
         "",
-        f"**Score:** {plan.quality_score}/10.0  |  **Consenso:** {'Sim' if plan.consensus_reached else 'Não'}",
+        f"**Score:** {plan.quality_score}/10.0  |  **Consensus:** {'Yes' if plan.consensus_reached else 'No'}",
         "",
         "---",
         "",
-        "## Abordagem",
+        "## Approach",
         "",
         plan.approach_summary,
         "",
@@ -61,32 +61,32 @@ def execution_plan_to_markdown(plan: Union[UserStoryExecutionPlan, dict]) -> str
         lines.append(t.description)
         if t.dependencies:
             lines.append("")
-            lines.append(f"*Dependências:* {', '.join(t.dependencies)}")
+            lines.append(f"*Dependencies:* {', '.join(t.dependencies)}")
         lines.append("")
     if plan.risks_mitigated:
-        lines.extend(["---", "", "## Riscos mitigados", ""])
+        lines.extend(["---", "", "## Mitigated Risks", ""])
         for r in plan.risks_mitigated:
             lines.append(f"- {r}")
         lines.append("")
     if plan.tech_notes:
-        lines.extend(["---", "", "## Notas técnicas", "", plan.tech_notes, ""])
-    lines.extend(["---", "", "## Validação", "", plan.final_validation_notes.strip(), ""])
+        lines.extend(["---", "", "## Technical Notes", "", plan.tech_notes, ""])
+    lines.extend(["---", "", "## Validation", "", plan.final_validation_notes.strip(), ""])
     return "\n".join(lines).strip() + "\n"
 
 
 def prd_to_markdown(prd: Union[PRDSchema, dict]) -> str:
-    """Converte PRD para documento Markdown narrativo."""
+    """Converts a PRD to a narrative Markdown document."""
     if isinstance(prd, dict):
         prd = PRDSchema.model_validate(prd)
 
     lines = [
         f"# PRD — {prd.feature_name}",
         "",
-        f"**Versão:** {prd.version}  |  **Score:** {prd.quality_score}/10.0  |  **Consenso:** {'Sim' if prd.consensus_reached else 'Não'}",
+        f"**Version:** {prd.version}  |  **Score:** {prd.quality_score}/10.0  |  **Consensus:** {'Yes' if prd.consensus_reached else 'No'}",
         "",
         "---",
         "",
-        "## Objetivo",
+        "## Objective",
         "",
         prd.objective,
         "",
@@ -94,10 +94,10 @@ def prd_to_markdown(prd: Union[PRDSchema, dict]) -> str:
         "",
         "## Macro Impact",
         "",
-        f"- **Módulos afetados:** {', '.join(prd.macro_impact.modules_affected)}",
-        f"- **Nível de risco:** {prd.macro_impact.risk_level}",
-        f"- **Impacto em performance:** {prd.macro_impact.performance_impact}",
-        f"- **Impacto em segurança:** {prd.macro_impact.security_impact}",
+        f"- **Modules affected:** {', '.join(prd.macro_impact.modules_affected)}",
+        f"- **Risk level:** {prd.macro_impact.risk_level}",
+        f"- **Performance impact:** {prd.macro_impact.performance_impact}",
+        f"- **Security impact:** {prd.macro_impact.security_impact}",
         "",
         "---",
         "",
@@ -194,7 +194,7 @@ def _parse_frontmatter(md_text: str) -> dict:
 
 
 def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> ValidationResult:
-    """Valida consistência entre o Markdown gerado e o PRD/JSON.
+    """Validates consistency between the generated Markdown and the PRD/JSON.
 
     Checks implemented:
     - required headers present in MD (simple existence checks)
@@ -216,7 +216,7 @@ def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> Vali
     front = _parse_frontmatter(md_text)
 
     # 1) required headers
-    required_headers = ["# Objetivo", "## Macro Impact", "## User Stories", "## Anti-Drift Questions"]
+    required_headers = ["# Objective", "## Macro Impact", "## User Stories", "## Anti-Drift Questions"]
     body = md_text
     # if frontmatter present, strip it for header checks
     if md_text.lstrip().startswith("---"):
@@ -310,7 +310,7 @@ def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> Vali
 
 
 def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
-    """Renderiza o Markdown final com frontmatter de metadados e o corpo gerado a partir do schema.
+    """Renders the final Markdown with metadata frontmatter and body generated from the schema.
 
     Frontmatter (YAML) includes:
       - quality_score
@@ -318,7 +318,7 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
       - generated_at (UTC ISO)
       - vision_hash (SHA-256 of VISION.md read with utf-8) ONLY if available
 
-    The body contains the sections: # Objetivo, ## Macro Impact, ## User Stories, ## Anti-Drift Questions.
+    The body contains the sections: # Objective, ## Macro Impact, ## User Stories, ## Anti-Drift Questions.
     """
     # compute vision hash
     vision_hash = None
@@ -354,8 +354,8 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
         prd = PRDSchema.model_validate(prd)
 
     body_lines: List[str] = []
-    # Objetivo (top-level as requested)
-    body_lines.append(f"# Objetivo")
+    # Objective (top-level as requested)
+    body_lines.append(f"# Objective")
     body_lines.append("")
     body_lines.append(prd.objective)
     body_lines.append("")
@@ -401,7 +401,7 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
 
 
 class PRDExporter:
-    """Exportador dual para PRD: gera JSON e/ou Markdown conforme ExportConfig.
+    """Dual exporter for PRD: generates JSON and/or Markdown according to ExportConfig.
 
     Behavior:
       - Writes JSON first (safe for pipelines). If MD is also requested, writes MD after.

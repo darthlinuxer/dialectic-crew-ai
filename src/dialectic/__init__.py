@@ -1,5 +1,5 @@
 """
-Núcleo dialético: agentes, tools, estado, fluxo PRD e export.
+Dialectic core: agents, tools, state, PRD flow, and export.
 """
 
 from dialectic.agents import (

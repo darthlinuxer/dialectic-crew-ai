@@ -35,18 +35,18 @@ class PRDSchema(BaseModel):
     final_validation_notes: str
 
 
-# --- Planos de execução (dialética por user story) ---
+# --- Execution plans (dialectic per user story) ---
 
 
 class ImplementationTask(BaseModel):
-    id: str = Field(..., description="ex: T-001")
+    id: str = Field(..., description="e.g.: T-001")
     title: str
     description: str
     order: int = 0
     dependencies: List[str] = []
     acceptance_checks: List[str] = Field(
         default_factory=list,
-        description="Verifiable criteria: e.g. 'arquivo X existe', 'função Y definida em Z'",
+        description="Verifiable criteria: e.g. 'file X exists', 'function Y defined in Z'",
     )
     status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
     completed_at: Optional[str] = None
@@ -54,10 +54,10 @@ class ImplementationTask(BaseModel):
 
 
 class UserStoryExecutionPlan(BaseModel):
-    """Plano de implementação aprovado para uma user story (saída do fluxo dialético de execução)."""
+    """Approved implementation plan for a user story (output of the dialectic execution flow)."""
     user_story_id: str
     user_story_title: str
-    approach_summary: str = Field(..., description="Resumo da abordagem técnica")
+    approach_summary: str = Field(..., description="Summary of the technical approach")
     tasks: List[ImplementationTask] = Field(..., min_length=1)
     risks_mitigated: List[str] = []
     tech_notes: str = ""
@@ -66,11 +66,11 @@ class UserStoryExecutionPlan(BaseModel):
     final_validation_notes: str = ""
 
 
-# --- Resultados de execução dialética ---
+# --- Dialectic execution results ---
 
 
 class ValidationOutput(BaseModel):
-    """Structured output from the Validador agent (used with output_pydantic)."""
+    """Structured output from the Validator agent (used with output_pydantic)."""
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False
     final_validation_notes: str = ""

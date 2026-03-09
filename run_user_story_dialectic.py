@@ -1,10 +1,10 @@
 """
-Script de conveniência: planeja execução de uma user story (dialética).
-Equivalente a: python main.py plan [prd_path] [US-001]
+Convenience script: plans execution of a user story (dialectic).
+Equivalent to: python main.py plan [prd_path] [US-001]
 
-Uso:
-  python run_user_story_dialectic.py [caminho_prd.json] [US-001]
-  python run_user_story_dialectic.py   # último PRD, primeira US
+Usage:
+  python run_user_story_dialectic.py [prd_path.json] [US-001]
+  python run_user_story_dialectic.py   # latest PRD, first US
 """
 
 import os
@@ -24,13 +24,13 @@ def main():
     us_ref = args[1] if len(args) > 1 else None
 
     if not os.path.exists("VISION.md"):
-        print("VISION.md nao encontrado.")
+        print("VISION.md not found.")
         sys.exit(1)
     with open("VISION.md", "r", encoding="utf-8") as f:
         vision = f.read()
 
     if prd_path and not os.path.exists(prd_path):
-        print(f"PRD nao encontrado: {prd_path}")
+        print(f"PRD not found: {prd_path}")
         sys.exit(1)
 
     result = run_user_story_planning(prd_path, us_ref, vision)

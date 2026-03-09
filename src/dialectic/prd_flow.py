@@ -1,12 +1,12 @@
 """
-Flow principal com retry automático até quality_score >= 9.0
-Implementa a dialética: Tese → Antítese → Síntese → Validação → Loop
-Usa CrewAI Flow API com estado persistente
+Main flow with automatic retry until quality_score >= 9.0
+Implements the dialectic: Thesis → Antithesis → Synthesis → Validation → Loop
+Uses CrewAI Flow API with persistent state
 
-Usa features nativas do CrewAI:
-- output_pydantic: structured output do Validador (PRDSchema)
-- Task guardrails: validação automática do output
-- Flow pattern: @start, @listen, @router para retry
+Uses native CrewAI features:
+- output_pydantic: structured output from the Validator (PRDSchema)
+- Task guardrails: automatic output validation
+- Flow pattern: @start, @listen, @router for retry
 """
 
 import json
@@ -51,12 +51,12 @@ def _prd_guardrail(result) -> tuple[bool, Any]:
 
 
 class DialecticFlow(Flow[DialecticState]):
-    """Fluxo dialético com retry automático"""
+    """Dialectic flow with automatic retry"""
 
     @start()
     def iniciar_dialetica(self):
         print(f"\n{'='*60}")
-        print(f"INICIANDO FLUXO DIALETICO")
+        print(f"STARTING DIALECTIC FLOW")
         print(f"{'='*60}")
         print(f"Feature: {self.state.feature_objective}")
         print(f"Max retries: {self.state.max_retries}")
@@ -65,87 +65,87 @@ class DialecticFlow(Flow[DialecticState]):
 
     @listen(or_("iniciar_dialetica", "fazer_retry"))
     def rodar_rodada_dialetica(self):
-        print(f"\nRODADA {self.state.retry_count + 1}/{self.state.max_retries}\n")
+        print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
 
         task_vision = Task(
             description=f"""
-Objetivo: {self.state.feature_objective}
+Objective: {self.state.feature_objective}
 
-VISÃO MACRO DO SISTEMA:
+SYSTEM MACRO VISION:
 {self.state.vision_content}
 
-Leia VISION.md inteiro. Gere a tese inicial completa (proposta de PRD) incluindo:
-1. Nome da feature
-2. Objetivo claro
-3. Módulos afetados
-4. User stories (mínimo 3)
-5. Requisitos não-funcionais
-6. Riscos identificados
-7. Impacto macro
+Read VISION.md in its entirety. Generate the complete initial thesis (PRD proposal) including:
+1. Feature name
+2. Clear objective
+3. Affected modules
+4. User stories (minimum 3)
+5. Non-functional requirements
+6. Identified risks
+7. Macro impact
 """,
-            expected_output="Proposta inicial completa em formato PRD estruturado",
+            expected_output="Complete initial proposal in structured PRD format",
             agent=visionario,
         )
 
         task_critica = Task(
             description=f"""
-Aplique método socrático completo.
+Apply the full Socratic method.
 
-Analise a proposta do Visionário (no contexto) e liste TODAS:
-1. Falhas e pontos fracos
-2. Contradições com VISION.md
-3. Riscos de drift
-4. Overscope e dívida técnica
-5. Requisitos não-funcionais esquecidos
-6. User stories fracas ou incompletas
+Analyze the Visionary's proposal (in context) and list ALL:
+1. Flaws and weak points
+2. Contradictions with VISION.md
+3. Drift risks
+4. Overscope and technical debt
+5. Forgotten non-functional requirements
+6. Weak or incomplete user stories
 
-Seja implacável. Cada crítica deve ser específica e acionável.
+Be relentless. Each critique must be specific and actionable.
 """,
-            expected_output="Crítica detalhada com lista de problemas e nota",
+            expected_output="Detailed critique with list of issues and score",
             agent=critico_socratico,
             context=[task_vision],
         )
 
         task_sintese = Task(
             description=f"""
-Produza a síntese final incorporando TODAS as críticas (tese e antítese estão no contexto).
+Produce the final synthesis incorporating ALL critiques (thesis and antithesis are in context).
 
-A síntese deve:
-1. Preservar o que havia de bom na tese
-2. Incorporar TODAS as críticas da antítese
-3. Eliminar TODAS as fraquezas identificadas
-4. Ser melhor que ambas as propostas individuais
-5. Estar alinhada com VISION.md
+The synthesis must:
+1. Preserve what was good in the thesis
+2. Incorporate ALL critiques from the antithesis
+3. Eliminate ALL identified weaknesses
+4. Be better than both individual proposals
+5. Be aligned with VISION.md
 
-Output: PRD completo com user stories corrigidas, em formato estruturado (objetivo, macro_impact, user_stories, anti_drift_questions). Use risk_level em inglês (LOW/MEDIUM/HIGH) e effort em inglês (XS/S/M/L/XL) para compatibilidade com o schema.
+Output: Complete PRD with corrected user stories, in structured format (objective, macro_impact, user_stories, anti_drift_questions). Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
 """,
-            expected_output="Versão final refinada do PRD",
+            expected_output="Final refined version of the PRD",
             agent=sintetizador,
             context=[task_vision, task_critica],
         )
 
         task_validacao = Task(
             description=f"""
-Avalie a SÍNTESE FINAL (output do Sintetizador no contexto) e produza o PRD final.
+Evaluate the FINAL SYNTHESIS (output from the Synthesizer in context) and produce the final PRD.
 
-O PRD deve seguir exatamente a estrutura do PRDSchema:
+The PRD must follow exactly the PRDSchema structure:
 - feature_name, version, objective
 - macro_impact: {{ modules_affected, risk_level, performance_impact, security_impact }}
 - user_stories: [ {{ id, title, description, acceptance_criteria, effort, dependencies }} ]
 - anti_drift_questions: [ {{ question, answer }} ]
-- quality_score: float (uma casa decimal, 0-10)
-- consensus_reached: true ou false
+- quality_score: float (one decimal place, 0-10)
+- consensus_reached: true or false
 - final_validation_notes: string
 
-Use o conteúdo da síntese para preencher os campos. Se score < 9.0, explique em final_validation_notes o que falta.
+Use the synthesis content to fill in the fields. If score < 9.0, explain in final_validation_notes what is missing.
 
-Checklist para score: (1) Feature alinhada com visão macro? (2) Módulos afetados? (3) Riscos mitigados? (4) NFRs cobertos? (5) User stories consistentes? (6) 5+ anti-drift?
+Checklist for score: (1) Feature aligned with macro vision? (2) Affected modules? (3) Risks mitigated? (4) NFRs covered? (5) Consistent user stories? (6) 5+ anti-drift?
 
-OBRIGATÓRIO - use EXATAMENTE estes valores em inglês (nunca em português):
-- risk_level: apenas "LOW", "MEDIUM" ou "HIGH"
-- effort: apenas "XS", "S", "M", "L" ou "XL"
+MANDATORY - use EXACTLY these English values (never in Portuguese):
+- risk_level: only "LOW", "MEDIUM" or "HIGH"
+- effort: only "XS", "S", "M", "L" or "XL"
 """,
-            expected_output="PRDSchema válido com quality_score e consensus_reached",
+            expected_output="Valid PRDSchema with quality_score and consensus_reached",
             agent=validador_macro,
             output_pydantic=PRDSchema,
             guardrail=_prd_guardrail,
@@ -209,7 +209,7 @@ OBRIGATÓRIO - use EXATAMENTE estes valores em inglês (nunca em português):
                 self.state.prd_data = {"raw": raw_text[:5000]}
                 self.state.quality_score = 5.0
                 self.state.consensus_reached = False
-                self.state.final_validation_notes = "Falha ao extrair PRD (output_pydantic e parsing falharam)."
+                self.state.final_validation_notes = "Failed to extract PRD (output_pydantic and parsing both failed)."
                 os.makedirs(OUTPUT_DIR, exist_ok=True)
                 debug_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 debug_path = os.path.join(OUTPUT_DIR, f"debug_crew_output_{debug_ts}.txt")
@@ -217,7 +217,7 @@ OBRIGATÓRIO - use EXATAMENTE estes valores em inglês (nunca em português):
                     with open(debug_path, "w", encoding="utf-8") as f:
                         f.write("# Raw crew output (parse failed)\n\n")
                         f.write(raw_text if isinstance(raw_text, str) else str(raw_text))
-                    print(f"   Debug: raw output salvo em {debug_path}")
+                    print(f"   Debug: raw output saved to {debug_path}")
                 except OSError:
                     pass
 
@@ -229,17 +229,17 @@ OBRIGATÓRIO - use EXATAMENTE estes valores em inglês (nunca em português):
     @router(rodar_rodada_dialetica)
     def avaliar(self):
         if self.state.quality_score >= 9.0:
-            print(f"APROVADO! Quality score: {self.state.quality_score}")
+            print(f"APPROVED! Quality score: {self.state.quality_score}")
             return "aprovar"
         elif self.state.retry_count >= self.state.max_retries:
-            print(f"Max retries atingido. Finalizando com score: {self.state.quality_score}")
+            print(f"Max retries reached. Finishing with score: {self.state.quality_score}")
             return "aprovar"
         else:
             self.state.retry_count += 1
-            print(f"Reprovado. Retry #{self.state.retry_count}")
+            print(f"Rejected. Retry #{self.state.retry_count}")
             notes = self.state.final_validation_notes
             notes_str = notes[:200] if isinstance(notes, str) else str(notes)[:200]
-            print(f"   O que falta: {notes_str}...")
+            print(f"   What is missing: {notes_str}...")
             return "retry"
 
     @listen("retry")
@@ -287,13 +287,13 @@ OBRIGATÓRIO - use EXATAMENTE estes valores em inglês (nunca em português):
                 exporter = PRDExporter()
                 created_paths = exporter.export(prd, config)
                 logger.info("PRD exported via PRDExporter: %s", created_paths)
-                print(f"\nPRD APROVADO com nota {self.state.quality_score}!")
+                print(f"\nPRD APPROVED with score {self.state.quality_score}!")
                 for p in created_paths:
-                    print(f"Salvo em: {p}")
+                    print(f"Saved to: {p}")
                 return prd
             except Exception as e:
                 logger.exception("Failed to export PRD via PRDExporter: %s", e)
-                print("Falha ao exportar PRD via PRDExporter; caindo para salvamento local.")
+                print("Failed to export PRD via PRDExporter; falling back to local save.")
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         filename = f"{OUTPUT_DIR}/PRD_{timestamp}.json"
@@ -304,8 +304,8 @@ OBRIGATÓRIO - use EXATAMENTE estes valores em inglês (nunca em português):
         with open(filename_md, "w", encoding="utf-8") as f:
             f.write(prd_to_markdown(prd))
 
-        print(f"\nPRD APROVADO com nota {self.state.quality_score}!")
-        print(f"Salvo em: {filename}")
+        print(f"\nPRD APPROVED with score {self.state.quality_score}!")
+        print(f"Saved to: {filename}")
         print(f"Markdown: {filename_md}")
         return prd
 

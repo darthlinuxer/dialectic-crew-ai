@@ -1,5 +1,5 @@
 """
-Planejamento da execução: plano de implementação por user story (dialética).
+Execution planning: implementation plan per user story (dialectic).
 """
 
 from planning.flow import run_user_story_planning

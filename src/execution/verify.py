@@ -26,10 +26,10 @@ from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
 def _find_latest_plan() -> Path:
     base = Path(PRD_OUTPUT_DIR)
     if not base.exists():
-        raise FileNotFoundError(f"Diretório {PRD_OUTPUT_DIR} não encontrado.")
+        raise FileNotFoundError(f"Directory {PRD_OUTPUT_DIR} not found.")
     jsons = list(base.glob("exec_*.json"))
     if not jsons:
-        raise FileNotFoundError(f"Nenhum plano em {PRD_OUTPUT_DIR}/ (esperado exec_*.json)")
+        raise FileNotFoundError(f"No plan found in {PRD_OUTPUT_DIR}/ (expected exec_*.json)")
     return max(jsons, key=lambda p: p.stat().st_mtime)
 
 
@@ -40,7 +40,7 @@ def load_plan(plan_path: str | None) -> tuple[UserStoryExecutionPlan, str]:
     else:
         path = plan_path
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Plano não encontrado: {path}")
+        raise FileNotFoundError(f"Plan not found: {path}")
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return UserStoryExecutionPlan.model_validate(data), path
@@ -58,7 +58,7 @@ def _find_task(plan: UserStoryExecutionPlan, task_id: str) -> ImplementationTask
         if t.id.upper() == norm:
             return t
     available = [t.id for t in plan.tasks]
-    raise ValueError(f"Task '{task_id}' não encontrada. Disponíveis: {available}")
+    raise ValueError(f"Task '{task_id}' not found. Available: {available}")
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ def show_status(plan_path: str | None = None) -> dict:
 
     print(f"\n{'='*65}")
     print(f"  {plan.user_story_id} — {plan.user_story_title}")
-    print(f"  Score: {plan.quality_score}/10.0  |  Plano: {resolved}")
+    print(f"  Score: {plan.quality_score}/10.0  |  Plan: {resolved}")
     print(f"{'='*65}")
 
     counts = {"pending": 0, "in_progress": 0, "completed": 0, "failed": 0}
@@ -93,11 +93,11 @@ def show_status(plan_path: str | None = None) -> dict:
 
     total = len(plan.tasks)
     done = counts["completed"]
-    print(f"\n  Progresso: {done}/{total} concluídas", end="")
+    print(f"\n  Progress: {done}/{total} completed", end="")
     if counts["failed"]:
-        print(f", {counts['failed']} falharam", end="")
+        print(f", {counts['failed']} failed", end="")
     if counts["in_progress"]:
-        print(f", {counts['in_progress']} em andamento", end="")
+        print(f", {counts['in_progress']} in progress", end="")
     print(f"\n{'='*65}\n")
 
     return {
@@ -133,7 +133,7 @@ def mark_task(
     icon = _STATUS_ICONS.get(status, "[ ]")
     print(f"  {icon} {task.id} — {task.title} -> {status}")
     if notes:
-        print(f"      Notas: {notes}")
+        print(f"      Notes: {notes}")
     return {"task_id": task.id, "status": status, "plan_path": resolved}
 
 
@@ -205,7 +205,7 @@ def verify_task(
 
     ac_text = ""
     if acceptance_criteria:
-        ac_text = "\n\nACCEPTANCE CRITERIA da User Story (verifique se esta task contribui para atendê-los):\n"
+        ac_text = "\n\nACCEPTANCE CRITERIA for the User Story (verify whether this task contributes to meeting them):\n"
         ac_text += "\n".join(f"- {ac}" for ac in acceptance_criteria)
 
     from crewai import Task, Crew
@@ -214,20 +214,20 @@ def verify_task(
 
     verify_task_desc = Task(
         description=f"""
-Verifique se a task abaixo foi implementada corretamente no codebase.
+Verify whether the task below was correctly implemented in the codebase.
 
 TASK: {task.id} — {task.title}
-DESCRIÇÃO: {task.description}
+DESCRIPTION: {task.description}
 
-Use as ferramentas de leitura de arquivo para verificar se:
-1. Os arquivos/artefatos descritos na task existem
-2. O conteúdo está correto e alinhado com a descrição
-3. Não há erros óbvios
+Use the file reading tools to verify whether:
+1. The files/artifacts described in the task exist
+2. The content is correct and aligned with the description
+3. There are no obvious errors
 {ac_text}
 
-Responda com quality_score (0-10), consensus_reached (true se task está completa), e final_validation_notes explicando o que foi verificado.
+Respond with quality_score (0-10), consensus_reached (true if task is complete), and final_validation_notes explaining what was verified.
 """,
-        expected_output="ValidationOutput com quality_score, consensus_reached, final_validation_notes",
+        expected_output="ValidationOutput with quality_score, consensus_reached, final_validation_notes",
         agent=validador_macro,
         output_pydantic=ValidationOutput,
     )
@@ -242,7 +242,7 @@ Responda com quality_score (0-10), consensus_reached (true se task está complet
         verbose=True,
     )
 
-    print(f"\n  Verificando {task.id} — {task.title}...")
+    print(f"\n  Verifying {task.id} — {task.title}...")
     result = crew.kickoff()
 
     validation: ValidationOutput | None = None
@@ -258,8 +258,8 @@ Responda com quality_score (0-10), consensus_reached (true se task está complet
 
     if validation is None:
         raw = getattr(result, "raw", str(result))
-        print(f"  Falha ao obter resultado estruturado. Raw: {raw[:500]}")
-        return {"task_id": task.id, "verified": False, "notes": "Falha na verificação"}
+        print(f"  Failed to obtain structured result. Raw: {raw[:500]}")
+        return {"task_id": task.id, "verified": False, "notes": "Verification failed"}
 
     verified = validation.consensus_reached and validation.quality_score >= 7.0
     new_status: Literal["completed", "failed"] = "completed" if verified else "failed"
@@ -274,7 +274,7 @@ Responda com quality_score (0-10), consensus_reached (true se task está complet
     icon = _STATUS_ICONS.get(new_status, "[ ]")
     print(f"\n  {icon} {task.id} — score: {validation.quality_score}/10")
     print(f"      Status: {new_status}")
-    print(f"      Notas: {validation.final_validation_notes[:300]}")
+    print(f"      Notes: {validation.final_validation_notes[:300]}")
 
     return {
         "task_id": task.id,

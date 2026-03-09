@@ -1,17 +1,17 @@
 """
-Execução real do plano com CrewAI e método dialético.
-Ciclo por task: Implementer → Crítico → Sintetizador → Validador, com retry até score >= threshold.
+Real plan execution with CrewAI and dialectic method.
+Cycle per task: Implementer → Critic → Synthesizer → Validator, with retry until score >= threshold.
 
-Fluxo por task (via TaskExecutionFlow — CrewAI Flow nativo):
-  1. Dialectic cycle (implement → critique → synthesize → validate) com retries
+Flow per task (via TaskExecutionFlow — native CrewAI Flow):
+  1. Dialectic cycle (implement → critique → synthesize → validate) with retries
   2. Post-execution verification (A) + acceptance criteria (B)
   3. If verify fails → independent re-implementation (C) via @router
 
-Usa features nativas do CrewAI:
-- Flow com @start/@listen/@router para controle condicional
-- output_pydantic: structured output do Validador
-- Task guardrails: validação automática do output
-- Agent reasoning=True no verificador independente
+Uses native CrewAI features:
+- Flow with @start/@listen/@router for conditional control
+- output_pydantic: structured output from Validator
+- Task guardrails: automatic output validation
+- Agent reasoning=True on independent verifier
 """
 
 import json
@@ -43,11 +43,11 @@ DEFAULT_MIN_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
 def _find_latest_plan() -> Path:
     base = Path(PRD_OUTPUT_DIR)
     if not base.exists():
-        raise FileNotFoundError(f"Diretório {PRD_OUTPUT_DIR} não encontrado.")
+        raise FileNotFoundError(f"Directory {PRD_OUTPUT_DIR} not found.")
     jsons = list(base.glob("exec_*.json"))
     if not jsons:
         raise FileNotFoundError(
-            f"Nenhum plano de execução em {PRD_OUTPUT_DIR}/ (esperado exec_*.json)"
+            f"No execution plan found in {PRD_OUTPUT_DIR}/ (expected exec_*.json)"
         )
     return max(jsons, key=lambda p: p.stat().st_mtime)
 
@@ -90,23 +90,23 @@ def _build_task_context(
     current_task: ImplementationTask,
 ) -> str:
     lines = [
-        "## Plano de execução",
+        "## Execution plan",
         "",
         f"User Story: {plan.user_story_id} — {plan.user_story_title}",
-        f"Abordagem: {plan.approach_summary}",
+        f"Approach: {plan.approach_summary}",
         "",
-        "## Tasks já executadas (outputs)",
+        "## Previously executed tasks (outputs)",
         "",
     ]
     if not completed_outputs:
-        lines.append("Nenhuma task anterior ainda.")
+        lines.append("No previous tasks yet.")
     else:
         for tid, out in completed_outputs.items():
             lines.append(f"### {tid}")
             lines.append(out[:1500] + ("..." if len(out) > 1500 else ""))
             lines.append("")
     lines.extend([
-        "## Task atual a implementar",
+        "## Current task to implement",
         "",
         f"**{current_task.id} — {current_task.title}**",
         "",
@@ -126,7 +126,7 @@ def run_dialectic_execution(
     output_dir: str | None = None,
 ) -> dict:
     """
-    Executa o plano com CrewAI Flow nativo por task.
+    Execute the plan with native CrewAI Flow per task.
 
     Each task runs through TaskExecutionFlow:
       dialectic → @router → verify (A+B) → @router → reimplement (C) if needed
@@ -140,7 +140,7 @@ def run_dialectic_execution(
         vision_path = Path("VISION.md")
         if not vision_path.exists():
             raise FileNotFoundError(
-                "VISION.md não encontrado. Forneça vision_content ou execute no diretório do projeto."
+                "VISION.md not found. Provide vision_content or run from the project directory."
             )
         vision_content = vision_path.read_text(encoding="utf-8")
 
@@ -148,13 +148,13 @@ def run_dialectic_execution(
     if path is None or path == "--latest":
         path = str(_find_latest_plan())
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Plano não encontrado: {path}")
+        raise FileNotFoundError(f"Plan not found: {path}")
 
     plan = _load_plan(path)
     ordered_tasks = _topological_sort(plan.tasks)
 
     print(f"\n{'='*60}")
-    print(f"Executando plano — {plan.user_story_id} {plan.user_story_title}")
+    print(f"Executing plan — {plan.user_story_id} {plan.user_story_title}")
     print(f"Tasks: {len(ordered_tasks)} | Retries/task: {max_retries_per_task}")
     print(f"Flow: dialectic → verify(A+B) → reimplement(C) if needed")
     print(f"{'='*60}\n")
@@ -165,7 +165,7 @@ def run_dialectic_execution(
     for task in ordered_tasks:
         task_output_dir = run_dir / f"{task.id}_output"
         task_output_dir.mkdir(exist_ok=True)
-        print(f"\n>>> Executando task {task.id} — {task.title}")
+        print(f"\n>>> Executing task {task.id} — {task.title}")
 
         try:
             update_task_status(path, task.id, "in_progress")
@@ -203,7 +203,7 @@ def run_dialectic_execution(
                 )
 
         except Exception as exc:
-            print(f"   {task.id} falhou com exceção: {exc}")
+            print(f"   {task.id} failed with exception: {exc}")
             result = TaskExecutionResult(
                 task_id=task.id,
                 title=task.title,
@@ -211,7 +211,7 @@ def run_dialectic_execution(
                 score=0.0,
                 retry_count=max_retries_per_task,
                 output_paths=[],
-                validation_notes=f"Exceção: {exc}",
+                validation_notes=f"Exception: {exc}",
                 output_summary="",
             )
 
@@ -219,8 +219,8 @@ def run_dialectic_execution(
 
         if result.success:
             phases = " → ".join(result.execution_phases) if result.execution_phases else "dialectic"
-            print(f"   {task.id} APROVADA ({result.score}/10) [{phases}]")
-            completed_outputs[task.id] = result.output_summary or f"Task concluída. Score: {result.score}"
+            print(f"   {task.id} APPROVED ({result.score}/10) [{phases}]")
+            completed_outputs[task.id] = result.output_summary or f"Task completed. Score: {result.score}"
             try:
                 update_task_status(
                     path, task.id, "completed",
@@ -230,7 +230,7 @@ def run_dialectic_execution(
                 pass
         else:
             phases = " → ".join(result.execution_phases) if result.execution_phases else "dialectic"
-            print(f"   {task.id} FALHOU ({result.score}/10) [{phases}]")
+            print(f"   {task.id} FAILED ({result.score}/10) [{phases}]")
             try:
                 update_task_status(
                     path, task.id, "failed",

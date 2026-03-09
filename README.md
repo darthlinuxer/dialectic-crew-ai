@@ -1,179 +1,200 @@
 # Dialectic Crew AI
 
-> Sistema de geração automática de PRD usando dialética socrática/hegeliana com CrewAI.
+> Automated PRD generation using Socratic/Hegelian dialectics with CrewAI.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![CrewAI](https://img.shields.io/badge/CrewAI-1.10+-purple.svg)](https://crewai.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## O que é?
+## What is it?
 
-O **Dialectic Crew AI** gera PRDs (Product Requirement Documents) de alta qualidade usando um processo dialético:
+**Dialectic Crew AI** generates high-quality PRDs (Product Requirement Documents) through a dialectic process:
 
 ```
-TESE → ANTÍTESE → SÍNTESE → VALIDAÇÃO → (RETRY ATÉ 9.0)
+THESIS → ANTITHESIS → SYNTHESIS → VALIDATION → (RETRY UNTIL 9.0)
 ```
 
-- **Tese (Visionário)**: Propõe solução inicial
-- **Antítese (Crítico)**: Destrói a proposta com críticas
-- **Síntese (Sintetizador)**: Funde as ideias na melhor versão
-- **Validação (Gate)**: Aprova se score >= 9.0
+- **Thesis (Visionary)**: Proposes the initial solution
+- **Antithesis (Critic)**: Challenges the proposal with rigorous critique
+- **Synthesis (Synthesizer)**: Merges ideas into a superior version
+- **Validation (Gate)**: Approves if score >= 9.0
 
 ## Features
 
-- 4 agentes IA trabalhando em harmonia (modelos OpenAI por tier)
-- Retry automático até atingir nota 9.0
-- Validação Pydantic com `output_pydantic` nativo do CrewAI
-- Task Guardrails para validação automática de output
-- Timeout nativo com `akickoff()` + `asyncio.wait_for()`
-- Anti-drift: todos os agentes leem VISION.md
-- Task tracking: status, verificação com LLM, acceptance criteria
-- Dual export: JSON + Markdown com YAML frontmatter
+- 4 AI agents working in harmony (OpenAI models by tier)
+- Automatic retry until quality score reaches 9.0
+- Pydantic validation with native CrewAI `output_pydantic`
+- Task Guardrails for automatic output validation
+- Native timeout with `akickoff()` + `asyncio.wait_for()`
+- Anti-drift: all agents read VISION.md before acting
+- Task tracking: status, LLM-based verification, acceptance criteria
+- Three-phase execution pipeline: Dialectic → Verify (A+B) → Reimplement (C) via `@router`
+- Dual export: JSON + Markdown with YAML frontmatter
 
-## Instalação
+## Installation
 
 ```bash
-# Clone e instale
 git clone <repo-url>
 cd dialectic-crew-ai
 uv sync
 
 # Configure API key
 cp .env.example .env
-# Edite .env e adicione OPENAI_API_KEY=sk-...
+# Edit .env and add OPENAI_API_KEY=sk-...
 ```
 
-## Uso (CLI)
+## Usage (CLI)
 
-### Gerar PRD
+### Generate PRD
 
 ```bash
-python main.py prd "Login com 2FA"
+python main.py prd "Login with 2FA"
 ```
 
-### Planejar execução de user story
+### Plan user story execution
 
 ```bash
-# Último PRD, primeira user story
+# Latest PRD, first user story
 python main.py plan
 
-# PRD e user story específicos
+# Specific PRD and user story
 python main.py plan prd_output/PRD_20260308_1640.json US1
 ```
 
-### Executar plano com dialética
+### Execute plan with dialectic
 
 ```bash
-# Usa o plano mais recente
+# Uses the latest plan
 python main.py execute
 
-# Plano específico
+# Specific plan
 python main.py execute prd_output/exec_US1_20260308_1750.json
 
-# Apenas gerar spec Markdown (sem LLM)
+# Generate spec Markdown only (no LLM)
 python main.py execute --spec-only
 ```
 
-### Verificar status das tasks
+### Check task status
 
 ```bash
-# Status de todas as tasks do plano mais recente
+# Status of all tasks from the latest plan
 python main.py status
 
-# Plano específico
+# Specific plan
 python main.py status prd_output/exec_US1_20260308_1750.json
 ```
 
-### Marcar task manualmente
+### Manually mark a task
 
 ```bash
-# Marcar como concluída
 python main.py mark T0 completed
-
-# Marcar como falhada (com plano específico)
 python main.py mark T3 failed prd_output/exec_US1_20260308_1750.json
 ```
 
-### Verificar task com agente LLM
+### Verify task with LLM agent
 
 ```bash
-# Verifica se a task foi implementada corretamente
+# Verify if a task was implemented correctly
 python main.py verify T0
 
-# Com PRD para verificar acceptance criteria
+# With PRD to check acceptance criteria
 python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 ```
 
-### CLI alternativa (override de output format)
+### Alternative CLI (output format override)
 
 ```bash
-python -m main.cli "Login com 2FA" --output-format both
+python -m main.cli "Login with 2FA" --output-format both
 ```
 
-## Configuração (.env)
+## Configuration (.env)
 
-| Variável | Descrição | Default |
-|----------|-----------|---------|
-| `OPENAI_API_KEY` | API key da OpenAI | (obrigatório) |
-| `LLM_MODEL_SIMPLE` | Modelo para tasks leves (validação) | `gpt-4o-mini` |
-| `LLM_MODEL_COMPLEX` | Modelo para tasks complexas (implementação, crítica) | `gpt-4o` |
-| `LLM_MODEL_REASONING` | Modelo para arquitetura e decisões macro | `o3-mini` |
-| `LLM_REQUEST_TIMEOUT` | Timeout por request LLM (segundos) | `900` |
-| `PRD_OUTPUT_FORMAT` | Formato de export do PRD: `json`, `md`, `both` | `json` |
-| `PRD_OUTPUT_DIR` | Diretório de saída do PRD | `prd_output` |
-| `MAX_RETRIES_PER_TASK` | Retries por task no ciclo dialético | `3` |
-| `MIN_QUALITY_SCORE` | Score mínimo para aprovar task (0-10) | `7.5` |
-| `CREW_KICKOFF_TIMEOUT` | Timeout total para crew.akickoff() (segundos) | `300` |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | OpenAI API key | (required) |
+| `LLM_MODEL_SIMPLE` | Model for lightweight tasks (validation) | `gpt-4o-mini` |
+| `LLM_MODEL_COMPLEX` | Model for complex tasks (implementation, critique) | `gpt-4o` |
+| `LLM_MODEL_REASONING` | Model for architecture and macro decisions | `o3-mini` |
+| `LLM_REQUEST_TIMEOUT` | Timeout per LLM request (seconds) | `900` |
+| `PRD_OUTPUT_FORMAT` | PRD export format: `json`, `md`, `both` | `json` |
+| `PRD_OUTPUT_DIR` | PRD output directory | `prd_output` |
+| `MAX_RETRIES_PER_TASK` | Retries per task in dialectic cycle | `3` |
+| `MIN_QUALITY_SCORE` | Minimum score to approve a task (0-10) | `7.5` |
+| `CREW_KICKOFF_TIMEOUT` | Total timeout for crew.kickoff() (seconds) | `300` |
 
-## Formato do Markdown exportado
+## Execution Pipeline
 
-O Markdown gerado inclui YAML frontmatter com metadados de auditoria:
+Each task runs through a CrewAI Flow (`TaskExecutionFlow`) with conditional routing:
+
+```
+@start() run_dialectic
+    │
+    ▼
+@router evaluate_dialectic
+    ├── "verify"  → verify_implementation (Phase A + B)
+    │                    │
+    │              @router evaluate_verification
+    │                    ├── "completed" → done ✓
+    │                    └── "reimplement" → independent_reimplement (Phase C)
+    │                                        ├── "completed" ✓
+    │                                        └── "failed" ✗
+    └── "failed" → done ✗
+```
+
+## Exported Markdown Format
+
+Generated Markdown includes YAML frontmatter with audit metadata:
 
 ```yaml
 ---
 quality_score: 9.2
 validation_status: approved
 generated_at: 2026-03-08T20:00:00Z
-vision_hash: a1b2c3d4...  # SHA-256 de VISION.md
+vision_hash: a1b2c3d4...  # SHA-256 of VISION.md
 ---
 ```
 
-Seções do corpo:
-- `# Objetivo`
-- `## Macro Impact`
-- `## User Stories` (com acceptance criteria e effort)
-- `## Anti-Drift Questions`
+Body sections: `# Objective`, `## Macro Impact`, `## User Stories`, `## Anti-Drift Questions`
 
-## Estrutura do projeto
+## Project Structure
 
 ```
 dialectic-crew-ai/
-├── main.py                  # CLI principal (prd, plan, execute, status, mark, verify)
-├── schemas.py               # Modelos Pydantic (PRD, tasks, execução)
-├── VISION.md                # Visão macro do sistema
-├── dialectic/               # Core dialético
-│   ├── agents.py            # Agentes CrewAI (tiers de modelo)
-│   ├── prd_flow.py          # Flow principal (tese→antítese→síntese→validação)
-│   ├── state.py             # Estado do flow
-│   ├── export.py            # Exportador dual (JSON+MD) com atomicidade
-│   ├── config.py            # Configuração de exportação
-│   └── tools.py             # Ferramentas CrewAI (FileRead, FileWrite)
-├── planning/                # Planejamento de user stories
-│   └── flow.py              # Ciclo dialético para planos de execução
-├── execution/               # Execução de planos
-│   ├── dialectic_execution.py  # Execução com ciclo dialético por task
-│   ├── runner.py            # Geração de spec Markdown
-│   └── verify.py            # Task tracking e verificação
-├── tests/                   # Testes unitários
-└── prd_output/              # PRDs e planos gerados
+├── main.py                        # Bootstrap entry point
+├── run_dialectic.py               # Convenience: full dialectic flow
+├── run_simple.py                  # Convenience: single-pass (no retry)
+├── run_user_story_dialectic.py    # Convenience: plan a user story
+├── pyproject.toml                 # Project config (uv/pip, package-dir=src)
+├── VISION.md                      # System macro vision
+├── .env                           # API keys and config (not committed)
+├── tests/                         # Unit tests (26 tests)
+│   └── test_*.py
+└── src/                           # All packages
+    ├── schemas.py                 # Pydantic models (PRD, tasks, execution)
+    ├── dialectic/                 # Dialectic core
+    │   ├── agents.py              # CrewAI agents (model tiers)
+    │   ├── prd_flow.py            # Main flow (thesis→antithesis→synthesis→validation)
+    │   ├── state.py               # Flow state
+    │   ├── export.py              # Dual exporter (JSON+MD) with atomicity
+    │   ├── config.py              # Export configuration
+    │   └── tools.py               # CrewAI tools (FileRead, FileWrite)
+    ├── planning/                  # User story planning
+    │   └── flow.py                # Dialectic cycle for execution plans
+    ├── execution/                 # Plan execution
+    │   ├── dialectic_execution.py # Orchestrator: runs TaskExecutionFlow per task
+    │   ├── task_flow.py           # CrewAI Flow: dialectic→verify→reimplement
+    │   ├── runner.py              # Spec Markdown generation
+    │   └── verify.py              # Task tracking and LLM verification
+    └── main/                      # CLI
+        └── cli.py                 # Full CLI (prd, plan, execute, status, mark, verify)
 ```
 
-## Testes
+## Tests
 
 ```bash
-# Rodar todos os testes unitários
+# Run all unit tests
 uv run python -m pytest tests/ -v --ignore=tests/test_llm_tooling.py
 
-# Rodar teste de tool calling (requer API key)
+# Run tool calling test (requires API key)
 uv run python tests/test_llm_tooling.py
 ```

@@ -112,56 +112,56 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
         for retry in range(self.state.max_retries + 1):
             if synthesis_for_retry is None:
                 tese_input = f"""
-TASK A IMPLEMENTAR: {self.state.task_id} — {self.state.task_title}
+TASK TO IMPLEMENT: {self.state.task_id} — {self.state.task_title}
 
 {self.state.task_description}
 
-CONTEXTO:
+CONTEXT:
 {self.state.context_str}
 
-VISION.md (leia antes de implementar):
+VISION.md (read before implementing):
 {self.state.vision_content[:4000]}
 """
             else:
                 tese_input = f"""
-RETRY {retry}/{self.state.max_retries} — Incorpore TODOS os refinamentos abaixo.
+RETRY {retry}/{self.state.max_retries} — Incorporate ALL refinements below.
 
 TASK: {self.state.task_id} — {self.state.task_title}
 
-CRÍTICAS E REFINAMENTOS:
+CRITIQUES AND REFINEMENTS:
 {synthesis_for_retry[:3000]}
 
-Implemente novamente incorporando esses refinamentos.
+Re-implement incorporating these refinements.
 """
 
             task_impl = Task(
                 description=tese_input,
-                expected_output="Descrição do que foi implementado e arquivos criados/modificados",
+                expected_output="Description of what was implemented and files created/modified",
                 agent=implementer,
             )
             task_critica = Task(
                 description=f"""
-Analise a implementação da task {self.state.task_id} — {self.state.task_title}.
-ESCOPO: Avalie SOMENTE se atende à descrição: \"\"\"{self.state.task_description}\"\"\"
-NÃO critique fora do escopo. NÃO peça features adicionais.
+Analyze the implementation of task {self.state.task_id} — {self.state.task_title}.
+SCOPE: Evaluate ONLY whether it meets the description: \"\"\"{self.state.task_description}\"\"\"
+Do NOT critique outside the scope. Do NOT request additional features.
 """,
-                expected_output="Crítica detalhada da implementação",
+                expected_output="Detailed critique of the implementation",
                 agent=critico_socratico,
                 context=[task_impl],
             )
             task_sintese = Task(
                 description=f"""
-Produza a SÍNTESE para a task {self.state.task_id}: incorpore TODAS as críticas.
-Inclua instruções claras para retry se necessário.
+Produce the SYNTHESIS for task {self.state.task_id}: incorporate ALL critiques.
+Include clear instructions for retry if necessary.
 """,
-                expected_output="Síntese refinada com instruções",
+                expected_output="Refined synthesis with instructions",
                 agent=sintetizador,
                 context=[task_impl, task_critica],
             )
             task_val = Task(
                 description=f"""
-Avalie a implementação da task {self.state.task_id}.
-Score mínimo para aprovação: {self.state.min_score}
+Evaluate the implementation of task {self.state.task_id}.
+Minimum score for approval: {self.state.min_score}
 """,
                 expected_output="ValidationOutput",
                 agent=validador_macro,
@@ -200,7 +200,7 @@ Score mínimo para aprovação: {self.state.min_score}
                 self.state.dialectic_success = True
                 self.state.dialectic_retries = retry
                 self.state.impl_output = impl_raw
-                print(f"   {self.state.task_id} dialética aprovada (score {score}/10)")
+                print(f"   {self.state.task_id} dialectic approved (score {score}/10)")
                 return "passed"
 
             if tasks_out and len(tasks_out) >= 3:
@@ -209,13 +209,13 @@ Score mínimo para aprovação: {self.state.min_score}
                 synthesis_for_retry = notes
 
             if retry < self.state.max_retries:
-                print(f"   {self.state.task_id} reprovada (score {score}/10), retry {retry + 1}")
+                print(f"   {self.state.task_id} rejected (score {score}/10), retry {retry + 1}")
 
         self.state.dialectic_score = score
         self.state.dialectic_notes = notes
         self.state.dialectic_success = False
         self.state.dialectic_retries = self.state.max_retries
-        print(f"   {self.state.task_id} dialética falhou ({score}/10)")
+        print(f"   {self.state.task_id} dialectic failed ({score}/10)")
         return "failed"
 
     @router(run_dialectic)
@@ -231,14 +231,14 @@ Score mínimo para aprovação: {self.state.min_score}
 
         checks_text = ""
         if self.state.acceptance_checks:
-            checks_text = "\n\nACCEPTANCE CHECKS (verifique cada um):\n"
+            checks_text = "\n\nACCEPTANCE CHECKS (verify each one):\n"
             checks_text += "\n".join(f"- {c}" for c in self.state.acceptance_checks)
 
         verify_agent = Agent(
-            role="Verificador Independente",
-            goal="Verificar se artefatos de implementação existem no codebase",
-            backstory="Você verifica implementações lendo arquivos reais do projeto. "
-                      "Seja objetivo: o artefato existe ou não existe.",
+            role="Independent Verifier",
+            goal="Verify whether implementation artifacts exist in the codebase",
+            backstory="You verify implementations by reading actual project files. "
+                      "Be objective: the artifact either exists or it does not.",
             verbose=True,
             allow_delegation=False,
             reasoning=True,
@@ -249,20 +249,20 @@ Score mínimo para aprovação: {self.state.min_score}
 
         task_verify = Task(
             description=f"""
-Verifique se a task {self.state.task_id} — {self.state.task_title} foi implementada.
+Verify whether task {self.state.task_id} — {self.state.task_title} was implemented.
 
-DESCRIÇÃO DA TASK:
+TASK DESCRIPTION:
 {self.state.task_description}
 
-Use a ferramenta de leitura de arquivo para verificar se os artefatos existem.
-Para cada check, verifique se o arquivo/função/config realmente existe.
+Use the file reading tool to verify whether the artifacts exist.
+For each check, verify whether the file/function/config actually exists.
 {checks_text}
 
-Preencha:
-- verified: true se TODOS os artefatos essenciais existem
-- checks_passed: lista de checks que passaram
-- checks_failed: lista de checks que falharam
-- notes: explicação do que foi verificado
+Fill in:
+- verified: true if ALL essential artifacts exist
+- checks_passed: list of checks that passed
+- checks_failed: list of checks that failed
+- notes: explanation of what was verified
 """,
             expected_output="VerificationResult",
             agent=verify_agent,
@@ -291,13 +291,13 @@ Preencha:
         else:
             self.state.verified = False
             self.state.verification = VerificationResult(
-                verified=False, notes="Falha ao obter VerificationResult estruturado"
+                verified=False, notes="Failed to obtain structured VerificationResult"
             )
 
         status = "PASSED" if self.state.verified else "FAILED"
-        print(f"   {self.state.task_id} verificação: {status}")
+        print(f"   {self.state.task_id} verification: {status}")
         if self.state.verification.checks_failed:
-            print(f"      Checks falharam: {self.state.verification.checks_failed}")
+            print(f"      Failed checks: {self.state.verification.checks_failed}")
         return "done"
 
     @router(verify_implementation)
@@ -310,16 +310,16 @@ Preencha:
     def independent_reimplement(self):
         """Phase C: Fresh re-implementation by independent agent (no dialectic context)."""
         self.state.phases_executed.append("reimplement")
-        print(f"   {self.state.task_id} iniciando re-implementação independente (Phase C)...")
+        print(f"   {self.state.task_id} starting independent re-implementation (Phase C)...")
 
         failed_checks = self.state.verification.checks_failed
         failed_text = "\n".join(f"- {c}" for c in failed_checks) if failed_checks else "N/A"
 
         reimpl_agent = Agent(
-            role="Implementador Independente",
-            goal="Corrigir implementação falhada baseado nos checks que não passaram",
-            backstory="Você é um implementador focado em corrigir gaps específicos. "
-                      "Leia os arquivos existentes, identifique o que falta, e corrija.",
+            role="Independent Implementer",
+            goal="Fix failed implementation based on checks that did not pass",
+            backstory="You are an implementer focused on fixing specific gaps. "
+                      "Read existing files, identify what is missing, and fix it.",
             verbose=True,
             allow_delegation=False,
             reasoning=True,
@@ -330,27 +330,27 @@ Preencha:
 
         task_fix = Task(
             description=f"""
-A task {self.state.task_id} — {self.state.task_title} foi implementada mas a verificação falhou.
+Task {self.state.task_id} — {self.state.task_title} was implemented but verification failed.
 
-DESCRIÇÃO DA TASK:
+TASK DESCRIPTION:
 {self.state.task_description}
 
-CHECKS QUE FALHARAM:
+FAILED CHECKS:
 {failed_text}
 
-NOTAS DA VERIFICAÇÃO:
+VERIFICATION NOTES:
 {self.state.verification.notes[:2000]}
 
-Corrija APENAS os gaps identificados. Use as ferramentas de leitura e escrita de arquivos.
+Fix ONLY the identified gaps. Use the file reading and writing tools.
 """,
-            expected_output="Descrição do que foi corrigido",
+            expected_output="Description of what was fixed",
             agent=reimpl_agent,
         )
 
         task_revalidate = Task(
             description=f"""
-Avalie se a correção da task {self.state.task_id} resolveu os problemas.
-Score mínimo: {self.state.min_score}
+Evaluate whether the fix for task {self.state.task_id} resolved the issues.
+Minimum score: {self.state.min_score}
 """,
             expected_output="ValidationOutput",
             agent=validador_macro,
@@ -381,12 +381,12 @@ Score mínimo: {self.state.min_score}
             self.state.reimplement_success = True
             impl_raw = getattr(tasks_out[0], "raw", "") if tasks_out else ""
             self.state.reimplement_output = impl_raw
-            print(f"   {self.state.task_id} re-implementação aprovada ({validation.quality_score}/10)")
+            print(f"   {self.state.task_id} re-implementation approved ({validation.quality_score}/10)")
         else:
             score = validation.quality_score if validation else 0.0
             self.state.reimplement_score = score
             self.state.reimplement_success = False
-            print(f"   {self.state.task_id} re-implementação falhou ({score}/10)")
+            print(f"   {self.state.task_id} re-implementation failed ({score}/10)")
         return "done"
 
     @router(independent_reimplement)
@@ -415,7 +415,7 @@ Score mínimo: {self.state.min_score}
         best_output = self.state.reimplement_output or self.state.impl_output
         notes = self.state.dialectic_notes
         if self.state.verification.notes:
-            notes += f" | Verificação: {self.state.verification.notes[:300]}"
+            notes += f" | Verification: {self.state.verification.notes[:300]}"
 
         return TaskExecutionResult(
             task_id=self.state.task_id,

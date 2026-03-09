@@ -1,11 +1,11 @@
 """
-Ponto de entrada principal do Dialectic Crew AI.
+Main entry point for Dialectic Crew AI.
 
-Comandos:
-  python main.py prd "sua feature request"   — gera PRD com dialética
-  python main.py plan [prd.json] [US-001]   — planeja execução de uma user story
-  python main.py execute [plan.json|--latest] — gera artefato de execução do plano
-  python main.py "sua feature request"       — compatível: equivale a prd
+Commands:
+  python main.py prd "your feature request"   — generates PRD with dialectic
+  python main.py plan [prd.json] [US-001]   — plans execution of a user story
+  python main.py execute [plan.json|--latest] — generates execution artifact from plan
+  python main.py "your feature request"       — compatible: equivalent to prd
 """
 
 import sys
@@ -28,73 +28,73 @@ BANNER = """
 ║                                                              ║
 ║     DIALECTIC CREW AI - PRD & Planning v1.1                   ║
 ║                                                              ║
-║     Dialética: Tese → Antítese → Síntese → Validação         ║
-║     Comandos: prd | plan | execute | status | verify | help   ║
+║     Dialectic: Thesis → Antithesis → Synthesis → Validation   ║
+║     Commands: prd | plan | execute | status | verify | help   ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
 HELP_TEXT = """
-Uso:
-  python main.py <comando> [argumentos...]
-  dialectic-crew <comando> [argumentos...]
+Usage:
+  python main.py <command> [arguments...]
+  dialectic-crew <command> [arguments...]
 
-Comandos:
+Commands:
 
-  prd "sua feature request"
-      Gera um PRD (Product Requirement Document) usando o método dialético
-      (tese → antítese → síntese → validação). Requer VISION.md no diretório atual.
-      Salva em prd_output/ (JSON + Markdown).
-      Ex.: python main.py prd "Login com 2FA"
+  prd "your feature request"
+      Generates a PRD (Product Requirement Document) using the dialectic method
+      (thesis → antithesis → synthesis → validation). Requires VISION.md in the current directory.
+      Saves to prd_output/ (JSON + Markdown).
+      Ex.: python main.py prd "Login with 2FA"
 
-  plan [prd.json] [US-001|índice]
-      Planeja a execução de uma user story com dialética. Gera um plano
-      (UserStoryExecutionPlan) com tasks e score. Por padrão usa o último
-      PRD em prd_output/ e a primeira user story.
-      Salva em prd_output/ (exec_<US>_<timestamp>.json e .md).
+  plan [prd.json] [US-001|index]
+      Plans the execution of a user story with dialectic. Generates a plan
+      (UserStoryExecutionPlan) with tasks and score. By default uses the latest
+      PRD in prd_output/ and the first user story.
+      Saves to prd_output/ (exec_<US>_<timestamp>.json and .md).
       Ex.: python main.py plan
            python main.py plan prd_output/PRD_20260308_1640.json US1
 
   execute [plan.json|--latest] [--spec-only]
-      Executa o plano com CrewAI e dialética por task. Cada task passa por
-      Tese → Antítese → Síntese → Validação; retry até score >= 9.0.
-      Use --spec-only para apenas gerar spec em Markdown (comportamento legado).
-      Por padrão usa o plano mais recente em prd_output/ (exec_*.json).
-      Salva em exec_output/<run_id>/ (report.json, outputs).
+      Executes the plan with CrewAI and dialectic per task. Each task goes through
+      Thesis → Antithesis → Synthesis → Validation; retry until score >= 9.0.
+      Use --spec-only to only generate a spec in Markdown (legacy behavior).
+      By default uses the most recent plan in prd_output/ (exec_*.json).
+      Saves to exec_output/<run_id>/ (report.json, outputs).
       Ex.: python main.py execute
            python main.py execute prd_output/exec_US1_20260308_1200.json
            python main.py execute --spec-only
 
   status [plan.json|--latest]
-      Mostra o status de todas as tasks do plano (pending, in_progress,
-      completed, failed). Por padrão usa o plano mais recente.
+      Shows the status of all tasks in the plan (pending, in_progress,
+      completed, failed). By default uses the most recent plan.
       Ex.: python main.py status
            python main.py status prd_output/exec_US1_20260308_1750.json
 
   mark <task_id> <status> [plan.json]
-      Marca manualmente o status de uma task.
-      Status válidos: pending, in_progress, completed, failed
+      Manually marks the status of a task.
+      Valid statuses: pending, in_progress, completed, failed
       Ex.: python main.py mark T0 completed
            python main.py mark T3 failed prd_output/exec_US1_20260308_1750.json
 
   verify <task_id> [plan.json] [--prd prd.json]
-      Verifica se uma task foi implementada corretamente usando um agente LLM.
-      O agente lê os arquivos do projeto e valida contra a descrição da task
-      e os acceptance criteria da user story (se --prd fornecido).
-      Atualiza automaticamente o status da task no plano.
+      Verifies whether a task was correctly implemented using an LLM agent.
+      The agent reads the project files and validates against the task description
+      and the user story acceptance criteria (if --prd is provided).
+      Automatically updates the task status in the plan.
       Ex.: python main.py verify T0
            python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 
   help, -h, --help
-      Mostra esta mensagem.
+      Shows this message.
 
-Compatibilidade:
-  python main.py "sua feature"
-      Equivale a: python main.py prd "sua feature"
+Compatibility:
+  python main.py "your feature"
+      Equivalent to: python main.py prd "your feature"
 
-Requisitos:
-  - VISION.md no diretório atual (para prd e plan)
-  - API key no .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, MINIMAX_API_KEY ou GROQ_API_KEY)
+Requirements:
+  - VISION.md in the current directory (for prd and plan)
+  - API key in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, MINIMAX_API_KEY or GROQ_API_KEY)
 """
 
 
@@ -106,14 +106,14 @@ def _check_api_key():
         or os.getenv("GROQ_API_KEY")
     )
     if not has:
-        print("  Configure sua API key primeiro!")
-        print("   Copie .env.example para .env e adicione a key\n")
+        print("  Configure your API key first!")
+        print("   Copy .env.example to .env and add the key\n")
     return has
 
 
 def _read_vision():
     if not os.path.exists("VISION.md"):
-        print("  VISION.md não encontrado!")
+        print("  VISION.md not found!")
         sys.exit(1)
     with open("VISION.md", "r", encoding="utf-8") as f:
         return f.read()
@@ -127,10 +127,10 @@ def cmd_prd(feature_request: str):
     flow.kickoff()
     state = flow.state
     print("\n" + "=" * 60)
-    print("PROCESSO DIALETICO CONCLUIDO!")
+    print("DIALECTIC PROCESS COMPLETE!")
     print("=" * 60)
     print(f"Quality Score: {state.quality_score}/10.0")
-    print(f"Total rodadas: {state.retry_count + 1}")
+    print(f"Total rounds: {state.retry_count + 1}")
     print(f"Consensus: {state.consensus_reached}")
     print("=" * 60)
 
@@ -138,7 +138,7 @@ def cmd_prd(feature_request: str):
 def cmd_plan(prd_path: str | None, us_ref: str | None):
     vision = _read_vision()
     if prd_path and not os.path.exists(prd_path):
-        print(f"PRD nao encontrado: {prd_path}")
+        print(f"PRD not found: {prd_path}")
         sys.exit(1)
     result = run_user_story_planning(prd_path, us_ref, vision)
     print(f"Score: {result['quality_score']}/10.0")
@@ -148,19 +148,19 @@ def cmd_execute(plan_path: str | None, spec_only: bool = False):
     try:
         if spec_only:
             result = run_execution(plan_path=plan_path or "--latest")
-            print(f"\nSpec gerado: {result['output_path']}")
-            print(f"   Plano: {result['plan_id']} -- {result['plan_title']}")
+            print(f"\nSpec generated: {result['output_path']}")
+            print(f"   Plan: {result['plan_id']} -- {result['plan_title']}")
         else:
             vision = _read_vision()
             result = run_dialectic_execution(
                 plan_path=plan_path or "--latest",
                 vision_content=vision,
             )
-            status = "todas as tasks concluidas" if result["overall_success"] else "algumas tasks falharam"
-            print(f"\nExecucao concluida: {result['output_path']}")
-            print(f"   Plano: {result['plan_id']} -- {result['plan_title']}")
+            status = "all tasks completed" if result["overall_success"] else "some tasks failed"
+            print(f"\nExecution complete: {result['output_path']}")
+            print(f"   Plan: {result['plan_id']} -- {result['plan_title']}")
             print(f"   Status: {status}")
-            print(f"   Relatorio: {result['report_path']}")
+            print(f"   Report: {result['report_path']}")
     except FileNotFoundError as e:
         print(f"{e}")
         sys.exit(1)
@@ -177,7 +177,7 @@ def cmd_status(plan_path: str | None):
 def cmd_mark(task_id: str, status: str, plan_path: str | None):
     valid = ("pending", "in_progress", "completed", "failed")
     if status not in valid:
-        print(f"  Status invalido: '{status}'. Use: {', '.join(valid)}")
+        print(f"  Invalid status: '{status}'. Use: {', '.join(valid)}")
         sys.exit(1)
     try:
         mark_task(task_id, status, plan_path)  # type: ignore[arg-type]
@@ -190,9 +190,9 @@ def cmd_verify(task_id: str, plan_path: str | None, prd_path: str | None):
     try:
         result = verify_task(task_id, plan_path, prd_path)
         if result["verified"]:
-            print(f"\n  Task {task_id} verificada com sucesso!")
+            print(f"\n  Task {task_id} verified successfully!")
         else:
-            print(f"\n  Task {task_id} NAO passou na verificacao.")
+            print(f"\n  Task {task_id} did NOT pass verification.")
     except (FileNotFoundError, ValueError) as e:
         print(f"  {e}")
         sys.exit(1)
@@ -206,8 +206,8 @@ def main():
     args = sys.argv[1:]
     if not args:
         print(BANNER)
-        print("Uso: python main.py <comando> [argumentos...]")
-        print("      python main.py help   para ver todos os comandos.\n")
+        print("Usage: python main.py <command> [arguments...]")
+        print("       python main.py help   to see all commands.\n")
         sys.exit(1)
 
     sub = args[0].lower()
@@ -221,7 +221,7 @@ def main():
 
     if sub == "prd":
         if len(args) < 2:
-            print("Informe a feature: python main.py prd 'sua feature aqui'")
+            print("Provide the feature: python main.py prd 'your feature here'")
             sys.exit(1)
         cmd_prd(" ".join(args[1:]))
         return
@@ -242,8 +242,8 @@ def main():
         return
     if sub == "mark":
         if len(args) < 3:
-            print("Uso: python main.py mark <task_id> <status> [plan.json]")
-            print("  Status validos: pending, in_progress, completed, failed")
+            print("Usage: python main.py mark <task_id> <status> [plan.json]")
+            print("  Valid statuses: pending, in_progress, completed, failed")
             sys.exit(1)
         task_id = args[1]
         status = args[2]
@@ -252,7 +252,7 @@ def main():
         return
     if sub == "verify":
         if len(args) < 2:
-            print("Uso: python main.py verify <task_id> [plan.json] [--prd prd.json]")
+            print("Usage: python main.py verify <task_id> [plan.json] [--prd prd.json]")
             sys.exit(1)
         task_id = args[1]
         remaining = [a for a in args[2:] if not a.startswith("-")]
@@ -269,7 +269,7 @@ def main():
         cmd_prd(args[0])
         return
 
-    print("Comando desconhecido. Use: prd | plan | execute | help")
+    print("Unknown command. Use: prd | plan | execute | help")
     sys.exit(1)
 
 

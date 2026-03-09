@@ -1,6 +1,6 @@
 """
-Testes de validação do fluxo (sem chamadas LLM).
-Valida: carregar PRD, export MD, plano de execução, get user story.
+Flow validation tests (no LLM calls).
+Validates: load PRD, export MD, execution plan, get user story.
 """
 
 import json
@@ -15,10 +15,10 @@ from dialectic.export import prd_to_markdown, execution_plan_to_markdown
 
 
 def test_load_prd_and_export_md():
-    """Carrega PRD fixture e gera Markdown."""
+    """Load PRD fixture and generate Markdown."""
     path = Path(__file__).parent.parent / "prd_output" / "PRD_test_fixture.json"
     if not path.exists():
-        print("⚠️ Fixture não encontrado:", path)
+        print("Fixture not found:", path)
         return False
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -27,39 +27,39 @@ def test_load_prd_and_export_md():
     assert "PRD — Login com 2FA" in md
     assert "US-001" in md and "US-002" in md
     assert "Configurar 2FA" in md
-    print("✅ PRD load + prd_to_markdown OK")
+    print("PRD load + prd_to_markdown OK")
     return True
 
 
 def test_execution_plan_export_md():
-    """Gera Markdown a partir de UserStoryExecutionPlan."""
+    """Generate Markdown from UserStoryExecutionPlan."""
     plan = UserStoryExecutionPlan(
         user_story_id="US-001",
-        user_story_title="Configurar 2FA",
-        approach_summary="Implementar fluxo de configuração com TOTP e QR code.",
+        user_story_title="Configure 2FA",
+        approach_summary="Implement configuration flow with TOTP and QR code.",
         tasks=[
-            ImplementationTask(id="T-001", title="Backend: endpoint 2FA", description="Criar API para ativar 2FA", order=1, dependencies=[]),
-            ImplementationTask(id="T-002", title="Frontend: tela configuração", description="Tela com QR e backup", order=2, dependencies=["T-001"]),
+            ImplementationTask(id="T-001", title="Backend: 2FA endpoint", description="Create API to enable 2FA", order=1, dependencies=[]),
+            ImplementationTask(id="T-002", title="Frontend: config screen", description="Screen with QR and backup", order=2, dependencies=["T-001"]),
         ],
-        risks_mitigated=["Armazenamento seguro do secret"],
-        tech_notes="Usar pyotp no backend.",
+        risks_mitigated=["Secure storage of the secret"],
+        tech_notes="Use pyotp on the backend.",
         quality_score=9.0,
         consensus_reached=True,
-        final_validation_notes="Plano aprovado.",
+        final_validation_notes="Plan approved.",
     )
     md = execution_plan_to_markdown(plan)
-    assert "US-001" in md and "Configurar 2FA" in md
+    assert "US-001" in md and "Configure 2FA" in md
     assert "T-001" in md and "T-002" in md
-    assert "approach_summary" not in md  # é "Abordagem" em PT
-    print("✅ execution_plan_to_markdown OK")
+    assert "approach_summary" not in md  # it's "Approach" in the rendered MD
+    print("execution_plan_to_markdown OK")
     return True
 
 
 def test_get_user_story():
-    """Resolve user story por id e por índice (lógica espelhada de run_user_story_dialectic)."""
+    """Resolve user story by id and by index."""
     path = Path(__file__).parent.parent / "prd_output" / "PRD_test_fixture.json"
     if not path.exists():
-        print("⚠️ Fixture não encontrado")
+        print("Fixture not found")
         return False
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -80,7 +80,7 @@ def test_get_user_story():
     assert us2.id == "US-002"
     us0 = get_us(prd, "0")
     assert us0.id == "US-001"
-    print("✅ _get_user_story (None, US-002, 0) OK")
+    print("_get_user_story (None, US-002, 0) OK")
     return True
 
 

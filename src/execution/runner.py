@@ -1,5 +1,5 @@
 """
-Execução do plano aprovado: consome UserStoryExecutionPlan e gera artefatos (spec/esboço).
+Execution of the approved plan: consume UserStoryExecutionPlan and generate artifacts (spec/outline).
 """
 
 import json
@@ -16,13 +16,13 @@ EXEC_OUTPUT_DIR = "exec_output"
 
 
 def _find_latest_plan() -> Path:
-    """Encontra o plano de execução mais recente em prd_output/ (exec_*.json)."""
+    """Find the most recent execution plan in prd_output/ (exec_*.json)."""
     base = Path(PRD_OUTPUT_DIR)
     if not base.exists():
-        raise FileNotFoundError(f"Diretório {PRD_OUTPUT_DIR} não encontrado.")
+        raise FileNotFoundError(f"Directory {PRD_OUTPUT_DIR} not found.")
     jsons = list(base.glob("exec_*.json"))
     if not jsons:
-        raise FileNotFoundError(f"Nenhum plano de execução em {PRD_OUTPUT_DIR}/ (esperado exec_*.json)")
+        raise FileNotFoundError(f"No execution plan found in {PRD_OUTPUT_DIR}/ (expected exec_*.json)")
     return max(jsons, key=lambda p: p.stat().st_mtime)
 
 
@@ -33,25 +33,25 @@ def _load_plan(plan_path: str) -> UserStoryExecutionPlan:
 
 
 def _artifact_markdown(plan: UserStoryExecutionPlan) -> str:
-    """Gera Markdown com spec/esboço de implementação por task (para execução manual ou futura geração de código)."""
+    """Generate Markdown with implementation spec/outline per task (for manual execution or future code generation)."""
     lines = [
-        f"# Spec de implementação — {plan.user_story_id} {plan.user_story_title}",
+        f"# Implementation spec — {plan.user_story_id} {plan.user_story_title}",
         "",
-        f"*Gerado em {datetime.now().isoformat(timespec='seconds')}*",
+        f"*Generated on {datetime.now().isoformat(timespec='seconds')}*",
         "",
         "---",
         "",
-        "## Abordagem",
+        "## Approach",
         "",
         plan.approach_summary,
         "",
         "---",
         "",
-        "## Tasks (ordem de execução)",
+        "## Tasks (execution order)",
         "",
     ]
     for t in sorted(plan.tasks, key=lambda x: (x.order, x.id)):
-        deps = f" *Dependências: {', '.join(t.dependencies)}*" if t.dependencies else ""
+        deps = f" *Dependencies: {', '.join(t.dependencies)}*" if t.dependencies else ""
         lines.extend([
             f"### {t.id} — {t.title}",
             "",
@@ -60,12 +60,12 @@ def _artifact_markdown(plan: UserStoryExecutionPlan) -> str:
             "",
         ])
     if plan.risks_mitigated:
-        lines.extend(["---", "", "## Riscos mitigados", ""])
+        lines.extend(["---", "", "## Mitigated risks", ""])
         for r in plan.risks_mitigated:
             lines.append(f"- {r}")
         lines.append("")
     if plan.tech_notes:
-        lines.extend(["---", "", "## Notas técnicas", "", plan.tech_notes, ""])
+        lines.extend(["---", "", "## Technical notes", "", plan.tech_notes, ""])
     return "\n".join(lines).strip() + "\n"
 
 
@@ -75,13 +75,13 @@ def run_execution(
     output_dir: str | None = None,
 ) -> dict:
     """
-    Consome um UserStoryExecutionPlan e gera artefato de execução (spec em Markdown).
+    Consume a UserStoryExecutionPlan and generate an execution artifact (Markdown spec).
     Args:
-        plan_path: Caminho para arquivo JSON do plano (exec_*.json). Ignorado se plan for passado.
-        plan: Plano já carregado (dict ou UserStoryExecutionPlan). Opcional.
-        output_dir: Diretório de saída (default: exec_output).
+        plan_path: Path to the plan JSON file (exec_*.json). Ignored if plan is provided.
+        plan: Already loaded plan (dict or UserStoryExecutionPlan). Optional.
+        output_dir: Output directory (default: exec_output).
     Returns:
-        dict com output_path (arquivo .md gerado), plan_id, success.
+        dict with output_path (generated .md file), plan_id, success.
     """
     out_dir = output_dir or EXEC_OUTPUT_DIR
     os.makedirs(out_dir, exist_ok=True)
@@ -97,7 +97,7 @@ def run_execution(
         if path is None or path == "--latest":
             path = str(_find_latest_plan())
         if not os.path.exists(path):
-            raise FileNotFoundError(f"Plano não encontrado: {path}")
+            raise FileNotFoundError(f"Plan not found: {path}")
         plan_obj = _load_plan(path)
         plan_id = plan_obj.user_story_id
 

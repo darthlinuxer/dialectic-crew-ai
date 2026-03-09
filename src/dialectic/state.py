@@ -4,7 +4,7 @@ MAX_RETRIES = 5
 
 
 class DialecticState(BaseModel):
-    """Estado persistente do fluxo dialético"""
+    """Persistent state of the dialectic flow"""
     feature_objective: str = ""
     vision_content: str = ""
     prd_data: dict = {}

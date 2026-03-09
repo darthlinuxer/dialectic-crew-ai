@@ -1,9 +1,9 @@
 """
-Teste isolado: LLM + Tool Calling via CrewAI.
+Isolated test: LLM + Tool Calling via CrewAI.
 
-Verifica se os modelos configurados nos tiers invocam ferramentas corretamente.
+Verifies that models configured in each tier invoke tools correctly.
 
-Uso:
+Usage:
     uv run python tests/test_llm_tooling.py
 """
 
