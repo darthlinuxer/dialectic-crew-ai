@@ -38,6 +38,8 @@ dialectic-crew = "main.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-cov",
+    "pytest-timeout",
 ]
 
 [tool.setuptools]
@@ -49,3 +51,15 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+markers = [
+    "llm: tests that call real LLM APIs (require API keys, slow, costly)",
+]
+timeout = 300
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["src/main/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

@@ -23,17 +23,11 @@ def main():
     prd_path = args[0] if args else None
     us_ref = args[1] if len(args) > 1 else None
 
-    if not os.path.exists("VISION.md"):
-        print("VISION.md not found.")
-        sys.exit(1)
-    with open("VISION.md", "r", encoding="utf-8") as f:
-        vision = f.read()
-
     if prd_path and not os.path.exists(prd_path):
         print(f"PRD not found: {prd_path}")
         sys.exit(1)
 
-    result = run_user_story_planning(prd_path, us_ref, vision)
+    result = run_user_story_planning(prd_path, us_ref)
     print(f"Score: {result['quality_score']}/10.0")
 
 

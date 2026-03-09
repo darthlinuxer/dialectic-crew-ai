@@ -25,6 +25,7 @@ from dialectic.agents import (
 )
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_flow import OUTPUT_DIR
+from dialectic.vision import get_vision_hash
 from schemas import PRDSchema, UserStoryExecutionPlan
 
 
@@ -96,6 +97,23 @@ MIN_PLAN_SCORE = float(os.getenv("MIN_PLAN_SCORE", "7.5"))
 MAX_PLAN_RETRIES = int(os.getenv("MAX_PLAN_RETRIES", "3"))
 
 
+def _ensure_acceptance_checks(plan: UserStoryExecutionPlan, us) -> UserStoryExecutionPlan:
+    fallback_criteria = [
+        f"Contributes to acceptance criterion: {criterion}"
+        for criterion in us.acceptance_criteria[:3]
+    ]
+    for task in plan.tasks:
+        if task.acceptance_checks:
+            continue
+        derived_checks = [
+            f"Implementation for {task.id} exists and satisfies: {task.title}",
+            f"Task outcome matches description: {task.description}",
+            *fallback_criteria,
+        ]
+        task.acceptance_checks = list(dict.fromkeys(check for check in derived_checks if check))[:4]
+    return plan
+
+
 def _extract_plan(result, us) -> UserStoryExecutionPlan | None:
     """Extract UserStoryExecutionPlan from crew result via pydantic or raw text fallback."""
     pydantic_result = getattr(result, "pydantic", None)
@@ -154,13 +172,14 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
 """
     feature_context = f"Feature (PRD): {prd.feature_name}. Objective: {prd.objective}"
 
-    vis = create_visionario()
-    crit = create_critico_socratico()
-    sint = create_sintetizador()
-    val = create_validador_macro()
+    def _build_planning_crew() -> Crew:
+        vis = create_visionario()
+        crit = create_critico_socratico()
+        sint = create_sintetizador()
+        val = create_validador_macro()
 
-    task_tese = Task(
-        description=f"""
+        task_tese = Task(
+            description=f"""
 FEATURE CONTEXT:
 {feature_context}
 
@@ -177,12 +196,12 @@ Include:
 
 Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
 """,
-        expected_output="Structured implementation plan (approach + tasks + risks + notes)",
-        agent=vis,
-    )
+            expected_output="Structured implementation plan (approach + tasks + risks + notes)",
+            agent=vis,
+        )
 
-    task_antitese = Task(
-        description="""
+        task_antitese = Task(
+            description="""
 Consult the system's macro vision (VISION.md is available via your knowledge sources).
 
 The implementation proposal (thesis) for the user story is in context.
@@ -196,13 +215,13 @@ Apply the Socratic method. List ALL:
 
 Be relentless. Each critique must be specific and actionable.
 """,
-        expected_output="Detailed critique of the implementation plan",
-        agent=crit,
-        context=[task_tese],
-    )
+            expected_output="Detailed critique of the implementation plan",
+            agent=crit,
+            context=[task_tese],
+        )
 
-    task_sintese = Task(
-        description=f"""
+        task_sintese = Task(
+            description=f"""
 USER STORY: {us.id} — {us.title}
 
 Consult the system's macro vision (VISION.md is available via your knowledge sources).
@@ -220,13 +239,13 @@ Produce the SYNTHESIS: a refined implementation plan that:
 
 Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
 """,
-        expected_output="Refined implementation plan (approach + tasks + mitigated risks + notes)",
-        agent=sint,
-        context=[task_tese, task_antitese],
-    )
+            expected_output="Refined implementation plan (approach + tasks + mitigated risks + notes)",
+            agent=sint,
+            context=[task_tese, task_antitese],
+        )
 
-    task_validacao = Task(
-        description=f"""
+        task_validacao = Task(
+            description=f"""
 Based on the SYNTHESIS of the implementation plan for user story {us.id} — {us.title},
 produce the final document.
 
@@ -236,31 +255,32 @@ Fill in:
 - user_story_id: "{us.id}"
 - user_story_title: "{us.title}"
 - approach_summary: summary of the approach (from synthesis)
-- tasks: list of ImplementationTask (id, title, description, order, dependencies)
+- tasks: list of ImplementationTask (id, title, description, order, dependencies, acceptance_checks)
+  Every task MUST include at least one concrete acceptance_check that can be verified in the codebase.
 - risks_mitigated: list of risks that were mitigated
 - tech_notes: technical notes
-- quality_score: float 0-10 (one decimal place). Approve if >= 9.0
+- quality_score: float 0-10 (one decimal place). Approve if >= {MIN_PLAN_SCORE}
 - consensus_reached: true if the plan is ready for execution
 - final_validation_notes: brief explanation
 """,
-        expected_output="Valid UserStoryExecutionPlan with quality_score and consensus_reached",
-        agent=val,
-        output_pydantic=UserStoryExecutionPlan,
-        guardrail=_plan_guardrail,
-        guardrail_max_retries=2,
-        context=[task_tese, task_antitese, task_sintese],
-    )
+            expected_output="Valid UserStoryExecutionPlan with quality_score and consensus_reached",
+            agent=val,
+            output_pydantic=UserStoryExecutionPlan,
+            guardrail=_plan_guardrail,
+            guardrail_max_retries=2,
+            context=[task_tese, task_antitese, task_sintese],
+        )
 
-    crew = Crew(
-        agents=[vis, crit, sint, val],
-        tasks=[task_tese, task_antitese, task_sintese, task_validacao],
-        process="sequential",
-        verbose=True,
-        memory=True,
-        planning=True,
-        planning_llm=llm_planning,
-        knowledge_sources=[vision_knowledge()],
-    )
+        return Crew(
+            agents=[vis, crit, sint, val],
+            tasks=[task_tese, task_antitese, task_sintese, task_validacao],
+            process="sequential",
+            verbose=True,
+            memory=True,
+            planning=True,
+            planning_llm=llm_planning,
+            knowledge_sources=[vision_knowledge()],
+        )
 
     print(f"\n{'='*60}")
     print(f"Dialectic planning — {us.id} {us.title}")
@@ -272,12 +292,16 @@ Fill in:
         if attempt > 0:
             print(f"\n--- Planning retry {attempt}/{MAX_PLAN_RETRIES} ---\n")
 
-        result = crew.kickoff()
+        result = _build_planning_crew().kickoff()
         plan_valid = _extract_plan(result, us)
 
         if plan_valid is None:
             print(f"   Failed to extract structured plan (attempt {attempt + 1})")
             continue
+
+        plan_valid = _ensure_acceptance_checks(plan_valid, us)
+        plan_valid.source_prd_path = str(Path(prd_path).resolve())
+        plan_valid.vision_hash = get_vision_hash()
 
         if plan_valid.quality_score >= MIN_PLAN_SCORE:
             print(f"   Plan approved (score {plan_valid.quality_score}/10)")

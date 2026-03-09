@@ -13,6 +13,7 @@ import json
 
 from schemas import PRDSchema, UserStoryExecutionPlan
 from dialectic.config import ExportConfig
+from dialectic.vision import get_vision_hash
 
 logger = logging.getLogger(__name__)
 
@@ -242,12 +243,8 @@ def validate_consistency(md_path: Path, json_path: Path, prd: PRDSchema) -> Vali
 
     # 3) vision_hash
     fm_vision = front.get("vision_hash")
-    vision_hash_current = None
-    vision_path = Path("knowledge/VISION.md")
-    try:
-        content = vision_path.read_text(encoding="utf-8")
-        vision_hash_current = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    except Exception:
+    vision_hash_current = get_vision_hash()
+    if vision_hash_current is None:
         warnings.append("Could not read knowledge/VISION.md to verify vision_hash")
 
     if fm_vision:
@@ -319,14 +316,9 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
 
     The body contains the sections: # Objective, ## Macro Impact, ## User Stories, ## Anti-Drift Questions.
     """
-    vision_hash = None
-    vision_path = Path("knowledge/VISION.md")
-    try:
-        content = vision_path.read_text(encoding="utf-8")
-        vision_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    except Exception:
+    vision_hash = get_vision_hash()
+    if vision_hash is None:
         logger.debug("Could not read knowledge/VISION.md to compute hash; continuing without vision_hash.")
-        vision_hash = None
 
     quality = getattr(prd, "quality_score", None)
     # determine validation status: prefer explicit field, else derive from consensus_reached
@@ -393,6 +385,14 @@ def render_markdown(prd: PRDSchema, config: ExportConfig) -> str:
     for q in prd.anti_drift_questions:
         body_lines.append(f"- **{q.question}** — {q.answer}")
     body_lines.append("")
+
+    if getattr(prd, "vision_hash", None):
+        body_lines.append("## Runtime Provenance")
+        body_lines.append("")
+        body_lines.append(f"- vision_hash: {prd.vision_hash}")
+        if getattr(prd, "source_prd_path", None):
+            body_lines.append(f"- source_prd_path: {prd.source_prd_path}")
+        body_lines.append("")
 
     # join frontmatter and body; ensure UTF-8 when writing elsewhere
     return "\n".join(front + body_lines)

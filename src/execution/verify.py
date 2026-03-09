@@ -23,6 +23,7 @@ from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
 _STORY_STATUS = Literal[
     "pending", "in_progress", "completed", "partially_completed", "failed"
 ]
+DEFAULT_VERIFICATION_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +198,9 @@ def _load_prd_for_plan(plan: UserStoryExecutionPlan, prd_path: str | None) -> PR
     if prd_path:
         with open(prd_path, "r", encoding="utf-8") as f:
             return PRDSchema.model_validate(json.load(f))
+    if plan.source_prd_path and os.path.exists(plan.source_prd_path):
+        with open(plan.source_prd_path, "r", encoding="utf-8") as f:
+            return PRDSchema.model_validate(json.load(f))
     base = Path(PRD_OUTPUT_DIR)
     if not base.exists():
         return None
@@ -301,7 +305,7 @@ Respond with quality_score (0-10), consensus_reached (true if task is complete),
             "notes": f"Failed to obtain structured result. Raw: {raw[:500]}",
         }
 
-    verified = validation.quality_score >= 7.0
+    verified = validation.quality_score >= DEFAULT_VERIFICATION_SCORE
     return {
         "task_id": task.id,
         "verified": verified,

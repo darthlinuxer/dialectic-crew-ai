@@ -33,6 +33,7 @@ class PRDSchema(BaseModel):
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False
     final_validation_notes: str
+    vision_hash: Optional[str] = None
 
 
 # --- Execution plans (dialectic per user story) ---
@@ -64,6 +65,8 @@ class UserStoryExecutionPlan(BaseModel):
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False
     final_validation_notes: str = ""
+    source_prd_path: Optional[str] = None
+    vision_hash: Optional[str] = None
     status: Literal[
         "pending", "in_progress", "completed", "partially_completed", "failed"
     ] = "pending"
@@ -108,6 +111,8 @@ class ExecutionReport(BaseModel):
     plan_id: str
     plan_title: str
     run_id: str
+    plan_path: Optional[str] = None
+    vision_hash: Optional[str] = None
     task_results: List[TaskExecutionResult] = Field(default_factory=list)
     overall_success: bool = False
     verified_tasks: List[str] = Field(default_factory=list)

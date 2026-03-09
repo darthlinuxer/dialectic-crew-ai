@@ -18,13 +18,7 @@ from dialectic.prd_flow import run_dialectic_flow
 if __name__ == "__main__":
     feature = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Test"
 
-    if os.path.exists("VISION.md"):
-        with open("VISION.md", "r", encoding="utf-8") as f:
-            vision = f.read()
-    else:
-        vision = "Agile project management project"
-
-    result = run_dialectic_flow(feature, vision)
+    result = run_dialectic_flow(feature)
     print(f"\nFinal Score: {result['quality_score']}/10.0")
     print(f"Consensus: {result['consensus_reached']}")
     print(f"Iterations: {result['iterations']}")

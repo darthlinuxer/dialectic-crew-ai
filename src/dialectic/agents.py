@@ -13,6 +13,7 @@ from dialectic.tools import (
     directory_read_tool,
     code_docs_tool,
 )
+from dialectic.vision import prepare_vision_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +94,10 @@ mcp_brave_search = _make_mcp(
 def vision_knowledge() -> TextFileKnowledgeSource:
     """Create a TextFileKnowledgeSource for VISION.md.
 
-    CrewAI automatically resolves string paths relative to the `knowledge/`
-    directory, so the file must live at `knowledge/VISION.md`.
+    Resolve to the project-level `knowledge/VISION.md` so callers do not need
+    to invoke the CLI from the repository root.
     """
+    prepare_vision_runtime()
     return TextFileKnowledgeSource(file_paths=["VISION.md"])
 
 

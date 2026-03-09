@@ -24,6 +24,7 @@ from planning.flow import run_user_story_planning
 from execution.runner import run_execution
 from execution.dialectic_execution import run_dialectic_execution
 from execution.verify import show_status, mark_task, verify_task, verify_user_story
+from dialectic.vision import ensure_vision_path
 
 
 BANNER = """
@@ -123,14 +124,31 @@ def _check_api_key():
 
 
 def _check_vision_exists():
-    if not os.path.exists("knowledge/VISION.md"):
+    try:
+        ensure_vision_path()
+    except FileNotFoundError as exc:
         print("  knowledge/VISION.md not found!")
-        print("  Place your vision document at knowledge/VISION.md (CrewAI convention).")
+        print(f"  {exc}")
         sys.exit(1)
 
 
+def _command_requires_api(sub: str, args: list[str]) -> bool:
+    if sub in {"status", "mark"}:
+        return False
+    if sub == "execute" and "--spec-only" in args:
+        return False
+    return True
+
+
+def _command_requires_vision(sub: str, args: list[str]) -> bool:
+    if sub in {"prd", "plan", "verify", "verify-story"}:
+        return True
+    if sub == "execute" and "--spec-only" not in args:
+        return True
+    return False
+
+
 def cmd_prd(feature_request: str, file_paths: list[str] | None = None):
-    _check_vision_exists()
     flow = DialecticFlow(persistence=_get_persistence())
     flow.state.feature_objective = feature_request
     if file_paths:
@@ -147,7 +165,6 @@ def cmd_prd(feature_request: str, file_paths: list[str] | None = None):
 
 
 def cmd_plan(prd_path: str | None, us_ref: str | None):
-    _check_vision_exists()
     if prd_path and not os.path.exists(prd_path):
         print(f"PRD not found: {prd_path}")
         sys.exit(1)
@@ -162,7 +179,6 @@ def cmd_execute(plan_path: str | None, spec_only: bool = False):
             print(f"\nSpec generated: {result['output_path']}")
             print(f"   Plan: {result['plan_id']} -- {result['plan_title']}")
         else:
-            _check_vision_exists()
             result = run_dialectic_execution(
                 plan_path=plan_path or "--latest",
             )
@@ -247,8 +263,10 @@ def main():
         sys.exit(0)
 
     print(BANNER)
-    if not _check_api_key():
+    if _command_requires_api(sub, args) and not _check_api_key():
         sys.exit(1)
+    if _command_requires_vision(sub, args):
+        _check_vision_exists()
 
     if sub == "prd":
         if len(args) < 2:

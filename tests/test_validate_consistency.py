@@ -40,10 +40,9 @@ def _make_prd():
 
 
 def test_success_consistency(tmp_path, monkeypatch):
-    # setup cwd to tmp_path so VISION.md is read from there
     monkeypatch.chdir(tmp_path)
-    # create VISION.md
-    vision = tmp_path / "VISION.md"
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    vision = tmp_path / "knowledge" / "VISION.md"
     vision.write_text("Vision Content", encoding="utf-8")
 
     prd = _make_prd()
@@ -62,7 +61,8 @@ def test_success_consistency(tmp_path, monkeypatch):
 
 def test_missing_headers(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    vision = tmp_path / "VISION.md"
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    vision = tmp_path / "knowledge" / "VISION.md"
     vision.write_text("Vision Content", encoding="utf-8")
 
     prd = _make_prd()
@@ -82,7 +82,8 @@ def test_missing_headers(tmp_path, monkeypatch):
 
 def test_quality_score_mismatch(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    vision = tmp_path / "VISION.md"
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    vision = tmp_path / "knowledge" / "VISION.md"
     vision.write_text("Vision Content", encoding="utf-8")
 
     prd = _make_prd()
@@ -108,8 +109,8 @@ def test_quality_score_mismatch(tmp_path, monkeypatch):
 
 def test_vision_hash_mismatch(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    # create a VISION.md and then change it after generating MD to cause mismatch
-    vision = tmp_path / "VISION.md"
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    vision = tmp_path / "knowledge" / "VISION.md"
     vision.write_text("Original Vision", encoding="utf-8")
 
     prd = _make_prd()
@@ -132,7 +133,8 @@ def test_vision_hash_mismatch(tmp_path, monkeypatch):
 
 def test_json_mismatch(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    vision = tmp_path / "VISION.md"
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    vision = tmp_path / "knowledge" / "VISION.md"
     vision.write_text("Vision Content", encoding="utf-8")
 
     prd = _make_prd()

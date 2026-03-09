@@ -40,6 +40,7 @@ from execution.verify import (
     load_plan,
 )
 from execution.task_flow import TaskExecutionFlow, _get_task_persistence
+from dialectic.vision import get_vision_hash
 
 EXEC_OUTPUT_DIR = "exec_output"
 DEFAULT_MAX_RETRIES_PER_TASK = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
@@ -208,6 +209,7 @@ def run_dialectic_execution(
             flow.state.task_title = task.title
             flow.state.task_description = task.description
             flow.state.context_str = context_str
+            flow.state.output_dir = str(task_output_dir)
             flow.state.acceptance_checks = task.acceptance_checks
             flow.state.min_score = DEFAULT_MIN_SCORE
             flow.state.max_retries = max_retries_per_task
@@ -339,6 +341,8 @@ def run_dialectic_execution(
         plan_id=plan.user_story_id,
         plan_title=plan.user_story_title,
         run_id=run_id,
+        plan_path=str(Path(path).resolve()),
+        vision_hash=plan.vision_hash or get_vision_hash(),
         task_results=task_results,
         overall_success=overall_success,
         verified_tasks=verified_ids,

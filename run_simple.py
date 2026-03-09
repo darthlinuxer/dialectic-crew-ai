@@ -11,25 +11,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 from dotenv import load_dotenv
 load_dotenv()
 
-from dialectic.state import DialecticState
-from dialectic.prd_flow import DialecticFlow
+from dialectic.prd_flow import DialecticFlow, _get_persistence
 
 
 if __name__ == "__main__":
     feature = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Test"
 
-    if os.path.exists("VISION.md"):
-        with open("VISION.md", "r", encoding="utf-8") as f:
-            vision = f.read()
-    else:
-        vision = "Agile project management project"
-
-    state = DialecticState(
-        feature_objective=feature,
-        vision_content=vision,
-        max_retries=0,
-    )
-    flow = DialecticFlow(state)
+    flow = DialecticFlow(persistence=_get_persistence())
+    flow.state.feature_objective = feature
+    flow.state.max_retries = 0
     result = flow.kickoff()
 
     print(f"\nFinal Score: {result.quality_score}/10.0")

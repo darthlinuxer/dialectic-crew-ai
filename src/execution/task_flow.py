@@ -44,6 +44,9 @@ from schemas import (
 CREW_KICKOFF_TIMEOUT = int(os.getenv("CREW_KICKOFF_TIMEOUT", "300"))
 DEFAULT_MIN_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
 DEFAULT_MAX_RETRIES = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
+REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD = float(
+    os.getenv("REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD", "9.0")
+)
 
 
 class TaskFlowState(BaseModel):
@@ -51,6 +54,7 @@ class TaskFlowState(BaseModel):
     task_title: str = ""
     task_description: str = ""
     context_str: str = ""
+    output_dir: str = ""
     acceptance_checks: list[str] = Field(default_factory=list)
     min_score: float = DEFAULT_MIN_SCORE
     max_retries: int = DEFAULT_MAX_RETRIES
@@ -116,6 +120,74 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     2. Post-execution verification (A) with acceptance criteria (B)
     3. Independent re-implementation (C) if verification fails
     """
+
+    def _run_independent_verifier(self, checks: list[str] | None = None) -> VerificationResult:
+        checks_to_verify = checks or self.state.acceptance_checks
+        checks_text = ""
+        if checks_to_verify:
+            checks_text = "\n\nACCEPTANCE CHECKS (verify each one):\n"
+            checks_text += "\n".join(f"- {c}" for c in checks_to_verify)
+
+        verify_agent = Agent(
+            role="Independent Verifier",
+            goal="Verify whether implementation artifacts exist in the codebase",
+            backstory="You verify implementations by reading actual project files. "
+                      "Be objective: the artifact either exists or it does not.",
+            verbose=True,
+            allow_delegation=False,
+            reasoning=True,
+            max_reasoning_attempts=2,
+            llm=llm_simple,
+            tools=[file_read_tool, directory_read_tool],
+        )
+
+        task_verify = Task(
+            description=f"""
+Verify whether task {self.state.task_id} — {self.state.task_title} was implemented.
+
+TASK DESCRIPTION:
+{self.state.task_description}
+
+Use the file reading tool to verify whether the artifacts exist.
+For each check, verify whether the file/function/config actually exists.
+{checks_text}
+
+Fill in:
+- verified: true if ALL essential artifacts exist
+- checks_passed: list of checks that passed
+- checks_failed: list of checks that failed
+- notes: explanation of what was verified
+""",
+            expected_output="VerificationResult",
+            agent=verify_agent,
+            output_pydantic=VerificationResult,
+            guardrail=_verification_guardrail,
+            guardrail_max_retries=2,
+        )
+
+        crew = Crew(
+            agents=[verify_agent],
+            tasks=[task_verify],
+            verbose=True,
+            memory=True,
+            knowledge_sources=[vision_knowledge()],
+        )
+        result = crew.kickoff()
+
+        pydantic_result = getattr(result, "pydantic", None)
+        if isinstance(pydantic_result, VerificationResult):
+            return pydantic_result
+
+        tasks_out = getattr(result, "tasks_output", None) or []
+        if tasks_out:
+            last_p = getattr(tasks_out[-1], "pydantic", None)
+            if isinstance(last_p, VerificationResult):
+                return last_p
+
+        return VerificationResult(
+            verified=False,
+            notes="Failed to obtain structured VerificationResult",
+        )
 
     @start()
     def run_dialectic(self):
@@ -266,76 +338,9 @@ Verify alignment with the macro vision.
         """Phase A: Verify artifacts + Phase B: Check acceptance criteria."""
         self.state.phases_executed.append("verify")
 
-        checks_text = ""
-        if self.state.acceptance_checks:
-            checks_text = "\n\nACCEPTANCE CHECKS (verify each one):\n"
-            checks_text += "\n".join(f"- {c}" for c in self.state.acceptance_checks)
-
-        verify_agent = Agent(
-            role="Independent Verifier",
-            goal="Verify whether implementation artifacts exist in the codebase",
-            backstory="You verify implementations by reading actual project files. "
-                      "Be objective: the artifact either exists or it does not.",
-            verbose=True,
-            allow_delegation=False,
-            reasoning=True,
-            max_reasoning_attempts=2,
-            llm=llm_simple,
-            tools=[file_read_tool, directory_read_tool],
-        )
-
-        task_verify = Task(
-            description=f"""
-Verify whether task {self.state.task_id} — {self.state.task_title} was implemented.
-
-TASK DESCRIPTION:
-{self.state.task_description}
-
-Use the file reading tool to verify whether the artifacts exist.
-For each check, verify whether the file/function/config actually exists.
-{checks_text}
-
-Fill in:
-- verified: true if ALL essential artifacts exist
-- checks_passed: list of checks that passed
-- checks_failed: list of checks that failed
-- notes: explanation of what was verified
-""",
-            expected_output="VerificationResult",
-            agent=verify_agent,
-            output_pydantic=VerificationResult,
-            guardrail=_verification_guardrail,
-            guardrail_max_retries=2,
-        )
-
-        crew = Crew(
-            agents=[verify_agent],
-            tasks=[task_verify],
-            verbose=True,
-            memory=True,
-            knowledge_sources=[vision_knowledge()],
-        )
-        result = crew.kickoff()
-
-        vr: VerificationResult | None = None
-        pydantic_result = getattr(result, "pydantic", None)
-        if isinstance(pydantic_result, VerificationResult):
-            vr = pydantic_result
-        else:
-            tasks_out = getattr(result, "tasks_output", None) or []
-            if tasks_out:
-                last_p = getattr(tasks_out[-1], "pydantic", None)
-                if isinstance(last_p, VerificationResult):
-                    vr = last_p
-
-        if vr:
-            self.state.verified = vr.verified
-            self.state.verification = vr
-        else:
-            self.state.verified = False
-            self.state.verification = VerificationResult(
-                verified=False, notes="Failed to obtain structured VerificationResult"
-            )
+        vr = self._run_independent_verifier()
+        self.state.verified = vr.verified
+        self.state.verification = vr
 
         status = "PASSED" if self.state.verified else "FAILED"
         print(f"   {self.state.task_id} verification: {status}")
@@ -429,10 +434,32 @@ Verify alignment with the macro vision.
 
         if validation and validation.quality_score >= self.state.min_score:
             self.state.reimplement_score = validation.quality_score
-            self.state.reimplement_success = True
             impl_raw = getattr(tasks_out[0], "raw", "") if tasks_out else ""
             self.state.reimplement_output = impl_raw
-            print(f"   {self.state.task_id} re-implementation approved ({validation.quality_score}/10)")
+            if validation.quality_score < REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD:
+                self.state.phases_executed.append("reverify")
+                rerun = self._run_independent_verifier(failed_checks or self.state.acceptance_checks)
+                self.state.verification = rerun
+                self.state.verified = rerun.verified
+                self.state.reimplement_success = rerun.verified
+                status = "approved after re-verification" if rerun.verified else "failed re-verification"
+                print(
+                    f"   {self.state.task_id} re-implementation {status} "
+                    f"({validation.quality_score}/10)"
+                )
+            else:
+                self.state.verified = True
+                self.state.verification = VerificationResult(
+                    verified=True,
+                    checks_passed=failed_checks or self.state.acceptance_checks,
+                    checks_failed=[],
+                    notes=(
+                        "High-confidence re-implementation accepted without secondary "
+                        "verification pass."
+                    ),
+                )
+                self.state.reimplement_success = True
+                print(f"   {self.state.task_id} re-implementation approved ({validation.quality_score}/10)")
         else:
             score = validation.quality_score if validation else 0.0
             self.state.reimplement_score = score
@@ -474,6 +501,7 @@ Verify alignment with the macro vision.
             success=success,
             score=best_score,
             retry_count=self.state.dialectic_retries,
+            output_paths=[self.state.output_dir] if self.state.output_dir else [],
             validation_notes=notes[:1000],
             output_summary=best_output[:5000],
             verification=self.state.verification if self.state.verified or self.state.verification.notes else None,
