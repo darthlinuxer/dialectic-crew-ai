@@ -186,11 +186,11 @@ Evaluate the FINAL SYNTHESIS (output from the Synthesizer in context) and produc
 
 Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
-The PRD must follow exactly the PRDSchema structure:
-- feature_name, version, objective
-- macro_impact: { modules_affected, risk_level, performance_impact, security_impact }
-- user_stories: [ { id, title, description, acceptance_criteria, effort, dependencies } ]
-- anti_drift_questions: [ { question, answer } ]
+            The PRD must follow exactly the PRDSchema structure:
+            - feature_name, version, objective
+            - macro_impact: {{ modules_affected, risk_level, performance_impact, security_impact }}
+            - user_stories: [ {{ id, title, description, acceptance_criteria, effort, dependencies }} ]
+            - anti_drift_questions: [ {{ question, answer }} ]
 - quality_score: float (one decimal place, 0-10)
 - consensus_reached: true or false
 - final_validation_notes: string
