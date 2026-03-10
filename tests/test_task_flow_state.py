@@ -6,6 +6,7 @@ from schemas import VerificationResult
 
 def test_defaults():
     state = TaskFlowState()
+    assert state.id
     assert state.task_id == ""
     assert state.task_title == ""
     assert state.task_description == ""
@@ -20,6 +21,7 @@ def test_defaults():
     assert state.reimplement_score == 0.0
     assert state.reimplement_success is False
     assert state.phases_executed == []
+    assert state.current_phase == "start"
 
 
 def test_mutation():

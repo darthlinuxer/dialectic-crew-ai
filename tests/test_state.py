@@ -9,6 +9,7 @@ def test_max_retries_constant():
 
 def test_default_values():
     state = DialecticState()
+    assert state.id
     assert state.feature_objective == ""
     assert state.prd_data == {}
     assert state.quality_score == 0.0
@@ -18,6 +19,7 @@ def test_default_values():
     assert state.final_validation_notes == ""
     assert state.file_paths == []
     assert state.vision_context == "project"
+    assert state.current_phase == "start"
 
 
 def test_mutation():

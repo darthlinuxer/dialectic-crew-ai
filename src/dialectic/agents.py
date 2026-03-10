@@ -1,8 +1,9 @@
 import logging
 import os
 import shutil
+import sys
 
-from crewai import Agent, LLM
+from crewai import Agent, LLM, Memory
 from crewai.mcp import MCPServerStdio, MCPServerHTTP
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
@@ -18,9 +19,15 @@ from dialectic.vision import (
     _VISION_PATHS,
     prepare_vision_runtime,
     get_vision_path,
+    resolve_project_root,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _python_command() -> str:
+    """Return a reliable Python executable for local stdio MCP servers."""
+    return sys.executable or shutil.which("python3") or "python3"
 
 
 def _make_mcp(constructor, *, required_env: str | None = None,
@@ -92,7 +99,7 @@ mcp_brave_search = _make_mcp(
 # MCP server exposing local SKILL.md files via skills_mcp (skills_list_skills / skills_get_skill).
 mcp_skills = _make_mcp(
     MCPServerStdio,
-    command="python",
+    command=_python_command(),
     args=["-m", "src.mcp.skills_mcp"],
 )
 
@@ -120,6 +127,29 @@ def vision_knowledge(
 def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
     """Return the human-readable vision document name for prompts."""
     return _VISION_PATHS[context].name
+
+
+def crew_memory(
+    context: VisionContext = VisionContext.PROJECT,
+    namespace: str = "shared",
+) -> Memory:
+    """Return a Memory instance isolated by vision context and crew namespace.
+
+    Self-improve runs must not recall stale project-VISION memories, and project
+    runs must not inherit self-evolution memories. Using distinct storage roots
+    keeps CrewAI's persistent memory isolated while preserving memory benefits
+    within each context.
+    """
+    safe_namespace = namespace.strip("/") or "shared"
+    storage_dir = (
+        resolve_project_root()
+        / ".crewai"
+        / "memory"
+        / context.value
+        / safe_namespace
+    )
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    return Memory(storage=str(storage_dir))
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +181,7 @@ def create_visionario(
         llm=llm_reasoning,
         reasoning=True,
         max_reasoning_attempts=3,
-        tools=[t for t in [file_read_tool, directory_read_tool, code_docs_tool] if t],
+        tools=[t for t in [file_read_tool, code_docs_tool] if t],
         mcps=[m for m in [mcp_context7, mcp_brave_search, mcp_skills] if m],
     )
 
@@ -190,6 +220,7 @@ def create_critico_socratico(
 def create_sintetizador(
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> Agent:
+    vision_label = _vision_label(vision_context)
     return Agent(
         role="Dialectic Synthesizer",
         goal="Transform thesis + antithesis into a superior version, eliminating ALL weaknesses",
@@ -197,7 +228,9 @@ def create_sintetizador(
             "You are Hegel in code form. You receive the proposal + the critiques and "
             "produce the final synthesis.\n\n"
             "Your mission is to ensure the final version scores >= 9.0 with zero contradictions "
-            "against the macro vision.\n\n"
+            f"against the macro vision ({vision_label}).\n\n"
+            f"You ALWAYS consult the system's macro vision ({vision_label}, available via your "
+            "knowledge sources) before producing the synthesis.\n\n"
             "When you receive:\n"
             "- The original proposal (thesis) from the Visionary\n"
             "- The critique (antithesis) from the Socratic Critic\n\n"

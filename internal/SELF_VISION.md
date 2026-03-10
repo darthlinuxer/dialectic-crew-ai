@@ -1,10 +1,10 @@
-# VISION.md — System Macro Vision
+# SELF_VISION.md — System Self-Evolution Vision
 
 ## About the Project
 
 **Dialectic Crew AI** is itself the product: an application that uses the **dialectic method** (thesis → antithesis → synthesis → validation) to generate high-quality PRDs (Product Requirement Documents). The system self-orients by this vision to prevent drift and to evolve toward its vocation.
 
-**Intent:** Be the best dialectic-method **platform** capable of generating PRDs in **Markdown** and **JSON**, with validated quality (score >= 9.0), explicit alignment to a macro vision (VISION.md), and the ability to **use its own dialectic process to evolve itself**. The platform leverages CrewAI's native capabilities (Memory, Knowledge, Event Listeners, Human Feedback, Training, Reasoning) to maximize quality while minimizing custom infrastructure.
+**Intent:** Be the best dialectic-method **platform** capable of generating PRDs in **Markdown** and **JSON**, with validated quality (score >= 9.0), explicit alignment to the correct macro vision (`internal/SELF_VISION.md` for self-evolution and `knowledge/VISION.md` for project work), and the ability to **use its own dialectic process to evolve itself**. The platform leverages CrewAI's native capabilities (Memory, Knowledge, Event Listeners, Human Feedback, Training, Reasoning) to maximize quality while minimizing custom infrastructure.
 
 **Vocation:**
 - **Core:** Generate structured PRDs (objective, macro_impact, user_stories, anti_drift_questions) in **two formats** — `.md` (readable, versionable, collaborative) and `.json` (machine-friendly, integrations, APIs).

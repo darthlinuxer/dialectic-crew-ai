@@ -52,6 +52,92 @@ class TestCliRequirementRouting:
 
         assert cli.os.environ["CREWAI_DISABLE_TELEMETRY"] == "false"
 
+    def test_prd_resume_requires_existing_persisted_flow(self, monkeypatch):
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+        monkeypatch.setattr(cli, "get_prd_resume_state", lambda flow_id: None)
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "prd", "--resume", "missing-flow"])
+
+        with pytest.raises(SystemExit):
+            cli.main()
+
+    def test_execute_resume_run_passes_id_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_execute(plan_path, spec_only=False, vision_context=VisionContext.PROJECT, resume_run_id=None):
+            captured["plan_path"] = plan_path
+            captured["resume_run_id"] = resume_run_id
+
+        monkeypatch.setattr(cli, "cmd_execute", fake_cmd_execute)
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "execute", "--resume-run", "run-123"])
+
+        cli.main()
+
+        assert captured["plan_path"] == "--latest"
+        assert captured["resume_run_id"] == "run-123"
+
+    def test_self_improve_resume_passes_cycle_id_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            dry_run=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+        ):
+            captured["dry_run"] = dry_run
+            captured["max_improvements"] = max_improvements
+            captured["stash_dirty"] = stash_dirty
+            captured["resume_cycle_id"] = resume_cycle_id
+            captured["list_resumable"] = list_resumable
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "self-improve", "--resume", "cycle-123", "--max", "2"],
+        )
+
+        cli.main()
+
+        assert captured == {
+            "dry_run": False,
+            "max_improvements": 2,
+            "stash_dirty": False,
+            "resume_cycle_id": "cycle-123",
+            "list_resumable": False,
+        }
+
+    def test_self_improve_list_resumable_passes_flag_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            dry_run=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+        ):
+            captured["list_resumable"] = list_resumable
+            captured["resume_cycle_id"] = resume_cycle_id
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "self-improve", "--list-resumable"])
+
+        cli.main()
+
+        assert captured == {
+            "list_resumable": True,
+            "resume_cycle_id": None,
+        }
+
 
 class TestVisionResolution:
     def test_resolve_project_root_from_nested_directory(self, tmp_path, monkeypatch):

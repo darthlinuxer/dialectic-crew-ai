@@ -14,6 +14,8 @@ from schemas import (
     VerificationResult,
     TaskExecutionResult,
     ExecutionReport,
+    ExecutionCheckpoint,
+    SelfImprovementRecord,
 )
 from conftest import make_prd, make_task, make_plan
 
@@ -170,3 +172,27 @@ class TestExecutionReport:
         )
         assert report.overall_success is False
         assert report.task_results == []
+        assert report.task_flow_ids == {}
+
+
+class TestExecutionCheckpoint:
+    def test_construction(self):
+        checkpoint = ExecutionCheckpoint(
+            plan_id="US-001",
+            plan_title="Story",
+            run_id="20260101",
+            plan_path="/tmp/plan.json",
+            vision_context="project",
+        )
+        assert checkpoint.task_results == []
+        assert checkpoint.task_flow_ids == {}
+
+
+class TestSelfImprovementRecordResumeMetadata:
+    def test_defaults(self):
+        record = SelfImprovementRecord(
+            cycle_id="cycle-1",
+            timestamp="2026-03-10T00:00:00Z",
+        )
+        assert record.prd_flow_id == ""
+        assert record.execution_task_flow_ids == {}

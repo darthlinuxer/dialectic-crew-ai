@@ -19,7 +19,7 @@ load_dotenv()
 
 from dialectic import DialecticFlow, run_dialectic_flow
 from dialectic.state import DialecticState
-from dialectic.prd_flow import OUTPUT_DIR, _get_persistence
+from dialectic.prd_flow import OUTPUT_DIR, _get_persistence, get_prd_resume_state
 from planning.flow import run_user_story_planning
 from execution.runner import run_execution
 from execution.dialectic_execution import run_dialectic_execution
@@ -46,13 +46,15 @@ Usage:
 
 Commands:
 
-  prd "your feature request" [--files file1.pdf file2.png ...]
+    prd "your feature request" [--files file1.pdf file2.png ...] [--resume FLOW_ID]
       Generates a PRD (Product Requirement Document) using the dialectic method
       (thesis → antithesis → synthesis → validation). By default requires
       knowledge/VISION.md; use --self to run against internal/SELF_VISION.md.
       Saves to prd_output/ (JSON + Markdown).
+            Use --resume FLOW_ID to continue a persisted PRD flow.
       Use --files to attach reference documents (PDF, images, text) for agents to analyze.
       Ex.: python main.py prd "Login with 2FA"
+                     python main.py prd --resume <flow-id>
            python main.py prd "Dashboard redesign" --files wireframe.png spec.pdf
 
   plan [prd.json] [US-001|index]
@@ -63,17 +65,20 @@ Commands:
       Ex.: python main.py plan
            python main.py plan prd_output/PRD_20260308_1640.json US1
 
-  execute [plan.json|--latest] [--spec-only]
+    execute [plan.json|--latest] [--spec-only] [--resume-run RUN_ID]
       Executes the plan with CrewAI and dialectic per task. Each task goes through
       Thesis → Antithesis → Synthesis → Validation with automatic retries.
       After all tasks finish, a post-execution verification phase checks each
       completed task against PRD acceptance criteria and updates the user story
       status (completed, partially_completed, or failed) automatically.
       Use --spec-only to only generate a spec in Markdown (legacy behavior).
+     Use --resume-run RUN_ID to continue an interrupted execution from the
+     stored checkpoint in exec_output/<run_id>/checkpoint.json.
       By default uses the most recent plan in prd_output/ (exec_*.json).
       Saves to exec_output/<run_id>/ (report.json, outputs).
       Ex.: python main.py execute
            python main.py execute prd_output/exec_US1_20260308_1200.json
+         python main.py execute --resume-run 20260310_120000
            python main.py execute --spec-only
 
   status [plan.json|--latest]
@@ -104,12 +109,17 @@ Manual overrides (the execute command handles these automatically):
       Ex.: python main.py verify T0
            python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 
-    self-improve [--dry-run] [--max N] [--stash-dirty]
+        self-improve [--dry-run] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
       Runs one self-improvement cycle: introspect against internal/SELF_VISION.md,
       generate PRD, plan, and execute improvements, then validate with tests
       and metrics. Creates a PR for human review if all gates pass.
       --dry-run   Print the introspection report without making changes.
       --max N     Maximum number of improvements per cycle (default: 1).
+            --resume CYCLE_ID
+                                        Continue a previously interrupted self-improve cycle using
+                                        the saved snapshot in .dialectic/self_improve/<cycle-id>.json.
+            --list-resumable
+                                    Print saved resumable self-improve cycles and exit.
             --stash-dirty
                                     Stash current-branch changes before creating the
                                     self-improve branch. The stash is left in the stash stack.
@@ -119,6 +129,8 @@ Manual overrides (the execute command handles these automatically):
       self-improve-only worktree changes are discarded automatically.
       Ex.: python main.py self-improve --dry-run
            python main.py self-improve --max 2
+           python main.py self-improve --resume 20260310T120000
+         python main.py self-improve --list-resumable
 
   --self (flag for prd, plan, execute)
       Run against the app's internal vision (internal/SELF_VISION.md) instead
@@ -184,20 +196,29 @@ def _command_requires_vision(sub: str, args: list[str]) -> bool:
     return False
 
 
-def cmd_prd(feature_request: str, file_paths: list[str] | None = None, vision_context: VisionContext = VisionContext.PROJECT):
-    flow = DialecticFlow(persistence=_get_persistence())
-    flow.state.feature_objective = feature_request
-    flow.state.vision_context = vision_context.value
-    if file_paths:
-        flow.state.file_paths = file_paths
-    flow.kickoff()
-    state = flow.state
+def cmd_prd(
+    feature_request: str | None,
+    file_paths: list[str] | None = None,
+    vision_context: VisionContext = VisionContext.PROJECT,
+    resume_id: str | None = None,
+):
+    if resume_id and not get_prd_resume_state(resume_id):
+        print(f"Persisted PRD flow not found: {resume_id}")
+        sys.exit(1)
+
+    result = run_dialectic_flow(
+        feature_request,
+        file_paths=file_paths,
+        vision_context=vision_context,
+        resume_id=resume_id,
+    )
     print("\n" + "=" * 60)
     print("DIALECTIC PROCESS COMPLETE!")
     print("=" * 60)
-    print(f"Quality Score: {state.quality_score}/10.0")
-    print(f"Total rounds: {state.retry_count + 1}")
-    print(f"Consensus: {state.consensus_reached}")
+    print(f"Flow ID: {result['flow_id']}")
+    print(f"Quality Score: {result['quality_score']}/10.0")
+    print(f"Total rounds: {result['iterations']}")
+    print(f"Consensus: {result['consensus_reached']}")
     print("=" * 60)
 
 
@@ -209,7 +230,12 @@ def cmd_plan(prd_path: str | None, us_ref: str | None, vision_context: VisionCon
     print(f"Score: {result['quality_score']}/10.0")
 
 
-def cmd_execute(plan_path: str | None, spec_only: bool = False, vision_context: VisionContext = VisionContext.PROJECT):
+def cmd_execute(
+    plan_path: str | None,
+    spec_only: bool = False,
+    vision_context: VisionContext = VisionContext.PROJECT,
+    resume_run_id: str | None = None,
+):
     try:
         if spec_only:
             result = run_execution(plan_path=plan_path or "--latest")
@@ -219,17 +245,25 @@ def cmd_execute(plan_path: str | None, spec_only: bool = False, vision_context: 
             result = run_dialectic_execution(
                 plan_path=plan_path or "--latest",
                 vision_context=vision_context,
+                resume_run_id=resume_run_id,
             )
             story_status = result.get("story_status", "unknown")
             print(f"\nExecution complete: {result['output_path']}")
+            print(f"   Run ID: {result['run_id']}")
             print(f"   Plan: {result['plan_id']} -- {result['plan_title']}")
             print(f"   Story status: {story_status}")
             if result.get("verified_tasks"):
                 print(f"   Verified: {', '.join(result['verified_tasks'])}")
             if result.get("failed_verification_tasks"):
                 print(f"   Failed:   {', '.join(result['failed_verification_tasks'])}")
+            if result.get("task_flow_ids"):
+                for task_id, flow_id in sorted(result["task_flow_ids"].items()):
+                    print(f"   Task flow {task_id}: {flow_id}")
             print(f"   Report: {result['report_path']}")
     except FileNotFoundError as e:
+        print(f"{e}")
+        sys.exit(1)
+    except ValueError as e:
         print(f"{e}")
         sys.exit(1)
 
@@ -282,14 +316,34 @@ def cmd_verify_story(plan_path: str | None, prd_path: str | None):
         sys.exit(1)
 
 
-def cmd_self_improve(dry_run: bool = False, max_improvements: int = 1, stash_dirty: bool = False):
-    from main.self_improve import run_self_improve
+def cmd_self_improve(
+    dry_run: bool = False,
+    max_improvements: int = 1,
+    stash_dirty: bool = False,
+    resume_cycle_id: str | None = None,
+    list_resumable: bool = False,
+):
+    from main.self_improve import _list_resumable_cycles, run_self_improve
 
     _check_vision_exists(VisionContext.SELF)
+    if list_resumable:
+        rows = _list_resumable_cycles(resolve_project_root())
+        if not rows:
+            print("\nNo resumable self-improve cycles found.")
+            return
+        print("\nResumable self-improve cycles:")
+        for row in rows:
+            print(
+                f"- {row['cycle_id']} | {row['timestamp']} | next: {row['next_stage']} | "
+                f"last failure: {row['last_failure']}"
+            )
+        return
+
     record = run_self_improve(
         max_improvements=max_improvements,
         dry_run=dry_run,
         stash_dirty=stash_dirty,
+        resume_cycle_id=resume_cycle_id,
     )
     if record.pr_created:
         print("\nSelf-improvement cycle completed successfully.")
@@ -326,12 +380,20 @@ def main():
         _check_vision_exists(vision_ctx)
 
     if sub == "prd":
-        if len(args) < 2:
+        rest = args[1:]
+        rest, vision_context = _extract_self_flag(rest)
+        resume_id = None
+        if "--resume" in rest:
+            idx = rest.index("--resume")
+            if idx + 1 >= len(rest):
+                print("Provide a flow ID after --resume")
+                sys.exit(1)
+            resume_id = rest[idx + 1]
+            rest = rest[:idx] + rest[idx + 2:]
+        if len(rest) < 1 and not resume_id:
             print("Provide the feature: python main.py prd 'your feature here'")
             sys.exit(1)
         file_paths: list[str] = []
-        rest = args[1:]
-        rest, vision_context = _extract_self_flag(rest)
         if "--files" in rest:
             idx = rest.index("--files")
             feature_parts = rest[:idx]
@@ -342,7 +404,13 @@ def main():
                 sys.exit(1)
         else:
             feature_parts = rest
-        cmd_prd(" ".join(feature_parts), file_paths=file_paths or None, vision_context=vision_context)
+        feature_request = " ".join(feature_parts).strip() or None
+        cmd_prd(
+            feature_request,
+            file_paths=file_paths or None,
+            vision_context=vision_context,
+            resume_id=resume_id,
+        )
         return
     if sub == "plan":
         remaining = args[1:]
@@ -354,10 +422,23 @@ def main():
     if sub == "execute":
         remaining_all = args[1:]
         remaining_all, vision_context = _extract_self_flag(remaining_all)
+        resume_run_id = None
+        if "--resume-run" in remaining_all:
+            idx = remaining_all.index("--resume-run")
+            if idx + 1 >= len(remaining_all):
+                print("Provide a run ID after --resume-run")
+                sys.exit(1)
+            resume_run_id = remaining_all[idx + 1]
+            remaining_all = remaining_all[:idx] + remaining_all[idx + 2:]
         remaining = [a for a in remaining_all if not a.startswith("-")]
         spec_only = "--spec-only" in remaining_all
         plan_path = remaining[0] if remaining else "--latest"
-        cmd_execute(plan_path, spec_only=spec_only, vision_context=vision_context)
+        cmd_execute(
+            plan_path,
+            spec_only=spec_only,
+            vision_context=vision_context,
+            resume_run_id=resume_run_id,
+        )
         return
     if sub == "status":
         plan_path = args[1] if len(args) > 1 else None
@@ -401,7 +482,15 @@ def main():
         remaining = args[1:]
         dry_run = "--dry-run" in remaining
         stash_dirty = "--stash-dirty" in remaining
+        list_resumable = "--list-resumable" in remaining
+        resume_cycle_id = None
         max_n = 1
+        if "--resume" in remaining:
+            idx = remaining.index("--resume")
+            if idx + 1 >= len(remaining):
+                print("Provide a cycle ID after --resume")
+                sys.exit(1)
+            resume_cycle_id = remaining[idx + 1]
         if "--max" in remaining:
             idx = remaining.index("--max")
             if idx + 1 < len(remaining):
@@ -410,7 +499,13 @@ def main():
                 except ValueError:
                     print("--max requires an integer argument")
                     sys.exit(1)
-        cmd_self_improve(dry_run=dry_run, max_improvements=max_n, stash_dirty=stash_dirty)
+        cmd_self_improve(
+            dry_run=dry_run,
+            max_improvements=max_n,
+            stash_dirty=stash_dirty,
+            resume_cycle_id=resume_cycle_id,
+            list_resumable=list_resumable,
+        )
         return
 
     print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | self-improve | help")

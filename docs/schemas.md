@@ -101,6 +101,16 @@ classDiagram
         +bool overall_success
         +List~str~ verified_tasks
         +List~str~ failed_verification_tasks
+        +Dict~str, str~ task_flow_ids
+    }
+
+    class ExecutionCheckpoint {
+        +str plan_id
+        +str plan_title
+        +str run_id
+        +str plan_path
+        +str vision_context
+        +Dict~str, str~ task_flow_ids
     }
 
     PRDSchema --> MacroImpact
@@ -109,7 +119,40 @@ classDiagram
     UserStoryExecutionPlan --> ImplementationTask : "1..*"
     TaskExecutionResult --> VerificationResult : "0..1"
     ExecutionReport --> TaskExecutionResult : "0..*"
+    ExecutionCheckpoint --> TaskExecutionResult : "0..*"
 ```
+
+Resume metadata now appears in three places:
+
+- `ExecutionReport.task_flow_ids` maps task IDs to persisted CrewAI flow IDs.
+- `ExecutionReport.resumed_from_run_id` records whether a final report continued a prior execution run.
+- `ExecutionCheckpoint` stores in-progress execution state under `exec_output/<run_id>/checkpoint.json`.
+- `ExecutionCheckpoint.resumed_from_run_id` records the originating execution run when a checkpoint continuation occurs.
+- `SelfImprovementRecord` preserves cycle snapshots, selected opportunities, baseline metrics, and resume handles in `.dialectic/self_improve/<cycle-id>.json`.
+
+### `SelfImprovementRecord`
+
+Cycle-level lineage and resume snapshot for `self-improve`.
+
+| Field | Type | Description |
+|---|---|---|
+| `cycle_id` | `str` | Stable identifier for the self-improve cycle |
+| `timestamp` | `str` | Cycle creation timestamp |
+| `baseline_metrics` | `dict` | Metrics baseline reused during resume validation |
+| `selected_opportunities` | `List[ImprovementOpportunity]` | Prioritized opportunities locked in for this cycle |
+| `prd_generated` | `bool` | Whether the PRD stage already completed |
+| `plan_generated` | `bool` | Whether the planning stage already completed |
+| `execution_attempted` | `bool` | Whether execution has already started for this cycle |
+| `prd_flow_id` | `str` | Persisted CrewAI PRD flow ID |
+| `prd_path_json` / `prd_path_md` | `str` | Exported PRD artifact paths |
+| `plan_path_json` / `plan_path_md` | `str` | Exported planning artifact paths |
+| `execution_run_id` | `str` | Execution coordinator run ID used for checkpoint resume |
+| `execution_task_flow_ids` | `Dict[str, str]` | Persisted task flow IDs created during execution |
+| `execution_output_path` | `str` | Output directory for execution artifacts |
+| `execution_report_path` | `str` | Final execution report path |
+| `failure_reason` | `str` | Last known failure reason before resume or final abort |
+
+`SelfImprovementRecord` is the durable snapshot used by `dialectic-crew self-improve --resume <cycle-id>`.
 
 ---
 

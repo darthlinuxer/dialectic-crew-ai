@@ -31,6 +31,8 @@ Current behavior:
 - validates outputs with Pydantic guardrails
 - emits metrics and hook summaries
 - exports JSON and/or Markdown artifacts
+- persists flow state through CrewAI `@persist()` using `.dialectic/flows.db` by default
+- stores an explicit `current_phase` in flow state so resume can jump to the correct next step
 
 ## 2. User-story planning
 
@@ -44,6 +46,8 @@ Current behavior:
 - retries until the plan reaches `MIN_PLAN_SCORE` (default `7.5`) or exhausts retries
 - exports `UserStoryExecutionPlan` artifacts to `prd_output/`
 - uses the active vision context, including `VisionContext.SELF` when requested
+
+Planning intentionally remains artifact-based in this phase instead of becoming a CrewAI `Flow` subclass. Persistence and resume work are concentrated in PRD generation and per-task execution.
 
 ## 3. Task execution flow
 
@@ -69,6 +73,7 @@ Key details:
 - the reimplementer is intentionally fresh and context-light
 - task-level metrics are emitted passively
 - hook scopes can enforce budgets and protected paths
+- task flow state is persisted via CrewAI `@persist()` and resumes through its explicit phase machine
 
 ## 4. Execution coordinator
 
@@ -84,6 +89,7 @@ Responsibilities:
 - post-verifies completed tasks against PRD acceptance criteria
 - computes story status (`completed`, `partially_completed`, `failed`)
 - writes an execution report into `exec_output/`
+- writes `checkpoint.json` snapshots so interrupted runs can resume without redoing completed tasks
 
 ## 5. Self-improvement orchestrator
 
@@ -107,6 +113,10 @@ Current behavior worth documenting, because code now enforces it:
 - `git` must exist
 - worktree must be clean before branch creation
 - exact PRD, plan, and execution artifact paths are carried between stages
+- PRD flow IDs and task flow IDs are stored in `.dialectic/self_improve/<cycle-id>.json`
+- `dialectic-crew self-improve --resume <cycle-id>` reloads that snapshot and resumes from the next unfinished stage
+- resume prints the last failure reason, the next stage to run, and the artifacts/checkpoints being reused
+- stage-specific resume skips already completed PRD/planning work and only reruns downstream stages that were unfinished or failed
 - validation prefers `uv run pytest` and falls back to `python -m pytest`
 - self-improve validation uses `SELF_IMPROVE_TEST_TIMEOUT` (default `1800`) because the full suite may include slow LLM tests
 - failing pytest snapshots print captured stdout/stderr tails before the cycle aborts

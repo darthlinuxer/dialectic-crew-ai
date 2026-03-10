@@ -242,7 +242,7 @@ def _run_verification(
     Returns dict with keys: task_id, verified, score, notes.
     """
     from crewai import Task as CrewTask, Crew
-    from dialectic.agents import create_validador_macro, vision_knowledge
+    from dialectic.agents import create_validador_macro, crew_memory, vision_knowledge
     from dialectic.vision import VisionContext
     from dialectic.tools import file_read_tool
     from schemas import ValidationOutput
@@ -284,7 +284,7 @@ Respond with quality_score (0-10), consensus_reached (true if task is complete),
         agents=[verify_agent],
         tasks=[verify_crew_task],
         verbose=True,
-        memory=True,
+        memory=crew_memory(ctx, "verify"),
         knowledge_sources=[vision_knowledge(ctx)],
     )
     result = crew.kickoff()

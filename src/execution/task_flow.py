@@ -17,11 +17,12 @@ Flow structure:
 """
 
 import os
-from typing import Any
+from typing import Any, Literal
+from uuid import uuid4
 
 from crewai import Task, Crew, Agent, Process
 from crewai.flow.flow import Flow, start, listen, router
-from crewai.flow.persistence import SQLiteFlowPersistence
+from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from pydantic import BaseModel, Field
 
 from dialectic.agents import (
@@ -40,6 +41,7 @@ from dialectic.vision import VisionContext
 from dialectic.tools import file_read_tool, file_write_tool, directory_read_tool
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
+from dialectic.flow_persistence import build_sqlite_flow_persistence
 from schemas import (
     ValidationOutput,
     VerificationResult,
@@ -55,6 +57,7 @@ REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD = float(
 
 
 class TaskFlowState(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
     task_id: str = ""
     task_title: str = ""
     task_description: str = ""
@@ -83,6 +86,7 @@ class TaskFlowState(BaseModel):
 
     # Final result
     phases_executed: list[str] = Field(default_factory=list)
+    current_phase: Literal["start", "dialectic", "verify", "reimplement", "completed", "failed"] = "start"
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +122,11 @@ _task_persistence: SQLiteFlowPersistence | None = None
 def _get_task_persistence() -> SQLiteFlowPersistence:
     global _task_persistence
     if _task_persistence is None:
-        _task_persistence = SQLiteFlowPersistence()
+        _task_persistence = build_sqlite_flow_persistence()
     return _task_persistence
 
 
+@persist()
 class TaskExecutionFlow(Flow[TaskFlowState]):
     """
     Per-task execution with three phases and state persistence:
@@ -199,9 +204,26 @@ Fill in:
         )
 
     @start()
+    def dispatch(self):
+        phase = self.state.current_phase
+        if phase == "verify":
+            return "verify"
+        if phase == "reimplement":
+            return "reimplement"
+        if phase == "completed":
+            return "mark_completed"
+        if phase == "failed":
+            return "mark_failed"
+
+        self.state.current_phase = "dialectic"
+        return "start_dialectic"
+
+    @listen("start_dialectic")
     def run_dialectic(self):
         """Phase 0: Full dialectic cycle with retries."""
-        self.state.phases_executed.append("dialectic")
+        self.state.current_phase = "dialectic"
+        if not self.state.phases_executed or self.state.phases_executed[-1] != "dialectic":
+            self.state.phases_executed.append("dialectic")
         synthesis_for_retry: str | None = None
         vision_context = VisionContext(self.state.vision_context)
         vision_label = _vision_label(vision_context)
@@ -345,7 +367,9 @@ Verify alignment with the macro vision.
     @router(run_dialectic)
     def evaluate_dialectic(self):
         if self.state.dialectic_success:
+            self.state.current_phase = "verify"
             return "verify"
+        self.state.current_phase = "failed"
         return "mark_failed"
 
     # Router outputs remain string labels because CrewAI emits route names here,
@@ -353,7 +377,9 @@ Verify alignment with the macro vision.
     @listen("verify")
     def verify_implementation(self):
         """Phase A: Verify artifacts + Phase B: Check acceptance criteria."""
-        self.state.phases_executed.append("verify")
+        self.state.current_phase = "verify"
+        if not self.state.phases_executed or self.state.phases_executed[-1] != "verify":
+            self.state.phases_executed.append("verify")
 
         vr = self._run_independent_verifier()
         self.state.verified = vr.verified
@@ -368,7 +394,9 @@ Verify alignment with the macro vision.
     @router(verify_implementation)
     def evaluate_verification(self):
         if self.state.verified:
+            self.state.current_phase = "completed"
             return "mark_completed"
+        self.state.current_phase = "reimplement"
         return "reimplement"
 
     # Router outputs remain string labels because CrewAI emits route names here,
@@ -376,7 +404,9 @@ Verify alignment with the macro vision.
     @listen("reimplement")
     def independent_reimplement(self):
         """Phase C: Fresh re-implementation by independent agent (no dialectic context)."""
-        self.state.phases_executed.append("reimplement")
+        self.state.current_phase = "reimplement"
+        if not self.state.phases_executed or self.state.phases_executed[-1] != "reimplement":
+            self.state.phases_executed.append("reimplement")
         print(f"   {self.state.task_id} starting independent re-implementation (Phase C)...")
         vision_context = VisionContext(self.state.vision_context)
         vision_label = _vision_label(vision_context)
@@ -458,7 +488,8 @@ Verify alignment with the macro vision.
             impl_raw = getattr(tasks_out[0], "raw", "") if tasks_out else ""
             self.state.reimplement_output = impl_raw
             if validation.quality_score < REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD:
-                self.state.phases_executed.append("reverify")
+                if not self.state.phases_executed or self.state.phases_executed[-1] != "reverify":
+                    self.state.phases_executed.append("reverify")
                 rerun = self._run_independent_verifier(failed_checks or self.state.acceptance_checks)
                 self.state.verification = rerun
                 self.state.verified = rerun.verified
@@ -491,13 +522,16 @@ Verify alignment with the macro vision.
     @router(independent_reimplement)
     def evaluate_reimplement(self):
         if self.state.reimplement_success:
+            self.state.current_phase = "completed"
             return "mark_completed"
+        self.state.current_phase = "failed"
         return "mark_failed"
 
     # Router outputs remain string labels because CrewAI emits route names here,
     # not method references.
     @listen("mark_completed")
     def on_completed(self):
+        self.state.current_phase = "completed"
         phases = " → ".join(self.state.phases_executed)
         print(f"   {self.state.task_id} COMPLETED (phases: {phases})")
         emit_metric(
@@ -519,6 +553,7 @@ Verify alignment with the macro vision.
     # not method references.
     @listen("mark_failed")
     def on_failed(self):
+        self.state.current_phase = "failed"
         phases = " → ".join(self.state.phases_executed)
         print(f"   {self.state.task_id} FAILED (phases: {phases})")
         emit_metric(

@@ -29,6 +29,7 @@ from schemas import (
     UserStoryExecutionPlan,
     TaskExecutionResult,
     ExecutionReport,
+    ExecutionCheckpoint,
 )
 from execution.runner import _artifact_markdown
 from execution.verify import (
@@ -126,6 +127,34 @@ def _build_task_context(
     return "\n".join(lines)
 
 
+def _checkpoint_path(run_dir: Path) -> Path:
+    return run_dir / "checkpoint.json"
+
+
+def _save_checkpoint(run_dir: Path, checkpoint: ExecutionCheckpoint) -> None:
+    path = _checkpoint_path(run_dir)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(checkpoint.model_dump(), f, indent=2, ensure_ascii=False)
+
+
+def _load_checkpoint(run_dir: Path) -> ExecutionCheckpoint:
+    path = _checkpoint_path(run_dir)
+    if not path.exists():
+        raise FileNotFoundError(f"Execution checkpoint not found: {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return ExecutionCheckpoint.model_validate(data)
+
+
+def _upsert_task_result(
+    task_results: list[TaskExecutionResult],
+    result: TaskExecutionResult,
+) -> list[TaskExecutionResult]:
+    remaining = [item for item in task_results if item.task_id != result.task_id]
+    remaining.append(result)
+    return remaining
+
+
 # ---------------------------------------------------------------------------
 # Main execution orchestrator (uses TaskExecutionFlow per task)
 # ---------------------------------------------------------------------------
@@ -135,6 +164,7 @@ def run_dialectic_execution(
     max_retries_per_task: int = DEFAULT_MAX_RETRIES_PER_TASK,
     output_dir: str | None = None,
     vision_context: VisionContext = VisionContext.PROJECT,
+    resume_run_id: str | None = None,
 ) -> dict:
     """
     Execute the plan with native CrewAI Flow per task.
@@ -146,18 +176,45 @@ def run_dialectic_execution(
     Crew according to the provided VisionContext, not injected as raw text.
     """
     out_dir = Path(output_dir or EXEC_OUTPUT_DIR)
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = out_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    resumed_from_run_id = resume_run_id or None
 
-    path = plan_path
-    if path is None or path == "--latest":
-        path = str(_find_latest_plan())
+    if resume_run_id:
+        run_id = resume_run_id
+        run_dir = out_dir / run_id
+        checkpoint = _load_checkpoint(run_dir)
+        path = plan_path if plan_path not in {None, "--latest"} else checkpoint.plan_path
+        if Path(path).resolve() != Path(checkpoint.plan_path).resolve():
+            raise ValueError(
+                "Resume run plan path does not match the persisted execution checkpoint"
+            )
+        vision_context = VisionContext(checkpoint.vision_context)
+    else:
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_dir = out_dir / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint = None
+        path = plan_path
+        if path is None or path == "--latest":
+            path = str(_find_latest_plan())
+
     if not os.path.exists(path):
         raise FileNotFoundError(f"Plan not found: {path}")
 
     plan = _load_plan(path)
     ordered_tasks = _topological_sort(plan.tasks)
+
+    if checkpoint is None:
+        checkpoint = ExecutionCheckpoint(
+            plan_id=plan.user_story_id,
+            plan_title=plan.user_story_title,
+            run_id=run_id,
+            plan_path=str(Path(path).resolve()),
+            vision_context=vision_context.value,
+            resumed_from_run_id=resumed_from_run_id,
+        )
+        _save_checkpoint(run_dir, checkpoint)
+
+    existing_results = {result.task_id: result for result in checkpoint.task_results}
 
     try:
         update_user_story_status(path, "in_progress")
@@ -168,13 +225,25 @@ def run_dialectic_execution(
     print(f"Executing plan — {plan.user_story_id} {plan.user_story_title}")
     print(f"Tasks: {len(ordered_tasks)} | Retries/task: {max_retries_per_task}")
     print(f"Flow: dialectic → verify(A+B) → reimplement(C) → post-verify(PRD)")
+    if resume_run_id:
+        print(f"Resuming run id: {resume_run_id}")
     print(f"{'='*60}\n")
 
-    task_results: list[TaskExecutionResult] = []
-    completed_outputs: dict[str, str] = {}
-    failed_task_ids: set[str] = set()
+    task_results: list[TaskExecutionResult] = list(checkpoint.task_results)
+    completed_outputs: dict[str, str] = dict(checkpoint.completed_outputs)
+    failed_task_ids: set[str] = set(checkpoint.failed_task_ids)
 
     for task in ordered_tasks:
+        previous_result = existing_results.get(task.id)
+        if previous_result is not None:
+            status = "completed" if previous_result.success else "failed"
+            print(f"\n>>> Reusing {status} task {task.id} — {task.title} from checkpoint")
+            if previous_result.success and previous_result.output_summary:
+                completed_outputs[task.id] = previous_result.output_summary
+            if not previous_result.success:
+                failed_task_ids.add(task.id)
+            continue
+
         unmet_deps = [d for d in task.dependencies if d in failed_task_ids]
         if unmet_deps:
             print(f"\n>>> SKIPPING task {task.id} — {task.title} (failed deps: {', '.join(unmet_deps)})")
@@ -186,8 +255,11 @@ def run_dialectic_execution(
                 retry_count=0,
                 validation_notes=f"Skipped: dependencies failed: {unmet_deps}",
             )
-            task_results.append(skip_result)
+            task_results = _upsert_task_result(task_results, skip_result)
             failed_task_ids.add(task.id)
+            checkpoint.task_results = task_results
+            checkpoint.failed_task_ids = sorted(failed_task_ids)
+            _save_checkpoint(run_dir, checkpoint)
             try:
                 update_task_status(path, task.id, "failed", notes=f"Skipped: dependencies failed: {unmet_deps}")
             except Exception as exc:
@@ -207,16 +279,24 @@ def run_dialectic_execution(
 
         try:
             flow = TaskExecutionFlow(persistence=_get_task_persistence())
-            flow.state.task_id = task.id
-            flow.state.task_title = task.title
-            flow.state.task_description = task.description
-            flow.state.context_str = context_str
-            flow.state.output_dir = str(task_output_dir)
-            flow.state.acceptance_checks = task.acceptance_checks
-            flow.state.min_score = DEFAULT_MIN_SCORE
-            flow.state.max_retries = max_retries_per_task
-            flow.state.vision_context = vision_context.value
-            flow_result = flow.kickoff()
+            flow_id = checkpoint.task_flow_ids.get(task.id, flow.flow_id)
+            checkpoint.task_flow_ids[task.id] = flow_id
+            _save_checkpoint(run_dir, checkpoint)
+
+            flow_result = flow.kickoff(
+                inputs={
+                    "id": flow_id,
+                    "task_id": task.id,
+                    "task_title": task.title,
+                    "task_description": task.description,
+                    "context_str": context_str,
+                    "output_dir": str(task_output_dir),
+                    "acceptance_checks": task.acceptance_checks,
+                    "min_score": DEFAULT_MIN_SCORE,
+                    "max_retries": max_retries_per_task,
+                    "vision_context": vision_context.value,
+                }
+            )
 
             if isinstance(flow_result, TaskExecutionResult):
                 result = flow_result
@@ -246,7 +326,7 @@ def run_dialectic_execution(
                 output_summary="",
             )
 
-        task_results.append(result)
+        task_results = _upsert_task_result(task_results, result)
 
         if result.success:
             phases = " → ".join(result.execution_phases) if result.execution_phases else "dialectic"
@@ -270,6 +350,11 @@ def run_dialectic_execution(
                 )
             except Exception as exc:
                 logger.warning("Failed to update status for failed %s: %s", task.id, exc)
+
+        checkpoint.task_results = task_results
+        checkpoint.completed_outputs = completed_outputs
+        checkpoint.failed_task_ids = sorted(failed_task_ids)
+        _save_checkpoint(run_dir, checkpoint)
 
     # ------------------------------------------------------------------
     # Post-execution: verify completed tasks against PRD acceptance criteria
@@ -350,6 +435,8 @@ def run_dialectic_execution(
         overall_success=overall_success,
         verified_tasks=verified_ids,
         failed_verification_tasks=all_failed,
+        task_flow_ids=checkpoint.task_flow_ids,
+        resumed_from_run_id=resumed_from_run_id,
     )
 
     report_path = run_dir / "report.json"
@@ -378,5 +465,6 @@ def run_dialectic_execution(
         "story_status": story_status,
         "verified_tasks": verified_ids,
         "failed_verification_tasks": all_failed,
+        "task_flow_ids": checkpoint.task_flow_ids,
         "report": report.model_dump(),
     }

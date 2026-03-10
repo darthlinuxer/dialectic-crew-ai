@@ -17,6 +17,7 @@ from crewai import Task, Crew
 
 from dialectic.agents import (
     _vision_label,
+    crew_memory,
     create_visionario,
     create_critico_socratico,
     create_sintetizador,
@@ -204,7 +205,7 @@ Be concrete and aligned with the macro vision. Do not invent modules outside the
         )
 
         task_antitese = Task(
-            description="""
+            description=f"""
 Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 The implementation proposal (thesis) for the user story is in context.
@@ -279,7 +280,7 @@ Fill in:
             tasks=[task_tese, task_antitese, task_sintese, task_validacao],
             process="sequential",
             verbose=True,
-            memory=True,
+            memory=crew_memory(vision_context, "planning"),
             planning=True,
             planning_llm=llm_planning,
             knowledge_sources=[vision_knowledge(vision_context)],

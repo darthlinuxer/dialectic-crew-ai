@@ -39,11 +39,13 @@ uv run dialectic-crew prd "your feature request" [--files file1 file2 ...] [--se
 - retries until the PRD reaches the approval threshold or the flow exhausts retries
 - exports to `prd_output/`
 - switches to `internal/SELF_VISION.md` when `--self` is provided
+- supports `--resume <flow-id>` to continue a persisted PRD flow from its last saved phase
 
 Examples:
 
 ```bash
 uv run dialectic-crew prd "Login with two-factor authentication"
+uv run dialectic-crew prd --resume <flow-id>
 uv run dialectic-crew prd "Improve self-improvement safety gates" --self
 ```
 
@@ -76,6 +78,12 @@ Without `--spec-only`, the command:
 4. post-verifies completed tasks against PRD acceptance criteria
 5. updates task and story status in the plan artifact
 6. writes an execution report to `exec_output/`
+
+Interrupted runs also write `exec_output/<run_id>/checkpoint.json`. Resume them with:
+
+```bash
+uv run dialectic-crew execute --resume-run <run-id>
+```
 
 ### Spec-only execution
 
@@ -118,7 +126,7 @@ Manual override for edge cases and human intervention.
 ## `self-improve`
 
 ```bash
-uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty]
+uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
 ```
 
 ### What it does
@@ -131,6 +139,14 @@ uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty]
 6. generates a PRD, then a plan, then executes it
 7. validates tests and metrics, then creates a PR if `gh` is installed
 
+When `--resume <cycle-id>` is provided, the command reloads the saved snapshot from
+`.dialectic/self_improve/<cycle-id>.json` and continues from the last completed
+artifact/flow checkpoint instead of restarting introspection, PRD generation, or
+execution from scratch.
+
+Use `--list-resumable` to print the saved cycle IDs, timestamps, inferred next
+stage, and last failure reason before choosing one to resume.
+
 ### Runtime requirements
 
 - `git` is required
@@ -138,6 +154,7 @@ uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty]
 - interrupted runs on a `self-improve/*` branch are auto-cleaned before retrying
 - on other branches, dirty worktrees abort with guidance unless `--stash-dirty` is used
 - `gh` is optional
+- resume snapshots live in `.dialectic/self_improve/`
 - metrics default to `.dialectic/metrics.db`
 - CrewAI telemetry is disabled automatically during self-improve to prevent external exporter SSL noise from polluting logs
 - with an API key configured, baseline validation runs the full pytest suite, including `@pytest.mark.llm` tests
@@ -154,6 +171,8 @@ uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty]
 | `CREWAI_DISABLE_TELEMETRY` | `true` during self-improve | suppress CrewAI telemetry exporter requests during the cycle |
 
 `--stash-dirty` stashes tracked and untracked changes from the current branch before self-improve continues. The stash is preserved in the stash stack so it can be reviewed or restored manually later.
+
+`--resume` is for continuing a previously interrupted self-improve cycle after PRD/plan/execution errors. It reuses persisted flow IDs and execution checkpoints; it does not start a brand-new cycle.
 
 ## `--self` flag
 

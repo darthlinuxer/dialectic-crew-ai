@@ -88,6 +88,7 @@ graph TB
 |---|---|
 | `agents.py` | Core agent factories, LLM tier setup, MCP wiring, `vision_knowledge()` |
 | `prd_flow.py` | PRD dialectic flow with retry, export, hooks, and persistence |
+| `flow_persistence.py` | Shared CrewAI flow persistence backend selection (`.dialectic/flows.db` by default) |
 | `state.py` | Flow state for PRD generation |
 | `export.py` | JSON/Markdown export helpers |
 | `config.py` | Export configuration loader |
@@ -112,6 +113,11 @@ graph TB
 | `task_flow.py` | Per-task dialectic → verify → reimplement pipeline |
 | `verify.py` | Shared task/story verification and status persistence |
 | `runner.py` | Static spec generation (`--spec-only`) |
+
+The architecture now distinguishes two SQLite stores under `.dialectic/` by default:
+
+- `.dialectic/flows.db` for CrewAI resumable flow state (`DIALECTIC_FLOW_DB` overrides it)
+- `.dialectic/metrics.db` for passive telemetry (`DIALECTIC_METRICS_DB` overrides it)
 
 ### `src/mcp/`
 
@@ -191,6 +197,9 @@ Important current behavior:
 - refuses to run on a dirty worktree
 - prefers `uv run pytest`, but falls back to `python -m pytest`
 - preserves exact PRD/plan/execution artifact paths in the cycle record and PR body
+- stores resumable cycle snapshots in `.dialectic/self_improve/<cycle-id>.json`
+- resumes from the next unfinished stage using persisted PRD flow IDs, plan artifacts, and execution checkpoints
+- prints a short resume summary describing the last failure, next stage, and reused artifacts/checkpoints
 - creates a PR only when `gh` is available; otherwise it keeps the branch for manual review
 
 ## Technology stack

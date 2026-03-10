@@ -117,6 +117,21 @@ class ExecutionReport(BaseModel):
     overall_success: bool = False
     verified_tasks: List[str] = Field(default_factory=list)
     failed_verification_tasks: List[str] = Field(default_factory=list)
+    task_flow_ids: dict[str, str] = Field(default_factory=dict)
+    resumed_from_run_id: Optional[str] = None
+
+
+class ExecutionCheckpoint(BaseModel):
+    plan_id: str
+    plan_title: str
+    run_id: str
+    plan_path: str
+    vision_context: str
+    task_results: List[TaskExecutionResult] = Field(default_factory=list)
+    task_flow_ids: dict[str, str] = Field(default_factory=dict)
+    completed_outputs: dict[str, str] = Field(default_factory=dict)
+    failed_task_ids: List[str] = Field(default_factory=list)
+    resumed_from_run_id: Optional[str] = None
 
 
 # --- Self-improvement schemas ---
@@ -164,6 +179,8 @@ class IntrospectionReport(BaseModel):
 class SelfImprovementRecord(BaseModel):
     cycle_id: str
     timestamp: str
+    baseline_metrics: dict = Field(default_factory=dict)
+    selected_opportunities: List[ImprovementOpportunity] = Field(default_factory=list)
     opportunities_found: int = 0
     opportunities_attempted: int = 0
     prd_generated: bool = False
@@ -173,11 +190,14 @@ class SelfImprovementRecord(BaseModel):
     metrics_stable: bool = False
     pr_created: bool = False
     branch_name: str = ""
+    feature_request: str = ""
+    prd_flow_id: str = ""
     prd_path_json: str = ""
     prd_path_md: str = ""
     plan_path_json: str = ""
     plan_path_md: str = ""
     execution_run_id: str = ""
+    execution_task_flow_ids: dict[str, str] = Field(default_factory=dict)
     execution_output_path: str = ""
     execution_report_path: str = ""
     failure_reason: str = ""

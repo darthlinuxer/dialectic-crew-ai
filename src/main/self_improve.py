@@ -25,7 +25,7 @@ from dialectic.introspect import run_introspection
 from dialectic.metrics import MetricRecord, MetricsStore, emit, get_metrics_store
 from dialectic.prioritize import dialectic_prioritize
 from dialectic.vision import VisionContext, resolve_project_root
-from schemas import IntrospectionReport, SelfImprovementRecord
+from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ PROTECTED_PATHS = frozenset({
 
 MIN_METRIC_RETENTION = float(os.getenv("MIN_METRIC_RETENTION", "0.95"))
 DEFAULT_SELF_IMPROVE_TEST_TIMEOUT = 1800
+SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
 
 
 def _configure_crewai_runtime() -> None:
@@ -243,6 +244,7 @@ def _create_pr(branch: str, title: str, body: str, cwd: Path) -> str | None:
 
 
 def _record_prd_artifacts(record: SelfImprovementRecord, flow) -> str:
+    record.prd_flow_id = getattr(flow, "flow_id", "") or getattr(flow.state, "id", "") or ""
     record.prd_path_json = flow.state.prd_path_json or ""
     record.prd_path_md = flow.state.prd_path_md or ""
     return record.prd_path_json
@@ -256,8 +258,95 @@ def _record_plan_artifacts(record: SelfImprovementRecord, plan_result: dict) -> 
 
 def _record_execution_artifacts(record: SelfImprovementRecord, exec_result: dict) -> None:
     record.execution_run_id = exec_result.get("run_id", "") or ""
+    record.execution_task_flow_ids = exec_result.get("task_flow_ids", {}) or {}
     record.execution_output_path = exec_result.get("output_path", "") or ""
     record.execution_report_path = exec_result.get("report_path", "") or ""
+
+
+def _self_improve_record_path(project_root: Path, cycle_id: str) -> Path:
+    path = project_root / SELF_IMPROVE_STATE_DIR / f"{cycle_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _save_self_improve_record(project_root: Path, record: SelfImprovementRecord) -> None:
+    path = _self_improve_record_path(project_root, record.cycle_id)
+    path.write_text(record.model_dump_json(indent=2), encoding="utf-8")
+
+
+def _load_self_improve_record(project_root: Path, cycle_id: str) -> SelfImprovementRecord:
+    path = _self_improve_record_path(project_root, cycle_id)
+    if not path.exists():
+        raise FileNotFoundError(f"Self-improve snapshot not found: {path}")
+    return SelfImprovementRecord.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _resolve_resume_context(record: SelfImprovementRecord) -> tuple[list[ImprovementOpportunity], dict]:
+    return list(record.selected_opportunities), dict(record.baseline_metrics)
+
+
+def _summarize_resume_state(
+    record: SelfImprovementRecord,
+    last_failure_reason: str = "",
+) -> dict[str, str | list[str]]:
+    reused: list[str] = []
+    if record.prd_generated and record.prd_path_json:
+        reused.append(f"PRD: {record.prd_path_json}")
+    if record.plan_generated and record.plan_path_json:
+        reused.append(f"Plan: {record.plan_path_json}")
+    if record.execution_run_id:
+        reused.append(f"Execution run: {record.execution_run_id}")
+
+    if not record.prd_generated:
+        next_stage = "PRD generation"
+    elif not record.plan_generated:
+        next_stage = "planning"
+    elif (
+        not record.execution_attempted
+        or not record.execution_output_path
+        or not record.execution_report_path
+        or last_failure_reason.startswith("Execution failed:")
+    ):
+        next_stage = "execution"
+    elif not record.tests_passed:
+        next_stage = "test validation"
+    elif not record.metrics_stable:
+        next_stage = "metrics validation"
+    elif not record.pr_created:
+        next_stage = "PR creation"
+    else:
+        next_stage = "completed"
+
+    return {
+        "last_failure": last_failure_reason or "unknown",
+        "next_stage": next_stage,
+        "reused": reused,
+    }
+
+
+def _list_resumable_cycles(project_root: Path) -> list[dict[str, str]]:
+    state_dir = project_root / SELF_IMPROVE_STATE_DIR
+    if not state_dir.exists():
+        return []
+
+    rows: list[dict[str, str]] = []
+    for path in state_dir.glob("*.json"):
+        try:
+            record = SelfImprovementRecord.model_validate_json(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        summary = _summarize_resume_state(record, record.failure_reason)
+        rows.append(
+            {
+                "cycle_id": record.cycle_id,
+                "timestamp": record.timestamp,
+                "next_stage": str(summary["next_stage"]),
+                "last_failure": str(summary["last_failure"]),
+            }
+        )
+
+    rows.sort(key=lambda row: (row["timestamp"], row["cycle_id"]), reverse=True)
+    return rows
 
 
 def _require_artifact(path: str, failure_reason: str) -> str:
@@ -270,6 +359,7 @@ def run_self_improve(
     max_improvements: int = 1,
     dry_run: bool = False,
     stash_dirty: bool = False,
+    resume_cycle_id: str | None = None,
 ) -> SelfImprovementRecord:
     """
     Run one self-improvement cycle.
@@ -284,26 +374,47 @@ def run_self_improve(
     _configure_crewai_runtime()
     project_root = resolve_project_root()
     store = get_metrics_store()
-    cycle_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    record = SelfImprovementRecord(
-        cycle_id=cycle_id,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-    )
+    is_resume = resume_cycle_id is not None
+    if is_resume:
+        record = _load_self_improve_record(project_root, resume_cycle_id)
+        cycle_id = record.cycle_id
+        resume_summary = _summarize_resume_state(record, record.failure_reason)
+        record.failure_reason = ""
+        record.tests_passed = False
+        record.metrics_stable = False
+        record.pr_created = False
+        _save_self_improve_record(project_root, record)
+    else:
+        cycle_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        record = SelfImprovementRecord(
+            cycle_id=cycle_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+        _save_self_improve_record(project_root, record)
 
     print(f"\n{'='*60}")
-    print(f"Self-Improvement Cycle {cycle_id}")
+    print(f"Self-Improvement Cycle {cycle_id}{' (resume)' if is_resume else ''}")
     print(f"{'='*60}")
+    if is_resume:
+        print(f"[resume] Last failure: {resume_summary['last_failure']}")
+        print(f"[resume] Next stage: {resume_summary['next_stage']}")
+        reused_items = resume_summary["reused"]
+        if reused_items:
+            print("[resume] Reusing:")
+            for item in reused_items:
+                print(f"  - {item}")
 
-    print("\n[1/6] Running baseline tests...")
-    baseline_tests = _snapshot_tests(project_root)
-    if not baseline_tests["passed"]:
-        record.failure_reason = "Baseline tests already failing -- aborting"
-        print(f"  ABORT: {record.failure_reason}")
-        _emit_test_failure_details(baseline_tests)
-        _persist_record(store, record)
-        return record
+    if not is_resume:
+        print("\n[1/6] Running baseline tests...")
+        baseline_tests = _snapshot_tests(project_root)
+        if not baseline_tests["passed"]:
+            record.failure_reason = "Baseline tests already failing -- aborting"
+            print(f"  ABORT: {record.failure_reason}")
+            _emit_test_failure_details(baseline_tests)
+            _persist_record(store, record)
+            return record
 
-    if not dry_run:
+    if not dry_run and not is_resume:
         print("[1b/6] Checking git preflight...")
         if not _command_available("git"):
             record.failure_reason = "Git is required for self-improve branch isolation but was not found on PATH"
@@ -334,45 +445,58 @@ def run_self_improve(
                     _persist_record(store, record)
                     return record
 
-    print("[2/6] Running introspection against SELF_VISION.md...")
-    report = run_introspection(store=store, vision_context=VisionContext.SELF)
-    record.opportunities_found = len(report.opportunities)
-
-    if not report.opportunities:
-        record.failure_reason = "No improvement opportunities found"
-        print(f"  {record.failure_reason}")
-        _persist_record(store, record)
-        return record
-
-    print(f"  Found {len(report.opportunities)} opportunities:")
-    for opp in report.opportunities[:max_improvements]:
-        print(f"    [{opp.estimated_impact.upper()}] {opp.title}")
-
-    if dry_run:
-        print("\n[DRY RUN] Printing full introspection report and stopping.")
-        _print_report(report, max_improvements)
-        record.failure_reason = "dry_run"
-        _persist_record(store, record)
-        return record
-
-    print("\n[2b/7] Running dialectic prioritization...")
-    try:
-        prioritized = dialectic_prioritize(
-            report.opportunities,
-            vision_context=VisionContext.SELF,
-            max_to_debate=min(len(report.opportunities), 5),
+    if is_resume:
+        selected, baseline_metrics = _resolve_resume_context(record)
+        report = IntrospectionReport(
+            timestamp=record.timestamp,
+            opportunities=selected,
+            baseline_metrics=baseline_metrics,
         )
-    except Exception as e:
-        logger.warning("Dialectic prioritization failed: %s; using impact sort", e)
-        print(f"  Prioritization failed ({e}); falling back to impact sort.")
-        prioritized = sorted(
-            report.opportunities,
-            key=lambda o: {"high": 0, "medium": 1, "low": 2}.get(o.estimated_impact, 1),
-        )
-    selected = prioritized[:max_improvements]
-    record.opportunities_attempted = len(selected)
-    branch_name = f"self-improve/{cycle_id}"
-    record.branch_name = branch_name
+        branch_name = record.branch_name or f"self-improve/{cycle_id}"
+        print(f"[resume] Loaded {len(selected)} saved opportunities.")
+    else:
+        print("[2/6] Running introspection against SELF_VISION.md...")
+        report = run_introspection(store=store, vision_context=VisionContext.SELF)
+        record.opportunities_found = len(report.opportunities)
+        record.baseline_metrics = dict(report.baseline_metrics)
+
+        if not report.opportunities:
+            record.failure_reason = "No improvement opportunities found"
+            print(f"  {record.failure_reason}")
+            _persist_record(store, record)
+            return record
+
+        print(f"  Found {len(report.opportunities)} opportunities:")
+        for opp in report.opportunities[:max_improvements]:
+            print(f"    [{opp.estimated_impact.upper()}] {opp.title}")
+
+        if dry_run:
+            print("\n[DRY RUN] Printing full introspection report and stopping.")
+            _print_report(report, max_improvements)
+            record.failure_reason = "dry_run"
+            _persist_record(store, record)
+            return record
+
+        print("\n[2b/7] Running dialectic prioritization...")
+        try:
+            prioritized = dialectic_prioritize(
+                report.opportunities,
+                vision_context=VisionContext.SELF,
+                max_to_debate=min(len(report.opportunities), 5),
+            )
+        except Exception as e:
+            logger.warning("Dialectic prioritization failed: %s; using impact sort", e)
+            print(f"  Prioritization failed ({e}); falling back to impact sort.")
+            prioritized = sorted(
+                report.opportunities,
+                key=lambda o: {"high": 0, "medium": 1, "low": 2}.get(o.estimated_impact, 1),
+            )
+        selected = prioritized[:max_improvements]
+        record.selected_opportunities = selected
+        record.opportunities_attempted = len(selected)
+        branch_name = f"self-improve/{cycle_id}"
+        record.branch_name = branch_name
+        _save_self_improve_record(project_root, record)
 
     print("  Prioritized order:")
     for i, opp in enumerate(selected, 1):
@@ -381,12 +505,15 @@ def run_self_improve(
     token_budget = int(os.getenv("SELF_IMPROVE_TOKEN_BUDGET", "500000"))
     max_iterations = int(os.getenv("SELF_IMPROVE_MAX_ITERATIONS", "25"))
 
-    print(f"\n[3/7] Creating branch: {branch_name}")
-    if not _git_branch_create(branch_name, project_root):
-        record.failure_reason = "Failed to create git branch"
-        print(f"  ABORT: {record.failure_reason}")
-        _persist_record(store, record)
-        return record
+    if not is_resume:
+        print(f"\n[3/7] Creating branch: {branch_name}")
+        if not _git_branch_create(branch_name, project_root):
+            record.failure_reason = "Failed to create git branch"
+            print(f"  ABORT: {record.failure_reason}")
+            _persist_record(store, record)
+            return record
+    else:
+        print(f"\n[resume] Continuing on branch: {branch_name}")
 
     with HookScope(
         token_budget=token_budget,
@@ -396,38 +523,54 @@ def run_self_improve(
     ) as tracker:
         try:
             for opp in selected:
-                feature_request = (
+                feature_request = record.feature_request or (
                     f"[Self-Improvement] {opp.title}\n\n"
                     f"Category: {opp.category}\n"
                     f"Description: {opp.description}\n"
                     f"Evidence: {', '.join(opp.evidence)}"
                 )
+                record.feature_request = feature_request
+                _save_self_improve_record(project_root, record)
 
-                print(f"\n[4/7] Generating PRD for: {opp.title[:60]}...")
-                if tracker.budget_exceeded:
-                    record.failure_reason = (
-                        f"Token budget exceeded before PRD generation "
-                        f"({tracker.total_tokens}/{tracker.budget})"
+                if not record.prd_generated:
+                    print(f"\n[4/7] Generating PRD for: {opp.title[:60]}...")
+                    if tracker.budget_exceeded:
+                        record.failure_reason = (
+                            f"Token budget exceeded before PRD generation "
+                            f"({tracker.total_tokens}/{tracker.budget})"
+                        )
+                        raise _CycleAbort(record.failure_reason)
+
+                    from dialectic.prd_flow import DialecticFlow, _get_persistence
+
+                    flow = DialecticFlow(persistence=_get_persistence())
+                    record.prd_flow_id = record.prd_flow_id or flow.flow_id
+                    _save_self_improve_record(project_root, record)
+                    flow.kickoff(
+                        inputs={
+                            "id": record.prd_flow_id,
+                            "feature_objective": feature_request,
+                            "vision_context": VisionContext.SELF.value,
+                        }
                     )
-                    raise _CycleAbort(record.failure_reason)
+                    prd_path = _record_prd_artifacts(record, flow)
+                    _save_self_improve_record(project_root, record)
 
-                from dialectic.prd_flow import DialecticFlow, _get_persistence
-
-                flow = DialecticFlow(persistence=_get_persistence())
-                flow.state.feature_objective = feature_request
-                flow.state.vision_context = VisionContext.SELF.value
-                flow.kickoff()
-                prd_path = _record_prd_artifacts(record, flow)
-
-                if flow.state.quality_score < 9.0 and not flow.state.consensus_reached:
-                    record.failure_reason = f"PRD quality too low: {flow.state.quality_score}"
-                    print(f"  PRD did not reach threshold: {flow.state.quality_score}/10")
-                    raise _CycleAbort(record.failure_reason)
-                prd_path = _require_artifact(
-                    prd_path,
-                    "PRD generation did not produce an exported JSON artifact",
-                )
-                record.prd_generated = True
+                    if flow.state.quality_score < 9.0 and not flow.state.consensus_reached:
+                        record.failure_reason = f"PRD quality too low: {flow.state.quality_score}"
+                        print(f"  PRD did not reach threshold: {flow.state.quality_score}/10")
+                        raise _CycleAbort(record.failure_reason)
+                    prd_path = _require_artifact(
+                        prd_path,
+                        "PRD generation did not produce an exported JSON artifact",
+                    )
+                    record.prd_generated = True
+                else:
+                    prd_path = _require_artifact(
+                        record.prd_path_json,
+                        "PRD generation did not produce an exported JSON artifact",
+                    )
+                    print(f"\n[resume] Reusing PRD artifact: {prd_path}")
 
                 if tracker.budget_exceeded:
                     record.failure_reason = (
@@ -436,23 +579,31 @@ def run_self_improve(
                     )
                     raise _CycleAbort(record.failure_reason)
 
-                print("[5/7] Planning user story execution...")
-                from planning.flow import run_user_story_planning
+                if not record.plan_generated:
+                    print("[5/7] Planning user story execution...")
+                    from planning.flow import run_user_story_planning
 
-                plan_result = run_user_story_planning(
-                    prd_path=prd_path,
-                    user_story_ref=None,
-                    vision_context=VisionContext.SELF,
-                )
-                plan_path = _record_plan_artifacts(record, plan_result)
-                if plan_result["quality_score"] < 7.5:
-                    record.failure_reason = f"Plan quality too low: {plan_result['quality_score']}"
-                    raise _CycleAbort(record.failure_reason)
-                plan_path = _require_artifact(
-                    plan_path,
-                    "Planning did not produce an exported artifact",
-                )
-                record.plan_generated = True
+                    plan_result = run_user_story_planning(
+                        prd_path=prd_path,
+                        user_story_ref=None,
+                        vision_context=VisionContext.SELF,
+                    )
+                    plan_path = _record_plan_artifacts(record, plan_result)
+                    _save_self_improve_record(project_root, record)
+                    if plan_result["quality_score"] < 7.5:
+                        record.failure_reason = f"Plan quality too low: {plan_result['quality_score']}"
+                        raise _CycleAbort(record.failure_reason)
+                    plan_path = _require_artifact(
+                        plan_path,
+                        "Planning did not produce an exported artifact",
+                    )
+                    record.plan_generated = True
+                else:
+                    plan_path = _require_artifact(
+                        record.plan_path_json,
+                        "Planning did not produce an exported artifact",
+                    )
+                    print(f"[resume] Reusing plan artifact: {plan_path}")
 
                 if tracker.budget_exceeded:
                     record.failure_reason = (
@@ -461,29 +612,39 @@ def run_self_improve(
                     )
                     raise _CycleAbort(record.failure_reason)
 
-                print("[6/7] Executing plan...")
-                from execution.dialectic_execution import run_dialectic_execution
-
-                exec_result = run_dialectic_execution(
-                    plan_path=plan_path,
-                    vision_context=VisionContext.SELF,
+                needs_execution = (
+                    not record.execution_attempted
+                    or not record.execution_output_path
+                    or not record.execution_report_path
                 )
-                _record_execution_artifacts(record, exec_result)
-                record.execution_attempted = True
+                if needs_execution:
+                    print("[6/7] Executing plan...")
+                    from execution.dialectic_execution import run_dialectic_execution
 
-                if not exec_result.get("overall_success"):
-                    record.failure_reason = (
-                        f"Execution failed: {exec_result.get('story_status', 'unknown')}"
+                    exec_result = run_dialectic_execution(
+                        plan_path=plan_path,
+                        vision_context=VisionContext.SELF,
+                        resume_run_id=record.execution_run_id or None,
                     )
-                    raise _CycleAbort(record.failure_reason)
-                _require_artifact(
-                    record.execution_output_path,
-                    "Execution did not produce an exported artifact",
-                )
-                _require_artifact(
-                    record.execution_report_path,
-                    "Execution report did not produce an exported artifact",
-                )
+                    _record_execution_artifacts(record, exec_result)
+                    record.execution_attempted = True
+                    _save_self_improve_record(project_root, record)
+
+                    if not exec_result.get("overall_success"):
+                        record.failure_reason = (
+                            f"Execution failed: {exec_result.get('story_status', 'unknown')}"
+                        )
+                        raise _CycleAbort(record.failure_reason)
+                    _require_artifact(
+                        record.execution_output_path,
+                        "Execution did not produce an exported artifact",
+                    )
+                    _require_artifact(
+                        record.execution_report_path,
+                        "Execution report did not produce an exported artifact",
+                    )
+                else:
+                    print(f"[resume] Reusing execution artifacts from run: {record.execution_run_id}")
 
         except _CycleAbort as e:
             print(f"\n  Cycle aborted: {e}")
@@ -493,6 +654,7 @@ def run_self_improve(
             record.estimated_cost = tracker.estimated_cost
             _git_discard_branch(branch_name, project_root)
             _persist_record(store, record)
+            _save_self_improve_record(project_root, record)
             return record
         except Exception as e:
             record.failure_reason = f"Unexpected error: {e}"
@@ -501,6 +663,7 @@ def run_self_improve(
             record.estimated_cost = tracker.estimated_cost
             _git_discard_branch(branch_name, project_root)
             _persist_record(store, record)
+            _save_self_improve_record(project_root, record)
             return record
 
         record.total_tokens = tracker.total_tokens
@@ -517,16 +680,18 @@ def run_self_improve(
         _emit_test_failure_details(post_tests)
         _git_discard_branch(branch_name, project_root)
         _persist_record(store, record)
+        _save_self_improve_record(project_root, record)
         return record
 
     print("Validating: checking metrics stability...")
-    stable, reason = _metrics_stable(store, report.baseline_metrics)
+    stable, reason = _metrics_stable(store, record.baseline_metrics or report.baseline_metrics)
     record.metrics_stable = stable
     if not stable:
         record.failure_reason = f"Metrics regressed: {reason}"
         print(f"  FAIL: {record.failure_reason}")
         _git_discard_branch(branch_name, project_root)
         _persist_record(store, record)
+        _save_self_improve_record(project_root, record)
         return record
 
     print("\nAll gates passed. Creating PR...")
@@ -544,6 +709,7 @@ def run_self_improve(
         print("  PR creation failed (gh CLI not available?). Branch preserved.")
 
     _persist_record(store, record)
+    _save_self_improve_record(project_root, record)
     return record
 
 
@@ -603,9 +769,11 @@ def _build_pr_body(
         "",
         f"- PRD JSON: {record.prd_path_json or 'n/a'}",
         f"- PRD Markdown: {record.prd_path_md or 'n/a'}",
+        f"- PRD flow ID: {record.prd_flow_id or 'n/a'}",
         f"- Plan JSON: {record.plan_path_json or 'n/a'}",
         f"- Plan Markdown: {record.plan_path_md or 'n/a'}",
         f"- Execution run: {record.execution_run_id or 'n/a'}",
+        f"- Execution task flows: {record.execution_task_flow_ids or 'n/a'}",
         f"- Execution output dir: {record.execution_output_path or 'n/a'}",
         f"- Execution report: {record.execution_report_path or 'n/a'}",
         "",

@@ -1,3 +1,6 @@
+from typing import Literal
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
 
 from dialectic.vision import VisionContext
@@ -7,6 +10,7 @@ MAX_RETRIES = 5
 
 class DialecticState(BaseModel):
     """Persistent state of the dialectic flow"""
+    id: str = Field(default_factory=lambda: str(uuid4()))
     feature_objective: str = ""
     prd_data: dict = {}
     prd_path_json: str = ""
@@ -18,3 +22,4 @@ class DialecticState(BaseModel):
     final_validation_notes: str = ""
     file_paths: list[str] = Field(default_factory=list)
     vision_context: str = VisionContext.PROJECT.value
+    current_phase: Literal["start", "dialectic", "evaluate", "save", "completed"] = "start"

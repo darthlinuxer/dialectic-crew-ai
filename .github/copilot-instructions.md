@@ -1,0 +1,124 @@
+# Copilot Instructions — Dialectic Crew AI
+
+## What this project is
+
+A CrewAI-powered dialectic engine that generates PRDs, plans user stories, executes tasks with independent verification, and runs guarded self-improvement cycles. The dialectic loop is: **Thesis → Antithesis → Synthesis → Validation**.
+
+## Architecture (key paths)
+
+| Layer | Path | Purpose |
+|-------|------|---------|
+| CLI | `src/main/cli.py` | Manual `sys.argv` dispatch (no Click/Typer). Entry point: `dialectic-crew` |
+| Agents | `src/dialectic/agents.py` | 5 agent factories (`create_visionario`, `create_critico_socratico`, `create_sintetizador`, `create_validador_macro`, `create_implementer`) |
+| PRD flow | `src/dialectic/prd_flow.py` | `DialecticFlow(Flow[DialecticState])` — CrewAI Flow with `@start`/`@listen`/`@router` decorators |
+| Planning | `src/planning/flow.py` | User-story planning dialectic |
+| Execution | `src/execution/` | `dialectic_execution.py` orchestrates; `task_flow.py` runs per-task dialectic→verify→reimplement |
+| Schemas | `src/schemas.py` | All Pydantic models (PRDSchema, UserStory, ImplementationTask, etc.) — the single source of truth |
+| Self-improve | `src/main/self_improve.py` | Orchestrator (not a Flow): introspect → prioritize → PRD → plan → execute → test → PR |
+| MCP skills | `src/mcp/skills_mcp.py` | FastMCP server for local `SKILL.md` discovery |
+| Metrics | `src/dialectic/metrics.py` | SQLite store at `.dialectic/metrics.db` (override: `DIALECTIC_METRICS_DB`) |
+
+## Dual vision system
+
+Two vision files drive agent alignment — never mix them:
+- `knowledge/VISION.md` → `VisionContext.PROJECT` (user's project)
+- `internal/SELF_VISION.md` → `VisionContext.SELF` (this app's own evolution)
+
+Vision is resolved by `src/dialectic/vision.py`. `prepare_vision_runtime()` **changes CWD** to the project root — this is intentional for CrewAI's relative-path knowledge sources.
+
+## Critical conventions
+
+### Agent factories always create fresh instances
+LLM connectors are module-level singletons, but agents are re-created per run to avoid memory contamination. Every agent backstory embeds `{vision_label}` (filename of the active vision) for traceability.
+
+### LLM tiers via env vars
+- `LLM_MODEL_SIMPLE` (default `gpt-4o-mini`) — validator
+- `LLM_MODEL_COMPLEX` (default `gpt-4o`) — critic, synthesizer, implementer
+- `LLM_MODEL_REASONING` (default `o3-mini`) — visionary
+- `LLM_MODEL_PLANNING` — defaults to reasoning model
+
+### MCP wiring is fault-tolerant
+`_make_mcp()` returns `None` when prerequisites are missing. Agent tool lists filter out `None` via list comprehension. External MCP failures reduce capability, never crash.
+
+### HookScope guards expensive flows
+`src/dialectic/hooks.py` — a context manager that enforces token budgets, iteration caps, protected-path blocking, and cost metrics. Used especially in self-improve (`self_improve.py` has a hardcoded `frozenset` of paths that must never be modified).
+
+### Metrics never raise
+`emit()` is fire-and-forget; all exceptions are swallowed at DEBUG level. Metrics are passive telemetry and must never break the main flow.
+
+## Developer workflows
+
+```bash
+# Install (uv preferred)
+uv sync && cp .env.example .env
+
+# Run the CLI
+uv run dialectic-crew prd "Login with 2FA"
+uv run dialectic-crew plan
+uv run dialectic-crew execute
+uv run dialectic-crew self-improve --dry-run
+
+# Run tests (unit only — no API keys needed)
+uv run pytest -q
+
+# Run with coverage
+uv run pytest --cov=src --cov-report=term-missing
+
+# Real LLM integration tests (require API keys, slow, costly)
+uv run pytest -m llm
+
+# Focused self-improve regressions
+uv run pytest tests/test_self_improve.py tests/test_self_improve_git_safety.py tests/test_self_improve_lineage.py -q
+```
+
+Tests marked `@pytest.mark.llm` are auto-skipped when no API key is present (see `tests/conftest.py`). The `conftest.py` provides factory helpers (`make_prd()`, `make_task()`, `make_plan()`) — call them with keyword overrides, not fixtures.
+
+## CrewAI reference — always consult docs
+
+This project is built on **CrewAI**. Before implementing new features, fixing bugs, or modifying agent/flow/crew behavior, **always** fetch the latest CrewAI documentation using Context7:
+
+| Topic | Context7 library ID | When to consult |
+|-------|---------------------|-----------------|
+| Flows, Agents, Crews, Tasks, Memory, Knowledge, Guardrails | `/crewaiinc/crewai` | Any change to `src/dialectic/`, `src/planning/`, `src/execution/` |
+| CrewAI website docs (tutorials, guides, concepts) | `/websites/crewai_en` | Architecture decisions, new flow patterns, decorator usage |
+| CrewAI Tools (MCP adapters, file tools, search) | `/crewaiinc/crewai-tools` | Adding or modifying agent tools in `agents.py` or `tools.py` |
+
+Key CrewAI patterns used in this codebase:
+- `Flow[StateClass]` with `@start`/`@listen`/`@router`/`or_` decorators → `prd_flow.py`, `task_flow.py`
+- `Crew(agents, tasks, process=Process.sequential)` with `planning=True` and `memory=True`
+- `TextFileKnowledgeSource` for vision file injection into crews
+- `SQLiteFlowPersistence` for state checkpointing
+- Guardrail functions returning `(bool, result_or_error)` tuples
+- MCP server adapters via `crewai_tools` — see `_make_mcp()` in `agents.py`
+
+## Skills-first workflow (using-superpowers)
+
+**Before every planning session, task execution, or implementation**, invoke the `using-superpowers` skill from `~/.agents/skills/using-superpowers/SKILL.md`. This is the project's meta-skill that routes to the correct specialized skill:
+
+| Situation | Skill(s) to invoke |
+|-----------|-------------------|
+| Planning a complex multi-file change | `writing-plans` → `subagent-driven-development` |
+| Implementing a feature or bugfix | `test-driven-development` (uses `senior-software-developer` patterns) |
+| Architecture/refactor only | `senior-software-developer` directly |
+| Debugging a failure | `systematic-debugging` |
+| About to claim work is done | `verification-before-completion` |
+| Exploring an unfamiliar area | `brainstorming` first, then implementation |
+
+The skills library lives at `src/mcp/skills/` (also discoverable at `~/.agents/skills/`). Key skills for this Python/CrewAI project:
+- `python-patterns` — Python-specific best practices
+- `testing-patterns` — test structure and mocking strategies
+- `clean-code` — pragmatic coding standards
+- `code-review-checklist` — pre-PR quality checks
+
+**Rule**: if there is even a 1% chance a skill applies to the current task, read it first. Skills tell you HOW to explore, plan, and implement — invoke them before starting work, not after.
+
+## Patterns to follow when editing
+
+1. **Schemas go in `src/schemas.py`** — all Pydantic models live there, nowhere else.
+2. **New agents** must follow the `create_<name>(vision_context: VisionContext) -> Agent` factory pattern in `agents.py`.
+3. **New CLI commands** are added as `cmd_<name>(args)` functions in `cli.py` and wired into the `sys.argv` dispatch in `main()`. Update `_command_requires_api()` and `_command_requires_vision()` if the command has special gate requirements.
+4. **Test files** go in `tests/` and follow `test_<module>.py` naming. No global LLM mocking — mock per-test as needed.
+5. **Metrics**: use `emit(metric_type, value, **context)` from `dialectic.metrics`. Never catch or suppress metric errors at the call site.
+6. **Protected paths in self-improve**: if adding safety-critical files, add them to the `frozenset` in `self_improve.py`.
+7. **Git conventions**: conventional commits (`feat(scope): subject`), imperative mood, max 50 chars subject.
+8. **CrewAI telemetry** is disabled by default (`CREWAI_DISABLE_TELEMETRY=true` set in `cli.py:main()`).

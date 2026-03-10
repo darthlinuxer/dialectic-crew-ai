@@ -11,10 +11,12 @@ from dialectic.vision import VisionContext
 from main.self_improve import (
     PROTECTED_PATHS,
     _create_pr,
+    _list_resumable_cycles,
     _metrics_stable,
     _pytest_command,
     _self_improve_test_timeout,
     _snapshot_tests,
+    _summarize_resume_state,
     run_self_improve,
 )
 from schemas import SelfImprovementRecord
@@ -367,6 +369,131 @@ class TestRunSelfImprove:
                 record = run_self_improve(max_improvements=1)
 
         assert "did not produce an exported JSON artifact" in record.failure_reason
+
+    def test_resume_prints_last_failure_next_stage_and_reused_artifacts(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        from main.self_improve import _save_self_improve_record
+        from schemas import ImprovementOpportunity
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-summary",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-1",
+                    category="code_health",
+                    title="Recover failed execution",
+                    description="Resume from execution.",
+                    evidence=["exec_output/run-123/checkpoint.json"],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            prd_path_json=str(tmp_path / "prd_output" / "PRD_test.json"),
+            plan_path_json=str(tmp_path / "prd_output" / "exec_test.json"),
+            execution_run_id="run-123",
+            failure_reason="Execution failed: failed",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        monkeypatch.setattr(
+            "execution.dialectic_execution.run_dialectic_execution",
+            lambda **kwargs: {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "run-123",
+                "task_flow_ids": {},
+                "output_path": str(tmp_path / "exec_output" / "run-123"),
+                "report_path": str(tmp_path / "exec_output" / "run-123" / "report.json"),
+            },
+        )
+
+        run_self_improve(resume_cycle_id="cycle-summary")
+        out = capsys.readouterr().out
+
+        assert "[resume] Last failure: Execution failed: failed" in out
+        assert "[resume] Next stage: execution" in out
+        assert f"PRD: {tmp_path / 'prd_output' / 'PRD_test.json'}" in out
+        assert "Execution run: run-123" in out
+
+
+class TestResumeSummary:
+    def test_prefers_execution_after_failed_execution(self):
+        summary = _summarize_resume_state(
+            SelfImprovementRecord(
+                cycle_id="c1",
+                timestamp="2026-03-10T00:00:00Z",
+                prd_generated=True,
+                plan_generated=True,
+                execution_attempted=True,
+                prd_path_json="prd.json",
+                plan_path_json="plan.json",
+                execution_run_id="run-1",
+            ),
+            "Execution failed: failed",
+        )
+
+        assert summary["next_stage"] == "execution"
+
+    def test_prefers_planning_when_prd_exists_but_plan_missing(self):
+        summary = _summarize_resume_state(
+            SelfImprovementRecord(
+                cycle_id="c2",
+                timestamp="2026-03-10T00:00:00Z",
+                prd_generated=True,
+                prd_path_json="prd.json",
+            ),
+            "Plan quality too low: 6.0",
+        )
+
+        assert summary["next_stage"] == "planning"
+
+
+class TestResumableCycles:
+    def test_lists_saved_cycles_in_newest_first_order(self, tmp_path):
+        from main.self_improve import _save_self_improve_record
+
+        older = SelfImprovementRecord(
+            cycle_id="cycle-old",
+            timestamp="2026-03-10T00:00:00Z",
+            prd_generated=True,
+            failure_reason="Plan quality too low: 6.0",
+        )
+        newer = SelfImprovementRecord(
+            cycle_id="cycle-new",
+            timestamp="2026-03-10T01:00:00Z",
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            execution_run_id="run-123",
+            failure_reason="Execution failed: failed",
+        )
+        _save_self_improve_record(tmp_path, older)
+        _save_self_improve_record(tmp_path, newer)
+
+        rows = _list_resumable_cycles(tmp_path)
+
+        assert [row["cycle_id"] for row in rows] == ["cycle-new", "cycle-old"]
+        assert rows[0]["next_stage"] == "execution"
+        assert rows[1]["next_stage"] == "planning"
 
 
 class TestSelfImprovementRecord:

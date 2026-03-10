@@ -11,12 +11,13 @@ Uses native CrewAI features:
 
 import json
 import os
+from collections.abc import Mapping
 from datetime import datetime
 import logging
 from typing import Any
 
 from crewai.flow import Flow, start, listen, router, or_
-from crewai.flow.persistence import SQLiteFlowPersistence
+from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from crewai import Task, Crew, Process
 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
@@ -36,6 +37,7 @@ from dialectic.export import prd_to_markdown, PRDExporter
 from dialectic.config import get_export_config
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
+from dialectic.flow_persistence import build_sqlite_flow_persistence
 from schemas import PRDSchema
 
 try:
@@ -97,6 +99,17 @@ You MUST consult it and address every issue listed there in this round.
     )
 
 
+def _materialize_plain_data(value: Any) -> Any:
+    """Convert flow-state proxy containers into plain Python data recursively."""
+    if isinstance(value, Mapping):
+        return {str(k): _materialize_plain_data(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_materialize_plain_data(item) for item in value]
+    if isinstance(value, tuple):
+        return [_materialize_plain_data(item) for item in value]
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Guardrail: validates PRDSchema output from Validador
 # ---------------------------------------------------------------------------
@@ -106,6 +119,13 @@ def _extract_prd_from_result(result) -> PRDSchema | None:
     pydantic_obj = getattr(result, "pydantic", None)
     if isinstance(pydantic_obj, PRDSchema):
         return pydantic_obj
+
+    json_dict = getattr(result, "json_dict", None)
+    if isinstance(json_dict, dict):
+        try:
+            return PRDSchema.model_validate(json_dict)
+        except Exception:
+            pass
 
     raw_text = getattr(result, "raw", None)
     if not isinstance(raw_text, str) or not raw_text.strip():
@@ -142,27 +162,39 @@ def _prd_guardrail(result) -> tuple[bool, Any]:
     )
 
 
+@persist()
 class DialecticFlow(Flow[DialecticState]):
     """Dialectic flow with automatic retry and state persistence"""
 
     @start()
     def iniciar_dialetica(self):
+        phase = self.state.current_phase
         print(f"\n{'='*60}")
         print(f"STARTING DIALECTIC FLOW")
         print(f"{'='*60}")
+        print(f"Flow ID: {self.flow_id}")
         print(f"Feature: {self.state.feature_objective}")
         print(f"Max retries: {self.state.max_retries}")
         print(f"{'='*60}\n")
+
+        if phase == "evaluate":
+            return "avaliar"
+        if phase in {"save", "completed"}:
+            return "aprovar"
+
+        self.state.current_phase = "dialectic"
         return "rodar_rodada"
 
     # Router outputs remain string labels because CrewAI emits route names here,
     # not method references.
     @listen("retry")
     def fazer_retry(self):
+        self.state.current_phase = "dialectic"
         return "rodar_rodada"
 
     @listen(or_(iniciar_dialetica, fazer_retry))
     def rodar_rodada_dialetica(self):
+        self.state.current_phase = "dialectic"
         print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
 
         vision_context = VisionContext(self.state.vision_context)
@@ -229,16 +261,25 @@ The synthesis must:
 4. Be better than both individual proposals
 5. Be aligned with the macro vision
 
-Output: Complete PRD with corrected user stories, in structured format (objective, macro_impact, user_stories, anti_drift_questions). Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
+Output a CANDIDATE PRD as raw JSON with these fields only:
+- feature_name
+- version
+- objective
+- macro_impact
+- user_stories
+- anti_drift_questions
+
+Do NOT include quality_score, consensus_reached, or final_validation_notes in the synthesis output.
+Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
 """,
-            expected_output="Final refined version of the PRD",
+            expected_output="Candidate PRD as raw JSON for validator review",
             agent=sint,
             context=[task_vision, task_critica],
         )
 
         task_validacao = Task(
             description=f"""
-Evaluate the FINAL SYNTHESIS (output from the Synthesizer in context) and produce the final PRD.
+Evaluate the FINAL SYNTHESIS candidate PRD (the only task context provided below) and produce the final PRD.
 
 Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
@@ -261,9 +302,10 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
 """,
             expected_output="Valid PRDSchema with quality_score and consensus_reached",
             agent=val,
+            output_json=PRDSchema,
             guardrail=_prd_guardrail,
             guardrail_max_retries=2,
-            context=[task_vision, task_critica, task_sintese],
+            context=[task_sintese],
         )
 
         knowledge_sources = [vision_knowledge(vision_context), *retry_feedback_sources]
@@ -301,17 +343,16 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         ):
             resultado = crew.kickoff(**kickoff_kwargs)
 
-        # Extract PRD via output_pydantic (native CrewAI structured output)
-        prd: PRDSchema | None = None
-        pydantic_result = getattr(resultado, "pydantic", None)
-        if isinstance(pydantic_result, PRDSchema):
-            prd = pydantic_result
-        else:
+        # Extract PRD using the same helper used by the guardrail so the flow
+        # stores the exact validated representation rather than reparsing a
+        # different raw payload later.
+        prd: PRDSchema | None = _extract_prd_from_result(resultado)
+        if prd is None:
             tasks_out = getattr(resultado, "tasks_output", None) or []
-            if tasks_out:
-                last_pydantic = getattr(tasks_out[-1], "pydantic", None)
-                if isinstance(last_pydantic, PRDSchema):
-                    prd = last_pydantic
+            for task_output in reversed(tasks_out):
+                prd = _extract_prd_from_result(task_output)
+                if prd is not None:
+                    break
 
         if prd is not None:
             self.state.prd_data = prd.model_dump()
@@ -362,18 +403,22 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         print(f"\n{'='*60}")
         print(f"QUALITY SCORE: {self.state.quality_score}/10.0")
         print(f"{'='*60}")
+        self.state.current_phase = "evaluate"
         return "avaliar"
 
     @router(rodar_rodada_dialetica)
     def avaliar(self):
         if self.state.quality_score >= 9.0:
+            self.state.current_phase = "save"
             print(f"APPROVED! Quality score: {self.state.quality_score}")
             return "aprovar"
         elif self.state.retry_count >= self.state.max_retries:
+            self.state.current_phase = "save"
             print(f"Max retries reached. Finishing with score: {self.state.quality_score}")
             return "aprovar"
         else:
             self.state.retry_count += 1
+            self.state.current_phase = "dialectic"
             print(f"Rejected. Retry #{self.state.retry_count}")
             notes = self.state.final_validation_notes
             notes_str = notes[:200] if isinstance(notes, str) else str(notes)[:200]
@@ -384,6 +429,19 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
     # not method references.
     @listen("aprovar")
     def salvar_prd_final(self):
+        if self.state.current_phase == "completed" and (self.state.prd_path_json or self.state.prd_path_md):
+            print(f"\nPRD already exported for flow {self.flow_id}.")
+            if self.state.prd_path_json:
+                print(f"Saved to: {self.state.prd_path_json}")
+            if self.state.prd_path_md:
+                print(f"Markdown: {self.state.prd_path_md}")
+            data = _materialize_plain_data(self.state.prd_data)
+            try:
+                return PRDSchema.model_validate(data)
+            except Exception:
+                return None
+
+        self.state.current_phase = "save"
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         emit_metric(
             "prd_score",
@@ -398,7 +456,9 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
             vision_context=self.state.vision_context,
         )
 
-        data = self.state.prd_data if isinstance(self.state.prd_data, dict) else {}
+        data = _materialize_plain_data(self.state.prd_data)
+        if not isinstance(data, dict):
+            data = {}
 
         if data.get("_parse_failed"):
             self.state.prd_path_json = ""
@@ -410,10 +470,14 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
 
         try:
             prd = PRDSchema.model_validate(data)
-        except Exception:
+        except Exception as exc:
             self.state.prd_path_json = ""
             self.state.prd_path_md = ""
-            logger.error("Failed to validate prd_data as PRDSchema: %s", data.keys())
+            logger.error(
+                "Failed to validate prd_data as PRDSchema (%s): %s",
+                data.keys(),
+                exc,
+            )
             print(f"\nPRD generation FAILED: state data is not a valid PRDSchema.")
             print(f"Score: {self.state.quality_score}/10.0")
             return None
@@ -436,6 +500,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
                 print(f"\nPRD APPROVED with score {self.state.quality_score}!")
                 for p in created_path_strings:
                     print(f"Saved to: {p}")
+                self.state.current_phase = "completed"
                 return prd
             except Exception as e:
                 logger.exception("Failed to export PRD via PRDExporter: %s", e)
@@ -456,6 +521,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
         print(f"\nPRD APPROVED with score {self.state.quality_score}!")
         print(f"Saved to: {filename}")
         print(f"Markdown: {filename_md}")
+        self.state.current_phase = "completed"
         return prd
 
 
@@ -465,17 +531,39 @@ _persistence: SQLiteFlowPersistence | None = None
 def _get_persistence() -> SQLiteFlowPersistence:
     global _persistence
     if _persistence is None:
-        _persistence = SQLiteFlowPersistence()
+        _persistence = build_sqlite_flow_persistence()
     return _persistence
 
 
-def run_dialectic_flow(feature_request: str) -> dict:
+def get_prd_resume_state(flow_id: str) -> dict[str, Any] | None:
+    """Return persisted PRD flow state for the provided flow ID, if it exists."""
+    return _get_persistence().load_state(flow_id)
+
+
+def run_dialectic_flow(
+    feature_request: str | None,
+    *,
+    file_paths: list[str] | None = None,
+    vision_context: VisionContext = VisionContext.PROJECT,
+    resume_id: str | None = None,
+) -> dict:
+    if not resume_id and not feature_request:
+        raise ValueError("feature_request is required when not resuming a persisted PRD flow")
+
     flow = DialecticFlow(persistence=_get_persistence())
-    flow.state.feature_objective = feature_request
-    flow.state.max_retries = MAX_RETRIES
-    flow.kickoff()
+    kickoff_inputs: dict[str, Any] = {
+        "feature_objective": feature_request or "",
+        "max_retries": MAX_RETRIES,
+        "vision_context": vision_context.value,
+    }
+    if file_paths:
+        kickoff_inputs["file_paths"] = file_paths
+    if resume_id:
+        kickoff_inputs["id"] = resume_id
+    flow.kickoff(inputs=kickoff_inputs)
     s = flow.state
     return {
+        "flow_id": flow.flow_id,
         "success": s.consensus_reached or s.quality_score >= 9.0,
         "quality_score": s.quality_score,
         "iterations": s.retry_count + 1,

@@ -51,6 +51,46 @@ def test_agent_factories_reference_self_vision_label():
     assert "SELF_VISION.md" in visionario.backstory
     assert "SELF_VISION.md" in critico.backstory
     assert sintetizador.role == "Dialectic Synthesizer"
+    assert "SELF_VISION.md" in sintetizador.backstory
     assert "SELF_VISION.md" in validador.backstory
     assert "SELF_VISION.md" in implementer.backstory
     assert "SELF_VISION.md" in implementer.goal
+
+
+def test_visionario_does_not_expose_directory_listing_tool():
+    visionario = agents.create_visionario(VisionContext.SELF)
+
+    tool_names = {getattr(tool, "name", "") for tool in visionario.tools}
+
+    assert "list_directory" not in tool_names
+
+
+def test_crew_memory_uses_context_isolated_storage(monkeypatch, tmp_path):
+    captured: list[dict] = []
+
+    class FakeMemory:
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+
+    monkeypatch.setattr(agents, "resolve_project_root", lambda: tmp_path)
+    monkeypatch.setattr(agents, "Memory", FakeMemory)
+
+    agents.crew_memory(VisionContext.PROJECT, "prd")
+    agents.crew_memory(VisionContext.SELF, "prd")
+
+    assert captured[0]["storage"].endswith("/.crewai/memory/project/prd")
+    assert captured[1]["storage"].endswith("/.crewai/memory/self/prd")
+
+
+def test_python_command_prefers_active_interpreter(monkeypatch):
+    monkeypatch.setattr(agents.sys, "executable", "/tmp/venv/bin/python")
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/python3")
+
+    assert agents._python_command() == "/tmp/venv/bin/python"
+
+
+def test_python_command_falls_back_to_python3(monkeypatch):
+    monkeypatch.setattr(agents.sys, "executable", "")
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/python3")
+
+    assert agents._python_command() == "/usr/bin/python3"
