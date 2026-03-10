@@ -90,6 +90,34 @@ class DialecticFlow(Flow[DialecticState]):
         vision_context = VisionContext(self.state.vision_context)
         vision_label = _vision_label(vision_context)
 
+        # region agent log
+        try:
+            import time
+
+            log_path = "/home/darthlinuxer/dialectic-crew-ai/.cursor/debug-5709be.log"
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as _f:
+                _f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "5709be",
+                            "runId": "pre-fix",
+                            "hypothesisId": "H1",
+                            "location": "src/dialectic/prd_flow.py:rodar_rodada_dialetica",
+                            "message": "Computed vision_label before crew kickoff",
+                            "data": {
+                                "vision_context": self.state.vision_context,
+                                "vision_label": vision_label,
+                            },
+                            "timestamp": time.time(),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # endregion
+
         vis = create_visionario(vision_context)
         crit = create_critico_socratico(vision_context)
         sint = create_sintetizador(vision_context)
@@ -134,7 +162,7 @@ Be relentless. Each critique must be specific and actionable.
         )
 
         task_sintese = Task(
-            description="""
+            description=f"""
 Produce the final synthesis incorporating ALL critiques (thesis and antithesis are in context).
 
 Consult the system's macro vision ({vision_label} is available via your knowledge sources).
@@ -153,7 +181,7 @@ Output: Complete PRD with corrected user stories, in structured format (objectiv
         )
 
         task_validacao = Task(
-            description="""
+            description=f"""
 Evaluate the FINAL SYNTHESIS (output from the Synthesizer in context) and produce the final PRD.
 
 Consult the system's macro vision ({vision_label} is available via your knowledge sources).
