@@ -135,6 +135,7 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
 
 - `git` is required
 - the worktree must be clean
+- interrupted runs on a `self-improve/*` branch are auto-cleaned before retrying
 - `gh` is optional
 - metrics default to `.dialectic/metrics.db`
 - CrewAI telemetry is disabled automatically during self-improve to prevent external exporter SSL noise from polluting logs

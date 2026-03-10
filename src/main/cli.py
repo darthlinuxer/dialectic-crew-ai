@@ -111,6 +111,8 @@ Manual overrides (the execute command handles these automatically):
       --max N     Maximum number of improvements per cycle (default: 1).
       CrewAI telemetry is disabled automatically during this command to avoid
       noisy exporter failures from external telemetry endpoints.
+      If a prior run was interrupted on a `self-improve/*` branch, stale
+      self-improve-only worktree changes are discarded automatically.
       Ex.: python main.py self-improve --dry-run
            python main.py self-improve --max 2
 

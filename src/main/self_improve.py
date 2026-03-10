@@ -173,6 +173,30 @@ def _git_discard_branch(branch: str, cwd: Path) -> None:
     _run_cmd(["git", "branch", "-D", branch], cwd=cwd)
 
 
+def _git_current_branch(cwd: Path) -> str:
+    r = _run_cmd(["git", "branch", "--show-current"], cwd=cwd)
+    if r.returncode != 0:
+        return ""
+    return r.stdout.strip()
+
+
+def _recover_stale_self_improve_worktree(cwd: Path) -> tuple[bool, str]:
+    """Recover from an interrupted run only when already on a self-improve branch."""
+    branch = _git_current_branch(cwd)
+    if not branch.startswith("self-improve/"):
+        return False, "not on a self-improve branch"
+
+    reset_result = _run_cmd(["git", "reset", "--hard", "HEAD"], cwd=cwd)
+    if reset_result.returncode != 0:
+        return False, f"failed to reset stale self-improve branch {branch}"
+
+    clean_result = _run_cmd(["git", "clean", "-fd"], cwd=cwd)
+    if clean_result.returncode != 0:
+        return False, f"failed to clean stale self-improve branch {branch}"
+
+    return True, f"discarded stale self-improve worktree on {branch}"
+
+
 def _git_worktree_clean(cwd: Path) -> tuple[bool, str]:
     r = _run_cmd(["git", "status", "--porcelain"], cwd=cwd)
     if r.returncode != 0:
@@ -272,10 +296,15 @@ def run_self_improve(
 
         clean_worktree, worktree_reason = _git_worktree_clean(project_root)
         if not clean_worktree:
+            recovered, recovery_reason = _recover_stale_self_improve_worktree(project_root)
+            if recovered:
+                print(f"  Recovered stale run: {recovery_reason}")
+                clean_worktree, worktree_reason = _git_worktree_clean(project_root)
             record.failure_reason = worktree_reason
-            print(f"  ABORT: {record.failure_reason}")
-            _persist_record(store, record)
-            return record
+            if not clean_worktree:
+                print(f"  ABORT: {record.failure_reason}")
+                _persist_record(store, record)
+                return record
 
     print("[2/6] Running introspection against SELF_VISION.md...")
     report = run_introspection(store=store, vision_context=VisionContext.SELF)

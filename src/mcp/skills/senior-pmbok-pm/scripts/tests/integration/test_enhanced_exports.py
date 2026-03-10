@@ -8,13 +8,15 @@ No mocks - we test actual functionality and validate visual outputs.
 import unittest
 from pathlib import Path
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from pmbok_utils import write_output
 from pmbok_exporters import WorkflowExporter, AuditExporter
 
-EXAMPLES_DIR = Path(__file__).resolve().parent / "examples" / "advanced"
+TEMP_OUTPUT_DIR = tempfile.TemporaryDirectory(prefix="pmbok_enhanced_exports_")
+EXAMPLES_DIR = Path(TEMP_OUTPUT_DIR.name) / "advanced"
 
 
 class TestEnhancedExports(unittest.TestCase):

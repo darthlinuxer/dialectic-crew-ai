@@ -22,6 +22,7 @@ import unittest
 from datetime import datetime, timedelta
 import json
 import re
+import tempfile
 
 # Import all modules to test
 from critical_path import CriticalPathAnalyzer, Activity
@@ -38,12 +39,21 @@ from exporters import (
 class IntegrationTestBase(unittest.TestCase):
     """Base class for integration tests"""
 
+    _temp_dir: tempfile.TemporaryDirectory[str] | None = None
+
     @classmethod
     def setUpClass(cls):
         """Create output directory for test files"""
-        cls.output_dir = os.path.join(os.path.dirname(__file__), 'output')
+        cls._temp_dir = tempfile.TemporaryDirectory(prefix="budget_analyst_test_output_")
+        cls.output_dir = cls._temp_dir.name
         os.makedirs(cls.output_dir, exist_ok=True)
         print(f"\n📁 Test outputs will be saved to: {cls.output_dir}")
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._temp_dir is not None:
+            cls._temp_dir.cleanup()
+            cls._temp_dir = None
 
     def save_output(self, content: str, filename: str) -> str:
         """Save test output to file"""
@@ -863,7 +873,7 @@ def run_integration_tests():
     print(f"Failures: {len(result.failures)}")
     print(f"Errors: {len(result.errors)}")
 
-    output_dir = os.path.join(os.path.dirname(__file__), 'output')
+    output_dir = IntegrationTestBase.output_dir if hasattr(IntegrationTestBase, 'output_dir') else '<temporary output dir>'
     print(f"\n📁 All test outputs saved to: {output_dir}")
     print("   You can visually inspect all generated files!")
 

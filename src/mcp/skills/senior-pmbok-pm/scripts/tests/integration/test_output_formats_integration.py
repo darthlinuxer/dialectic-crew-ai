@@ -1,12 +1,14 @@
 import unittest
 from pathlib import Path
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from pmbok_utils import write_output
 
-EXAMPLES_DIR = Path(__file__).resolve().parent / "examples"
+TEMP_OUTPUT_DIR = tempfile.TemporaryDirectory(prefix="pmbok_output_formats_")
+EXAMPLES_DIR = Path(TEMP_OUTPUT_DIR.name)
 
 
 class TestOutputFormatsIntegration(unittest.TestCase):
