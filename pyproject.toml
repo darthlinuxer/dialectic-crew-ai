@@ -28,6 +28,7 @@ dependencies = [
     "pydantic>=2.10.0",
     "tiktoken>=0.7.0",
     "python-dotenv",
+    "reportlab>=4.0.0",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +41,7 @@ dialectic-crew = "main.cli:main"
 dev = [
     "pytest>=9.0.2",
     "pytest-cov",
+    "pytest-rerunfailures>=15.1",
     "pytest-timeout",
 ]
 
@@ -52,6 +54,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = [
+    "--ignore=src/mcp/skills/testing-patterns/scripts/test_runner.py",
+]
 markers = [
     "llm: tests that call real LLM APIs (require API keys, slow, costly)",
 ]
@@ -59,7 +64,6 @@ timeout = 300
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["src/main/*"]
 
 [tool.coverage.report]
 show_missing = true

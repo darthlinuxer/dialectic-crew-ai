@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from src.mcp import skills_mcp
 
 
@@ -24,6 +26,7 @@ def _prepare_real_index(tmp_path: Path) -> None:
     skills_mcp._INDEX = skills_mcp.SkillIndex(roots=[project_root])  # type: ignore[attr-defined]
 
 
+@pytest.mark.anyio
 async def test_skills_list_skills_returns_paginated_results(tmp_path: Path) -> None:
     _prepare_real_index(tmp_path)
 
@@ -36,6 +39,7 @@ async def test_skills_list_skills_returns_paginated_results(tmp_path: Path) -> N
     assert data["items"][0]["skill_id"] == "sequential-thinking"
 
 
+@pytest.mark.anyio
 async def test_skills_get_skill_returns_content(tmp_path: Path) -> None:
     _prepare_real_index(tmp_path)
 
@@ -48,6 +52,7 @@ async def test_skills_get_skill_returns_content(tmp_path: Path) -> None:
     assert "# Sequential Thinking" in data["content_markdown"]
 
 
+@pytest.mark.anyio
 async def test_skills_search_skills_finds_matches(tmp_path: Path) -> None:
     _prepare_real_index(tmp_path)
 

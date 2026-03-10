@@ -13,7 +13,10 @@ License: MIT
 
 import sys
 import os
-sys.path.append('..')
+
+SCRIPT_DIR = os.path.dirname(os.path.dirname(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 
 import unittest
 from datetime import datetime, timedelta

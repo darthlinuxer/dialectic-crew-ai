@@ -140,8 +140,10 @@ Safety rails currently enforced by code:
 - immutable protected files during hook-scoped execution
 - token budget via `SELF_IMPROVE_TOKEN_BUDGET`
 - per-agent iteration cap via `SELF_IMPROVE_MAX_ITERATIONS`
+- pytest suite timeout via `SELF_IMPROVE_TEST_TIMEOUT`
 - metrics retention gate via `MIN_METRIC_RETENTION`
 - `uv run pytest` when available, with Python fallback when `uv` is absent
+- baseline and post-run validation print captured pytest output when they fail
 
 ## MCP and skills integration
 

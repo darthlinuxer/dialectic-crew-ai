@@ -108,6 +108,8 @@ Current behavior worth documenting, because code now enforces it:
 - worktree must be clean before branch creation
 - exact PRD, plan, and execution artifact paths are carried between stages
 - validation prefers `uv run pytest` and falls back to `python -m pytest`
+- self-improve validation uses `SELF_IMPROVE_TEST_TIMEOUT` (default `1800`) because the full suite may include slow LLM tests
+- failing pytest snapshots print captured stdout/stderr tails before the cycle aborts
 - PR creation is optional when `gh` is unavailable
 
 ## Vision context across flows

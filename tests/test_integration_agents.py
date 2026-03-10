@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from crewai import Agent, Task, Crew
+from schemas import ValidationOutput
 
 
 @pytest.mark.llm
@@ -39,24 +40,40 @@ def test_create_all_agents():
 
 @pytest.mark.llm
 @pytest.mark.timeout(180)
-def test_single_agent_simple_task():
+def test_single_agent_simple_task(tmp_path, monkeypatch):
     """Run validador_macro with a minimal scoring task to verify LLM connectivity."""
     from dialectic.agents import create_validador_macro
+
+    knowledge_dir = tmp_path / "knowledge"
+    knowledge_dir.mkdir(exist_ok=True)
+    (knowledge_dir / "VISION.md").write_text(
+        "# Vision\nBuild a robust system that prioritizes clarity and user value.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
 
     agent = create_validador_macro()
     task = Task(
         description=(
-            "Score the following feature request on a scale of 0-10 for clarity:\n"
+            "Evaluate the following feature request for clarity and alignment with the vision:\n"
             "'Add a login page with email and password fields.'\n"
-            "Respond with ONLY a number between 0 and 10."
+            "Return a validation result with a quality_score between 0 and 10, "
+            "set consensus_reached to true or false, and include brief final_validation_notes."
         ),
-        expected_output="A number between 0 and 10",
+        expected_output=(
+            "A ValidationOutput containing quality_score, consensus_reached, "
+            "and final_validation_notes."
+        ),
         agent=agent,
+        output_pydantic=ValidationOutput,
     )
     crew = Crew(agents=[agent], tasks=[task], verbose=False)
     result = crew.kickoff()
-    raw = getattr(result, "raw", str(result))
-    assert any(c.isdigit() for c in raw), f"Expected a numeric score, got: {raw[:200]}"
+    structured = getattr(result, "pydantic", None)
+    assert isinstance(structured, ValidationOutput), f"Expected ValidationOutput, got: {type(structured)!r}"
+    assert 0.0 <= structured.quality_score <= 10.0
+    assert isinstance(structured.consensus_reached, bool)
+    assert structured.final_validation_notes.strip()
 
 
 @pytest.mark.llm

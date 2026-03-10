@@ -13,6 +13,7 @@ from main.self_improve import (
     _create_pr,
     _metrics_stable,
     _pytest_command,
+    _self_improve_test_timeout,
     _snapshot_tests,
     run_self_improve,
 )
@@ -73,16 +74,50 @@ class TestMetricsStable:
 
 
 class TestSnapshotTests:
+    def test_uses_configured_self_improve_timeout(self, tmp_path, monkeypatch):
+        seen = {}
+
+        def fake_run(cmd, cwd=None, timeout=120):
+            seen["timeout"] = timeout
+            return subprocess.CompletedProcess(cmd, 0, stdout="10 passed\n", stderr="")
+
+        monkeypatch.setenv("SELF_IMPROVE_TEST_TIMEOUT", "1234")
+        monkeypatch.setattr("main.self_improve._run_cmd", fake_run)
+
+        result = _snapshot_tests(tmp_path)
+
+        assert result["passed"] is True
+        assert result["timeout_seconds"] == 1234
+        assert seen["timeout"] == 1234
+
+    def test_invalid_self_improve_timeout_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("SELF_IMPROVE_TEST_TIMEOUT", "not-a-number")
+
+        assert _self_improve_test_timeout() == 1800
+
     def test_prefers_uv_when_available(self, monkeypatch):
         monkeypatch.setattr(
             "main.self_improve.shutil.which",
             lambda name: "/usr/bin/uv" if name == "uv" else None,
         )
-        assert _pytest_command() == ["uv", "run", "pytest", "--tb=short", "-q"]
+        assert _pytest_command() == [
+            "uv", "run", "pytest", "--tb=short", "-q", "--reruns", "1"
+        ]
 
     def test_falls_back_to_active_python_when_uv_missing(self, monkeypatch):
         monkeypatch.setattr("main.self_improve.shutil.which", lambda name: None)
-        assert _pytest_command() == [sys.executable, "-m", "pytest", "--tb=short", "-q"]
+        assert _pytest_command() == [
+            sys.executable, "-m", "pytest", "--tb=short", "-q", "--reruns", "1"
+        ]
+
+    def test_includes_single_rerun_for_flaky_llm_tests(self, monkeypatch):
+        monkeypatch.setattr(
+            "main.self_improve.shutil.which",
+            lambda name: "/usr/bin/uv" if name == "uv" else None,
+        )
+
+        assert _pytest_command().count("--reruns") == 1
+        assert _pytest_command()[-1] == "1"
 
     def test_returns_dict(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
@@ -104,6 +139,29 @@ class TestSnapshotTests:
         )
         result = _snapshot_tests(tmp_path)
         assert result["passed"] is False
+
+    def test_timeout_returns_diagnostics(self, tmp_path, monkeypatch):
+        def fake_run(cmd, cwd=None, timeout=120):
+            raise subprocess.TimeoutExpired(
+                cmd=cmd,
+                timeout=timeout,
+                output="still running\n",
+                stderr="hung test\n",
+            )
+
+        monkeypatch.setattr("main.self_improve._run_cmd", fake_run)
+
+        result = _snapshot_tests(tmp_path, timeout=42)
+
+        assert result == {
+            "returncode": -1,
+            "passed": False,
+            "timed_out": True,
+            "timeout_seconds": 42,
+            "command": _pytest_command(),
+            "stdout_tail": "still running\n",
+            "stderr_tail": "hung test\n",
+        }
 
 
 class TestRunSelfImprove:
@@ -152,6 +210,35 @@ class TestRunSelfImprove:
         record = run_self_improve()
         assert "Baseline tests" in record.failure_reason
 
+    def test_baseline_failure_prints_pytest_details(self, tmp_path, monkeypatch, store, capsys):
+        monkeypatch.setattr(
+            "main.self_improve.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.get_metrics_store", lambda: store
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 2,
+                "passed": False,
+                "timed_out": False,
+                "timeout_seconds": 900,
+                "command": ["uv", "run", "pytest", "--tb=short", "-q", "--reruns", "1"],
+                "stdout_tail": "collected 10 items\n",
+                "stderr_tail": "E   AssertionError: boom\n",
+            },
+        )
+
+        record = run_self_improve()
+        out = capsys.readouterr().out
+
+        assert "Baseline tests" in record.failure_reason
+        assert "Pytest exited with code 2" in out
+        assert "stdout tail:" in out
+        assert "stderr tail:" in out
+        assert "AssertionError: boom" in out
+
     def test_aborts_when_no_opportunities(self, tmp_path, monkeypatch, store):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True)
@@ -162,6 +249,9 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve.get_metrics_store", lambda: store
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
@@ -447,6 +537,9 @@ class TestDialecticPrioritizationIntegration:
             "main.self_improve.get_metrics_store", lambda: store
         )
         monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
             lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
         )
@@ -496,6 +589,9 @@ class TestDialecticPrioritizationIntegration:
         )
         monkeypatch.setattr(
             "main.self_improve.get_metrics_store", lambda: store
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",

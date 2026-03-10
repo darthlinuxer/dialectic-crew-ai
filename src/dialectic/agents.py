@@ -109,7 +109,7 @@ def vision_knowledge(
     """
     prepare_vision_runtime(context)
     vision_path = get_vision_path(context)
-    return TextFileKnowledgeSource(file_paths=[vision_path.name])
+    return TextFileKnowledgeSource(file_paths=[vision_path])
 
 
 # ---------------------------------------------------------------------------

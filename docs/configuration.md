@@ -55,6 +55,7 @@ At least one provider key must be configured for LLM-backed commands:
 | `MAX_LLM_ITERATIONS` | `25` | Generic HookScope LLM iteration cap |
 | `SELF_IMPROVE_TOKEN_BUDGET` | `500000` | Self-improve cycle token budget |
 | `SELF_IMPROVE_MAX_ITERATIONS` | `25` | Self-improve per-agent iteration cap |
+| `SELF_IMPROVE_TEST_TIMEOUT` | `1800` | Timeout for full-suite pytest validation during self-improve |
 | `MIN_METRIC_RETENTION` | `0.95` | Minimum post-run metric retention ratio |
 | `COST_PER_INPUT_TOKEN` | `0.0000025` | Estimated input-token cost used in tracking |
 | `COST_PER_OUTPUT_TOKEN` | `0.00001` | Estimated output-token cost used in tracking |
@@ -128,3 +129,6 @@ SKILLS_MCP_TRANSPORT=stdio
 - If Docker is missing, Brave Search and Sequential Thinking MCP servers are skipped rather than crashing startup.
 - If `gh` is missing, `self-improve` can still run; only PR creation is skipped.
 - If `uv` is missing, `self-improve` falls back to `python -m pytest` for validation.
+- When an API key is configured, `self-improve` validates against the full pytest suite, including tests marked `llm`.
+- `self-improve` runs pytest with `--reruns 1` to tolerate a single transient LLM-test failure during baseline and post-run validation.
+- If baseline or post-run validation fails, `self-improve` prints the captured pytest stdout/stderr tail before aborting.

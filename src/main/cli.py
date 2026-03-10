@@ -109,6 +109,8 @@ Manual overrides (the execute command handles these automatically):
       and metrics. Creates a PR for human review if all gates pass.
       --dry-run   Print the introspection report without making changes.
       --max N     Maximum number of improvements per cycle (default: 1).
+      CrewAI telemetry is disabled automatically during this command to avoid
+      noisy exporter failures from external telemetry endpoints.
       Ex.: python main.py self-improve --dry-run
            python main.py self-improve --max 2
 

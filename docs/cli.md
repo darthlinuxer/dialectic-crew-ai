@@ -124,12 +124,12 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
 ### What it does
 
 1. runs baseline tests
-2. introspects against `internal/SELF_VISION.md`
-3. ranks opportunities through dialectic prioritization
-4. creates an isolated git branch
-5. generates a PRD, then a plan, then executes it
-6. validates tests and metrics
-7. creates a PR if `gh` is installed
+2. checks git availability and requires a clean worktree for real runs
+3. introspects against `internal/SELF_VISION.md`
+4. ranks opportunities through dialectic prioritization
+5. creates an isolated git branch
+6. generates a PRD, then a plan, then executes it
+7. validates tests and metrics, then creates a PR if `gh` is installed
 
 ### Runtime requirements
 
@@ -137,6 +137,9 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
 - the worktree must be clean
 - `gh` is optional
 - metrics default to `.dialectic/metrics.db`
+- CrewAI telemetry is disabled automatically during self-improve to prevent external exporter SSL noise from polluting logs
+- with an API key configured, baseline validation runs the full pytest suite, including `@pytest.mark.llm` tests
+- failed baseline or post-run validation prints the captured pytest stdout/stderr tail for faster diagnosis
 
 ### Self-improve controls
 
@@ -144,7 +147,9 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
 |---|---|---|
 | `SELF_IMPROVE_TOKEN_BUDGET` | `500000` | cycle-wide token budget |
 | `SELF_IMPROVE_MAX_ITERATIONS` | `25` | per-agent iteration cap |
+| `SELF_IMPROVE_TEST_TIMEOUT` | `1800` | timeout for the full pytest validation subprocess |
 | `MIN_METRIC_RETENTION` | `0.95` | post-run regression gate |
+| `CREWAI_DISABLE_TELEMETRY` | `true` during self-improve | suppress CrewAI telemetry exporter requests during the cycle |
 
 ## `--self` flag
 
