@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 
-from dialectic.config import get_export_config
+from dialectic.config import _HAS_PYDANTIC_SETTINGS, get_export_config
 
 
 def test_uppercase_md(monkeypatch):
@@ -48,3 +48,29 @@ def test_output_dir_conversion_and_fallback(monkeypatch, tmp_path):
     monkeypatch.delenv("PRD_OUTPUT_DIR", raising=False)
     cfg2 = get_export_config()
     assert cfg2.output_dir == Path("prd_output")
+
+
+@pytest.mark.skipif(not _HAS_PYDANTIC_SETTINGS, reason="requires pydantic-settings")
+def test_dotenv_with_unrelated_keys_does_not_trigger_fallback(monkeypatch, tmp_path, caplog):
+    monkeypatch.delenv("PRD_OUTPUT_FORMAT", raising=False)
+    monkeypatch.delenv("PRD_OUTPUT_DIR", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=test-key",
+                "LLM_REQUEST_TIMEOUT=180",
+                "CREWAI_TRACING_ENABLED=false",
+                "PRD_OUTPUT_FORMAT=both",
+                f"PRD_OUTPUT_DIR={tmp_path / 'exports'}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    caplog.clear()
+    cfg = get_export_config(_env_file=env_file)
+
+    assert cfg.output_format == "both"
+    assert cfg.output_dir == tmp_path / "exports"
+    assert "pydantic-settings unavailable or failed to load" not in caplog.text

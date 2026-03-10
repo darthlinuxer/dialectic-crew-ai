@@ -2,6 +2,7 @@
 
 import inspect
 import json
+from types import SimpleNamespace
 
 import dialectic.prd_flow as prd_flow
 from schemas import AntiDriftQuestion, MacroImpact, PRDSchema, UserStory
@@ -114,6 +115,17 @@ def test_extract_prd_from_result_accepts_json_dict():
     assert extracted.consensus_reached is True
 
 
+def test_extract_prd_from_result_accepts_pydantic_instance():
+    prd = _make_prd()
+
+    class Result:
+        pydantic = prd
+
+    extracted = prd_flow._extract_prd_from_result(Result())
+
+    assert extracted is prd
+
+
 def test_materialize_plain_data_recursively_converts_proxy_mappings():
     class ProxyDict(dict):
         pass
@@ -142,7 +154,35 @@ def test_prd_guardrail_accepts_raw_json():
     ok, payload = prd_flow._prd_guardrail(Result())
 
     assert ok is True
-    assert payload.raw
+    assert isinstance(payload, str)
+    assert 'feature_name' in payload
+
+
+def test_prd_guardrail_accepts_pydantic_result():
+    prd = _make_prd()
+
+    class Result:
+        pydantic = prd
+        raw = json.dumps(prd.model_dump())
+
+    ok, payload = prd_flow._prd_guardrail(Result())
+
+    assert ok is True
+    assert isinstance(payload, str)
+    assert 'feature_name' in payload
+
+
+def test_prd_guardrail_serializes_pydantic_without_raw():
+    prd = _make_prd()
+
+    class Result:
+        pydantic = prd
+
+    ok, payload = prd_flow._prd_guardrail(Result())
+
+    assert ok is True
+    assert isinstance(payload, str)
+    assert 'feature_name' in payload
 
 
 def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
@@ -164,7 +204,7 @@ def test_dialectic_flow_synthesizer_requests_candidate_prd_json():
 
     assert 'Output a CANDIDATE PRD as raw JSON with these fields only:' in source
     assert 'Candidate PRD as raw JSON for validator review' in source
-    assert 'output_json=PRDSchema' in source
+    assert 'output_pydantic=PRDSchema' in source
 
 
 def test_dialectic_flow_uses_shared_prd_extractor_after_kickoff():
@@ -172,6 +212,57 @@ def test_dialectic_flow_uses_shared_prd_extractor_after_kickoff():
 
     assert 'prd: PRDSchema | None = _extract_prd_from_result(resultado)' in source
     assert 'for task_output in reversed(tasks_out):' in source
+
+
+def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
+    prd = _make_prd()
+
+    monkeypatch.setattr(prd_flow, "create_visionario", lambda *_: "vision")
+    monkeypatch.setattr(prd_flow, "create_critico_socratico", lambda *_: "critic")
+    monkeypatch.setattr(prd_flow, "create_sintetizador", lambda *_: "synth")
+    monkeypatch.setattr(prd_flow, "create_validador_macro", lambda *_: "validator")
+    monkeypatch.setattr(prd_flow, "vision_knowledge", lambda *_: "vision-knowledge")
+    monkeypatch.setattr(prd_flow, "crew_memory", lambda *_: None)
+    monkeypatch.setattr(prd_flow, "llm_planning", object())
+
+    def fake_task(**kwargs):
+        return SimpleNamespace(**kwargs)
+
+    class FakeHookScope:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def __enter__(self):
+            return SimpleNamespace(total_tokens=0, budget=0)
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeCrew:
+        def __init__(self, *, agents, tasks, process, verbose, memory, planning, planning_llm, knowledge_sources):
+            self.tasks = tasks
+
+        def kickoff(self, **kwargs):
+            return SimpleNamespace(pydantic=prd)
+
+    monkeypatch.setattr(prd_flow, "Task", fake_task)
+    monkeypatch.setattr(prd_flow, "Crew", FakeCrew)
+    monkeypatch.setattr(prd_flow, "HookScope", FakeHookScope)
+
+    flow = prd_flow.DialecticFlow()
+    flow.state.feature_objective = "Ship resilient PRD validation"
+    flow.state.vision_context = prd_flow.VisionContext.SELF.value
+    flow.state.retry_count = 0
+    flow.state.final_validation_notes = ""
+    flow.state.file_paths = []
+
+    next_step = flow.rodar_rodada_dialetica()
+
+    assert next_step == "avaliar"
+    assert flow.state.prd_data["feature_name"] == prd.feature_name
+    assert flow.state.quality_score == prd.quality_score
+    assert flow.state.consensus_reached is True
+    assert flow.state.final_validation_notes == prd.final_validation_notes
 
 
 def test_run_dialectic_flow_returns_flow_id(monkeypatch):

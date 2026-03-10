@@ -23,6 +23,7 @@ class TestPrdGuardrail:
         prd = make_prd()
         ok, result = _prd_guardrail(_FakeResult(prd))
         assert ok is True
+        assert isinstance(result, str)
 
     def test_no_user_stories(self):
         prd = make_prd()
@@ -46,6 +47,7 @@ class TestQualityGuardrail:
         vo = ValidationOutput(quality_score=8.0, consensus_reached=True, final_validation_notes="good")
         ok, result = _quality_guardrail(_FakeResult(vo))
         assert ok is True
+        assert isinstance(result, str)
 
     def test_score_out_of_range_high(self):
         vo = ValidationOutput.__new__(ValidationOutput)
@@ -81,6 +83,7 @@ class TestVerificationGuardrail:
         )
         ok, result = _verification_guardrail(_FakeResult(vr))
         assert ok is True
+        assert isinstance(result, str)
 
     def test_non_pydantic(self):
         ok, msg = _verification_guardrail(_FakeResult(None))

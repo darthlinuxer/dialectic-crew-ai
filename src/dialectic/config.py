@@ -71,10 +71,18 @@ except Exception:  # broad except to tolerate ImportError or API changes
 if _HAS_PYDANTIC_SETTINGS:
     class _ExportSettings(BaseSettings):
         # Note: intentionally using simple types; validation/coercion is minimal here
-        PRD_OUTPUT_FORMAT: Optional[str] = None  # don't default to 'both' to allow "absent -> fallback 'json'"
-        PRD_OUTPUT_DIR: Optional[Path] = None
+        prd_output_format: Optional[str] = Field(
+            default=None,
+            validation_alias='PRD_OUTPUT_FORMAT',
+        )  # don't default to 'both' to allow "absent -> fallback 'json'"
+        prd_output_dir: Optional[Path] = Field(default=None, validation_alias='PRD_OUTPUT_DIR')
 
-        model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
+        model_config = SettingsConfigDict(
+            env_file='.env',
+            env_file_encoding='utf-8',
+            extra='ignore',
+            populate_by_name=True,
+        )
 
 
 def _load_from_environ_fallback() -> tuple[Optional[str], Optional[str]]:
@@ -87,7 +95,7 @@ def _load_from_environ_fallback() -> tuple[Optional[str], Optional[str]]:
     return fmt, d
 
 
-def get_export_config() -> ExportConfig:
+def get_export_config(*, _env_file: Optional[Path | str] = None) -> ExportConfig:
     """Load the export configuration and return an ExportConfig.
 
     Normalization/validation rules (implemented):
@@ -102,9 +110,12 @@ def get_export_config() -> ExportConfig:
 
     if _HAS_PYDANTIC_SETTINGS:
         try:
-            settings = _ExportSettings()
-            fmt_raw = settings.PRD_OUTPUT_FORMAT
-            dir_raw = str(settings.PRD_OUTPUT_DIR) if settings.PRD_OUTPUT_DIR is not None else None
+            settings_kwargs = {}
+            if _env_file is not None:
+                settings_kwargs["_env_file"] = _env_file
+            settings = _ExportSettings(**settings_kwargs)
+            fmt_raw = settings.prd_output_format
+            dir_raw = str(settings.prd_output_dir) if settings.prd_output_dir is not None else None
         except Exception as e:
             # If pydantic-settings fails at runtime (e.g., incompatible version),
             # fallback to environ and record warning.

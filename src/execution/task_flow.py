@@ -16,6 +16,7 @@ Flow structure:
     └── "failed"  → on_failed
 """
 
+import json
 import os
 from typing import Any, Literal
 from uuid import uuid4
@@ -93,11 +94,24 @@ class TaskFlowState(BaseModel):
 # Guardrails
 # ---------------------------------------------------------------------------
 
+
+def _guardrail_success_output(result, validated_model: BaseModel) -> str:
+    """Return a CrewAI-compatible guardrail payload for structured outputs."""
+    raw_text = getattr(result, "raw", None)
+    if isinstance(raw_text, str) and raw_text.strip():
+        return raw_text
+
+    json_dict = getattr(result, "json_dict", None)
+    if isinstance(json_dict, dict):
+        return json.dumps(json_dict)
+
+    return validated_model.model_dump_json()
+
 def _quality_guardrail(result) -> tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, ValidationOutput):
         if 0.0 <= pydantic_obj.quality_score <= 10.0:
-            return (True, result)
+            return (True, _guardrail_success_output(result, pydantic_obj))
         emit_metric("guardrail_reject", 1.0, guardrail="quality", reason="score_out_of_range")
         return (False, "quality_score must be between 0.0 and 10.0")
     emit_metric("guardrail_reject", 1.0, guardrail="quality", reason="invalid_schema")
@@ -107,7 +121,7 @@ def _quality_guardrail(result) -> tuple[bool, Any]:
 def _verification_guardrail(result) -> tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, VerificationResult):
-        return (True, result)
+        return (True, _guardrail_success_output(result, pydantic_obj))
     emit_metric("guardrail_reject", 1.0, guardrail="verification", reason="invalid_schema")
     return (False, "Output must be VerificationResult JSON: verified, checks_passed, checks_failed, notes")
 

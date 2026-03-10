@@ -143,12 +143,32 @@ def _extract_prd_from_result(result) -> PRDSchema | None:
     except Exception:
         return None
 
+
+def _guardrail_success_output(result, validated_model: PRDSchema) -> str:
+    """Return a CrewAI-compatible guardrail payload.
+
+    CrewAI task guardrails should return either a string or a TaskOutput.
+    Returning arbitrary result objects is fragile when structured outputs and
+    retries are enabled, because CrewAI may attempt to store a Pydantic model
+    directly in ``TaskOutput.raw``. Prefer normalized JSON strings here so
+    CrewAI can reconstruct ``pydantic`` / ``json_dict`` safely.
+    """
+    raw_text = getattr(result, "raw", None)
+    if isinstance(raw_text, str) and raw_text.strip():
+        return raw_text
+
+    json_dict = getattr(result, "json_dict", None)
+    if isinstance(json_dict, dict):
+        return json.dumps(json_dict)
+
+    return validated_model.model_dump_json()
+
 def _prd_guardrail(result) -> tuple[bool, Any]:
     """Ensures validation task returns a valid PRDSchema."""
     prd = _extract_prd_from_result(result)
     if prd is not None:
         if prd.user_stories and len(prd.user_stories) >= 1:
-            return (True, result)
+            return (True, _guardrail_success_output(result, prd))
         emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="no_user_stories")
         return (False, "PRD must include at least one user story")
     emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="invalid_schema")
@@ -302,7 +322,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
 """,
             expected_output="Valid PRDSchema with quality_score and consensus_reached",
             agent=val,
-            output_json=PRDSchema,
+            output_pydantic=PRDSchema,
             guardrail=_prd_guardrail,
             guardrail_max_retries=2,
             context=[task_sintese],
