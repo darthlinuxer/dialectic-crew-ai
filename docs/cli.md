@@ -118,7 +118,7 @@ Manual override for edge cases and human intervention.
 ## `self-improve`
 
 ```bash
-uv run dialectic-crew self-improve [--dry-run] [--max N]
+uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty]
 ```
 
 ### What it does
@@ -136,6 +136,7 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
 - `git` is required
 - the worktree must be clean
 - interrupted runs on a `self-improve/*` branch are auto-cleaned before retrying
+- on other branches, dirty worktrees abort with guidance unless `--stash-dirty` is used
 - `gh` is optional
 - metrics default to `.dialectic/metrics.db`
 - CrewAI telemetry is disabled automatically during self-improve to prevent external exporter SSL noise from polluting logs
@@ -151,6 +152,8 @@ uv run dialectic-crew self-improve [--dry-run] [--max N]
 | `SELF_IMPROVE_TEST_TIMEOUT` | `1800` | timeout for the full pytest validation subprocess |
 | `MIN_METRIC_RETENTION` | `0.95` | post-run regression gate |
 | `CREWAI_DISABLE_TELEMETRY` | `true` during self-improve | suppress CrewAI telemetry exporter requests during the cycle |
+
+`--stash-dirty` stashes tracked and untracked changes from the current branch before self-improve continues. The stash is preserved in the stash stack so it can be reviewed or restored manually later.
 
 ## `--self` flag
 

@@ -107,6 +107,87 @@ class TestSelfImproveWorktreePreflight:
         record = run_self_improve(max_improvements=1)
 
         assert "Worktree has uncommitted changes" in record.failure_reason
+        assert "Commit the changes" in record.failure_reason
+        assert "--stash-dirty" in record.failure_reason
+
+    def test_stashes_dirty_non_self_improve_branch_when_requested(self, tmp_path, monkeypatch, store, capsys):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Allow stash-dirty preflight\n")
+
+        states = iter([
+            (False, "Worktree has uncommitted changes: M metrics.db"),
+            (True, "clean"),
+        ])
+        stash_messages = []
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve.shutil.which",
+            lambda name: "/usr/bin/git" if name == "git" else "/usr/bin/uv",
+        )
+        monkeypatch.setattr("main.self_improve._git_current_branch", lambda cwd: "main")
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: next(states))
+        monkeypatch.setattr(
+            "main.self_improve._recover_stale_self_improve_worktree",
+            lambda cwd: (False, "not on a self-improve branch"),
+        )
+
+        def fake_stash(cwd, message):
+            stash_messages.append(message)
+            return True, "Saved working directory and index state"
+
+        monkeypatch.setattr("main.self_improve._git_stash_worktree", fake_stash)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: False)
+
+        record = run_self_improve(max_improvements=1, stash_dirty=True)
+        out = capsys.readouterr().out
+
+        assert stash_messages == [f"self-improve-preflight/{record.cycle_id}"]
+        assert "Stashed current branch changes" in out
+        assert record.failure_reason == "Failed to create git branch"
+
+    def test_reports_stash_failure_with_guidance(self, tmp_path, monkeypatch, store):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Show stash failure guidance\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve.shutil.which",
+            lambda name: "/usr/bin/git" if name == "git" else "/usr/bin/uv",
+        )
+        monkeypatch.setattr("main.self_improve._git_current_branch", lambda cwd: "main")
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean",
+            lambda cwd: (False, "Worktree has uncommitted changes: M metrics.db"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._recover_stale_self_improve_worktree",
+            lambda cwd: (False, "not on a self-improve branch"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_stash_worktree",
+            lambda cwd, message: (False, "failed to stash current branch changes"),
+        )
+
+        record = run_self_improve(max_improvements=1, stash_dirty=True)
+
+        assert "failed to stash current branch changes" in record.failure_reason
+        assert "--stash-dirty" in record.failure_reason
 
     def test_recovers_stale_self_improve_branch_before_aborting(self, tmp_path, monkeypatch, store, capsys):
         vision = tmp_path / "internal" / "SELF_VISION.md"

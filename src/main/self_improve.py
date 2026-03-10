@@ -197,6 +197,22 @@ def _recover_stale_self_improve_worktree(cwd: Path) -> tuple[bool, str]:
     return True, f"discarded stale self-improve worktree on {branch}"
 
 
+def _git_stash_worktree(cwd: Path, message: str) -> tuple[bool, str]:
+    r = _run_cmd(["git", "stash", "push", "--include-untracked", "-m", message], cwd=cwd)
+    if r.returncode != 0:
+        return False, "failed to stash current branch changes"
+    return True, (r.stdout or r.stderr or "stashed current branch changes").strip()
+
+
+def _dirty_worktree_guidance(cwd: Path, worktree_reason: str) -> str:
+    branch = _git_current_branch(cwd) or "<detached HEAD>"
+    return (
+        f"{worktree_reason} on branch '{branch}'. "
+        "Commit the changes, discard them manually, or rerun with --stash-dirty "
+        "to stash current branch changes before self-improve continues."
+    )
+
+
 def _git_worktree_clean(cwd: Path) -> tuple[bool, str]:
     r = _run_cmd(["git", "status", "--porcelain"], cwd=cwd)
     if r.returncode != 0:
@@ -253,6 +269,7 @@ def _require_artifact(path: str, failure_reason: str) -> str:
 def run_self_improve(
     max_improvements: int = 1,
     dry_run: bool = False,
+    stash_dirty: bool = False,
 ) -> SelfImprovementRecord:
     """
     Run one self-improvement cycle.
@@ -300,11 +317,22 @@ def run_self_improve(
             if recovered:
                 print(f"  Recovered stale run: {recovery_reason}")
                 clean_worktree, worktree_reason = _git_worktree_clean(project_root)
-            record.failure_reason = worktree_reason
             if not clean_worktree:
-                print(f"  ABORT: {record.failure_reason}")
-                _persist_record(store, record)
-                return record
+                if stash_dirty:
+                    stashed, stash_reason = _git_stash_worktree(
+                        project_root,
+                        f"self-improve-preflight/{cycle_id}",
+                    )
+                    if stashed:
+                        print(f"  Stashed current branch changes: {stash_reason}")
+                        clean_worktree, worktree_reason = _git_worktree_clean(project_root)
+                    else:
+                        worktree_reason = f"{worktree_reason}; {stash_reason}"
+                if not clean_worktree:
+                    record.failure_reason = _dirty_worktree_guidance(project_root, worktree_reason)
+                    print(f"  ABORT: {record.failure_reason}")
+                    _persist_record(store, record)
+                    return record
 
     print("[2/6] Running introspection against SELF_VISION.md...")
     report = run_introspection(store=store, vision_context=VisionContext.SELF)

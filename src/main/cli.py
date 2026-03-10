@@ -103,12 +103,15 @@ Manual overrides (the execute command handles these automatically):
       Ex.: python main.py verify T0
            python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 
-  self-improve [--dry-run] [--max N]
+    self-improve [--dry-run] [--max N] [--stash-dirty]
       Runs one self-improvement cycle: introspect against internal/SELF_VISION.md,
       generate PRD, plan, and execute improvements, then validate with tests
       and metrics. Creates a PR for human review if all gates pass.
       --dry-run   Print the introspection report without making changes.
       --max N     Maximum number of improvements per cycle (default: 1).
+            --stash-dirty
+                                    Stash current-branch changes before creating the
+                                    self-improve branch. The stash is left in the stash stack.
       CrewAI telemetry is disabled automatically during this command to avoid
       noisy exporter failures from external telemetry endpoints.
       If a prior run was interrupted on a `self-improve/*` branch, stale
@@ -277,11 +280,15 @@ def cmd_verify_story(plan_path: str | None, prd_path: str | None):
         sys.exit(1)
 
 
-def cmd_self_improve(dry_run: bool = False, max_improvements: int = 1):
+def cmd_self_improve(dry_run: bool = False, max_improvements: int = 1, stash_dirty: bool = False):
     from main.self_improve import run_self_improve
 
     _check_vision_exists(VisionContext.SELF)
-    record = run_self_improve(max_improvements=max_improvements, dry_run=dry_run)
+    record = run_self_improve(
+        max_improvements=max_improvements,
+        dry_run=dry_run,
+        stash_dirty=stash_dirty,
+    )
     if record.pr_created:
         print("\nSelf-improvement cycle completed successfully.")
     elif record.failure_reason == "dry_run":
@@ -390,6 +397,7 @@ def main():
     if sub == "self-improve":
         remaining = args[1:]
         dry_run = "--dry-run" in remaining
+        stash_dirty = "--stash-dirty" in remaining
         max_n = 1
         if "--max" in remaining:
             idx = remaining.index("--max")
@@ -399,7 +407,7 @@ def main():
                 except ValueError:
                     print("--max requires an integer argument")
                     sys.exit(1)
-        cmd_self_improve(dry_run=dry_run, max_improvements=max_n)
+        cmd_self_improve(dry_run=dry_run, max_improvements=max_n, stash_dirty=stash_dirty)
         return
 
     print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | self-improve | help")
