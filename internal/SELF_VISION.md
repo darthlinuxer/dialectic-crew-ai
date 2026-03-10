@@ -16,13 +16,14 @@
 ## Business Objectives
 
 1. **PRDs in Markdown and JSON** — Every approved PRD must be persisted in `prd_output/` as both `.md` (narrative document, human-ready) and `.json` (validated schema, tool-ready).
-2. **Quality through dialectics** — Maintain the Thesis → Antithesis → Synthesis → Validation loop with retry until score >= 9.0 and zero contradictions with VISION.md.
-3. **Anti-drift** — All agents read VISION.md; anti-drift questions and validation ensure continuous alignment with the macro vision.
-4. **Self-improvement** — The project uses this VISION to guide itself; behavior or scope changes must be consistent with this document.
+2. **Quality through dialectics** — Maintain the Thesis → Antithesis → Synthesis → Validation loop with retry until score >= 9.0 and zero contradictions with the active vision context.
+3. **Anti-drift** — For self-evolution flows (e.g. `self-improve`), all agents MUST ingest `internal/SELF_VISION.md` via `VisionContext.SELF`. For external projects, all agents MUST ingest `knowledge/VISION.md` via `VisionContext.PROJECT`. Anti-drift questions and validation ensure continuous alignment with the correct macro vision.
+4. **Self-improvement** — This file (`internal/SELF_VISION.md`) defines the macro vision for Dialectic Crew AI itself. Self-evolution behavior or scope changes must be consistent with this document, and self-improve cycles MUST never substitute a project vision (`knowledge/VISION.md`) in place of this self vision.
 5. **API-first architecture** — Expose all capabilities (PRD creation, planning, execution, verification) through a REST API backed by CrewAI Event Listeners for real-time progress streaming, enabling programmatic integration and a web frontend.
 6. **Web experience** — Provide a web UI for PRD creation, browsing, review workflows (powered by CrewAI's `@human_feedback` decorator), user story boards, and live dialectic visualization — making the tool accessible to non-technical stakeholders.
-7. **Self-evolution** — The system uses its own dialectic pipeline to generate PRDs for its own features. VISION.md defines the target; the app generates the PRDs to get there, plans the user stories, and produces execution artifacts. CrewAI Training (`crew.train()`) captures human feedback to permanently improve agent behavior. Human review remains the final gate.
+7. **Self-evolution** — The system uses its own dialectic pipeline to generate PRDs for its own features. `internal/SELF_VISION.md` defines the target; the app generates the PRDs to get there, plans the user stories, and produces execution artifacts exclusively against this repository when running in self-improve mode. CrewAI Training (`crew.train()`) captures human feedback to permanently improve agent behavior. Human review remains the final gate.
 8. **Framework-first** — Before building custom solutions, leverage CrewAI's native features: Memory for cross-session learning, Knowledge for semantic document access, Event Listeners for observability, Human Feedback for review workflows, Training for self-improvement, Reasoning for deeper agent thinking, and Conditional Tasks for efficient flow control.
+9. **Structured logging and traceability** — Provide first-class structured logging that emits JSON-structured, rotating log files with correlation IDs for each CrewAI flow, agent, and tool call, while also emitting concise human-readable console logs by default when verbose mode is not enabled. Logs must be rich enough for both humans and LLM agents to reconstruct an end-to-end flow “stacktrace” during debugging.
 
 ---
 
@@ -36,16 +37,17 @@
 | **planning**    | Execution planning: per user story, produces UserStoryExecutionPlan (thesis → antithesis → synthesis → validation). |
 | **execution**   | Approved plan execution: consumes UserStoryExecutionPlan and generates artifacts (spec/draft in Markdown; extensible to code or integrations). Three-phase pipeline: Dialectic → Verify (A+B) → Reimplement (C) via @router. |
 | **schemas**     | Source of truth for PRDs and plans: PRDSchema, UserStory, MacroImpact, AntiDriftQuestion; UserStoryExecutionPlan, ImplementationTask, VerificationResult. |
-| **main / CLI**  | Commands: `prd "feature"` (PRD with dialectics), `plan [prd] [US]` (plan per user story), `execute [plan]` (execution artifact), `status`, `mark`, `verify`. |
+| **main / CLI**  | Commands: `prd "feature"` (PRD with dialectics), `plan [prd] [US]` (plan per user story), `execute [plan]` (execution artifact), `status`, `mark`, `verify`,  `self-improve`. In addition, the CLI MUST support: (a) setting an **active project directory** that points to a local checkout of a remote repo, and (b) project-scoped commands that operate only on that active project. |
 | **api** (planned) | FastAPI REST + WebSocket layer. CrewAI Event Listeners feed real-time progress to connected clients. Background workers for long-running LLM flows. JWT/OAuth2 auth with multi-tenant isolation. |
 | **db** (planned) | PostgreSQL persistence for PRDs, plans, executions, reviews, and LLM usage. Version history with diffs. Replaces flat-file storage as the primary store. |
 | **frontend** (planned) | Next.js web application: PRD creator with live dialectic visualization, `@human_feedback`-powered review workflow, story board, analytics dashboard. |
-| **observability** (planned) | CrewAI Event Listeners + LLM Hooks for cost tracking, token usage, latency metrics. Pluggable into Langfuse, OpenLIT, or Datadog via OpenTelemetry. |
+| **observability** (planned) | CrewAI Event Listeners + LLM Hooks for cost tracking, token usage, latency metrics, and integration with the structured logging system. Pluggable into Langfuse, OpenLIT, or Datadog via OpenTelemetry. |
+| **project vision tools** (planned) | When an active project directory is set, commands that can scan that project’s files, invoke the brainstorming skill at `src/mcp/skills/brainstorming/`, and generate or update a `VISION.md` representation for that project in the central `knowledge/` layer, which is then used as `VisionContext.PROJECT` for that repo. |
 
 ### Integrations (current / desired)
 
-- **Input:** CLI arguments, VISION.md content, environment variables (API keys).
-- **Output:** Files in `prd_output/` (PRDs and plans in **JSON + Markdown**); execution artifacts in `exec_output/`.
+- **Input:** CLI arguments, self vision content from `internal/SELF_VISION.md` (via `VisionContext.SELF`), project vision content from `knowledge/VISION.md` for the currently active project (via `VisionContext.PROJECT`), project source files from the active project directory, and environment variables (API keys).
+- **Output:** Files in `prd_output/` (PRDs and plans in **JSON + Markdown**); execution artifacts in `exec_output/`; centrally managed `knowledge/VISION.md` files that capture the macro vision of each active project.
 - **LLM:** Support for multiple providers (OpenAI, Anthropic, Groq, etc.) configurable in `dialectic/agents.py`.
 
 ---
@@ -86,16 +88,19 @@
 - **Clarity:** PRD in Markdown for human reading; JSON for pipelines and automation.
 - **Quality:** No PRD approved with score < 9.0 unless the flow has retried up to the configured limit.
 - **Maintainability:** Readable code, well-separated responsibilities (flow, agents, schemas).
+- **Structured logging:** All core flows (PRD, planning, execution, self-improve, project analysis) emit JSON-structured logs to rotating log files with at least: timestamp, log level, correlation IDs (flow, agent, tool), component name, and message. Human-readable console logs remain concise and are always derivable from the structured logs.
+- **Traceable executions:** Given a correlation ID, both humans and LLM agents must be able to reconstruct a full “stacktrace” of what occurred (flows, agents, tools, and key decisions) using structured logs, metrics, and CrewAI Event Listener events.
 
 ---
 
 ## Design Principles
 
 1. **Dialectics as the core** — Thesis, antithesis, and synthesis are not optional; the Validator is the sole approval gate.
-2. **VISION.md as anchor** — Every proposal is confronted with the macro vision; anti-drift is mandatory.
+2. **VISION contexts as anchors** — Every proposal is confronted with the correct macro vision: `internal/SELF_VISION.md` via `VisionContext.SELF` for self-evolution flows, and `knowledge/VISION.md` via `VisionContext.PROJECT` for the currently active external project. Anti-drift is mandatory for both.
 3. **Dual output (MD + JSON)** — Serve both human readers and tools/integrations.
 4. **Extensible** — Architecture must allow new flows (e.g., dialectics for user story execution) without breaking the core.
 5. **Framework-first** — Leverage CrewAI's native features (Memory, Knowledge, Event Listeners, Human Feedback, Training, Reasoning, Hooks) before building custom infrastructure. Custom code should only fill gaps the framework doesn't cover.
+6. **Single write target per run** — Self-evolution flows are restricted to this repository (plus metrics and logs) and MUST NOT modify external project trees. When an active project directory is set, project-focused commands (PRD, plan, execute, project vision generation) write only to that project tree, shared PRD/exec output folders, and central knowledge locations designated for project VISION files.
 
 ---
 
@@ -215,6 +220,7 @@ Agents working on self-evolution PRDs MUST consult these sources before proposin
 - [ ] Add **Conditional Tasks** to skip unnecessary dialectic steps (e.g., skip antithesis if score >= 9.5)
 - [x] Register **LLM Hooks** for cost tracking (token counting per PRD) and iteration limiting
 - [ ] Option to choose only MD, only JSON, or both; configurable Markdown templates
+- [ ] Introduce a **structured logging layer** that centralizes log configuration and emits JSON-structured events for core flows, with correlation IDs plumbed through flows, agents, and tools.
 
 > Note: Memory, Knowledge, Reasoning, and Planning are already partially adopted in the current engine. Remaining work is focused on hardening, cross-session behavior, and removing documentation/introspection drift.
 
@@ -222,7 +228,15 @@ Agents working on self-evolution PRDs MUST consult these sources before proposin
 
 - [ ] Implement **Training** workflow: `crewai train` with human feedback to improve agents over time
 - [ ] Integrate **Testing** (`crewai test`) into CI pipeline for quality regression detection
-- [ ] **Self-evolution loop**: the system generates PRDs for its own roadmap items by running `prd` against VISION.md; human review is the final gate
+- [ ] **Self-evolution loop**: the system generates PRDs for its own roadmap items by running `prd` against `internal/SELF_VISION.md` (VisionContext.SELF) and applying changes only to this repository; human review is the final gate
+- [ ] Leverage **structured logging** in self-improve cycles to produce machine- and human-readable run reports (stacktraces) for debugging failed cycles.
+
+### Phase 3b: Active Project & External Repo Support
+
+- [ ] Implement a CLI command to **set an active project directory** that points to a local checkout of a remote repo and persist that configuration.
+- [ ] Ensure `VisionContext.PROJECT` is resolved from the active project and its corresponding `knowledge/VISION.md`.
+- [ ] Add a command to **scan the active project**, run the brainstorming skill at `src/mcp/skills/brainstorming/`, and generate or update that project’s `VISION.md` in the central `knowledge/` layer.
+- [ ] Update `prd`, `plan`, and `execute` behavior so that, when an active project is set, these commands operate only within that project tree for reads/writes, while `self-improve` remains scoped strictly to this repository and `internal/SELF_VISION.md`.
 
 ### Phase 4: API Foundation
 
@@ -233,6 +247,7 @@ Agents working on self-evolution PRDs MUST consult these sources before proposin
 - [ ] JWT auth and multi-tenant data isolation
 - [ ] **`kickoff_for_each`** for parallel user story processing
 - [ ] **Observability** integration (Langfuse or OpenLIT) for production monitoring
+- [ ] API endpoints for retrieving **structured logging traces** and inspecting per-run correlation IDs, as well as endpoints for managing the **active project directory** and associated project VISION metadata.
 
 ### Phase 5: Web UI
 
@@ -241,6 +256,7 @@ Agents working on self-evolution PRDs MUST consult these sources before proposin
 - [ ] PRD list/detail with version history and diffs
 - [ ] Story board (Kanban) and execution live view
 - [ ] Analytics dashboard (cost, quality trends, agent performance)
+- [ ] UI for viewing **structured logs** and run stacktraces, selecting/managing the **active project directory**, and browsing/editing per-project `VISION.md` documents derived from the central `knowledge/` layer.
 
 ### Phase 6: Integrations and Scale
 
@@ -249,6 +265,7 @@ Agents working on self-evolution PRDs MUST consult these sources before proposin
 - [ ] LLM cost tracking with per-organization budgets
 - [ ] Collaborative real-time PRD editing
 - [ ] **Hallucination Guardrail** on thesis output (validate against VISION.md context)
+- [ ] Integrations aware of both `internal/SELF_VISION.md` and per-project `knowledge/VISION.md`, ensuring external systems (GitHub, Jira, etc.) can reference the correct vision context for self-evolution vs active project work.
 
 ---
 

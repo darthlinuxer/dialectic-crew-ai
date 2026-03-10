@@ -34,3 +34,23 @@ def test_vision_knowledge_preserves_absolute_paths(monkeypatch, tmp_path):
     assert self_result["file_paths"] == [self_vision]
     assert captured_paths == [[project_vision], [self_vision]]
     assert all(isinstance(paths[0], Path) for paths in captured_paths)
+
+
+def test_vision_label_matches_context():
+    assert agents._vision_label(VisionContext.PROJECT) == "VISION.md"
+    assert agents._vision_label(VisionContext.SELF) == "SELF_VISION.md"
+
+
+def test_agent_factories_reference_self_vision_label():
+    visionario = agents.create_visionario(VisionContext.SELF)
+    critico = agents.create_critico_socratico(VisionContext.SELF)
+    sintetizador = agents.create_sintetizador(VisionContext.SELF)
+    validador = agents.create_validador_macro(VisionContext.SELF)
+    implementer = agents.create_implementer(VisionContext.SELF)
+
+    assert "SELF_VISION.md" in visionario.backstory
+    assert "SELF_VISION.md" in critico.backstory
+    assert sintetizador.role == "Dialectic Synthesizer"
+    assert "SELF_VISION.md" in validador.backstory
+    assert "SELF_VISION.md" in implementer.backstory
+    assert "SELF_VISION.md" in implementer.goal

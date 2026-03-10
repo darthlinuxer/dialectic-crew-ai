@@ -16,6 +16,7 @@ from typing import Any
 from crewai import Task, Crew
 
 from dialectic.agents import (
+    _vision_label,
     create_visionario,
     create_critico_socratico,
     create_sintetizador,
@@ -172,12 +173,13 @@ Effort: {us.effort}
 Dependencies: {', '.join(us.dependencies) or 'None'}
 """
     feature_context = f"Feature (PRD): {prd.feature_name}. Objective: {prd.objective}"
+    vision_label = _vision_label(vision_context)
 
     def _build_planning_crew() -> Crew:
-        vis = create_visionario()
-        crit = create_critico_socratico()
-        sint = create_sintetizador()
-        val = create_validador_macro()
+        vis = create_visionario(vision_context)
+        crit = create_critico_socratico(vision_context)
+        sint = create_sintetizador(vision_context)
+        val = create_validador_macro(vision_context)
 
         task_tese = Task(
             description=f"""
@@ -187,7 +189,7 @@ FEATURE CONTEXT:
 USER STORY TO IMPLEMENT:
 {us_context}
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 Generate the THESIS: an initial implementation plan for this user story.
 Include:
 1. Summarized technical approach (approach_summary)
@@ -203,7 +205,7 @@ Be concrete and aligned with the macro vision. Do not invent modules outside the
 
         task_antitese = Task(
             description="""
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 The implementation proposal (thesis) for the user story is in context.
 
@@ -225,7 +227,7 @@ Be relentless. Each critique must be specific and actionable.
             description=f"""
 USER STORY: {us.id} — {us.title}
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 You received:
 - The thesis: implementation plan from the Visionary
@@ -250,7 +252,7 @@ Format expected by the Validator: summarized approach, numbered task list, mitig
 Based on the SYNTHESIS of the implementation plan for user story {us.id} — {us.title},
 produce the final document.
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 Fill in:
 - user_story_id: "{us.id}"

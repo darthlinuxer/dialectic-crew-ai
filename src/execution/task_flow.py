@@ -25,6 +25,7 @@ from crewai.flow.persistence import SQLiteFlowPersistence
 from pydantic import BaseModel, Field
 
 from dialectic.agents import (
+    _vision_label,
     create_implementer,
     create_validador_macro,
     create_critico_socratico,
@@ -201,12 +202,14 @@ Fill in:
         """Phase 0: Full dialectic cycle with retries."""
         self.state.phases_executed.append("dialectic")
         synthesis_for_retry: str | None = None
+        vision_context = VisionContext(self.state.vision_context)
+        vision_label = _vision_label(vision_context)
 
         for retry in range(self.state.max_retries + 1):
-            impl = create_implementer()
-            crit = create_critico_socratico()
-            sint = create_sintetizador()
-            val = create_validador_macro()
+            impl = create_implementer(vision_context)
+            crit = create_critico_socratico(vision_context)
+            sint = create_sintetizador(vision_context)
+            val = create_validador_macro(vision_context)
 
             if synthesis_for_retry is None:
                 tese_input = f"""
@@ -217,7 +220,7 @@ TASK TO IMPLEMENT: {self.state.task_id} — {self.state.task_title}
 CONTEXT:
 {self.state.context_str}
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 """
             else:
                 tese_input = f"""
@@ -227,7 +230,7 @@ TASK: {self.state.task_id} — {self.state.task_title}
 
 {self.state.task_description}
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 CRITIQUES AND REFINEMENTS:
 {synthesis_for_retry[:3000]}
@@ -244,7 +247,7 @@ Re-implement incorporating these refinements.
                 description=f"""
 Analyze the implementation of task {self.state.task_id} — {self.state.task_title}.
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 SCOPE: Evaluate ONLY whether it meets the description: \"\"\"{self.state.task_description}\"\"\"
 Do NOT critique outside the scope. Do NOT request additional features.
@@ -258,7 +261,7 @@ Check for contradictions with the macro vision.
                 description=f"""
 Produce the SYNTHESIS for task {self.state.task_id}: incorporate ALL critiques.
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 Ensure the synthesis is aligned with the macro vision.
 Include clear instructions for retry if necessary.
 """,
@@ -270,7 +273,7 @@ Include clear instructions for retry if necessary.
                 description=f"""
 Evaluate the implementation of task {self.state.task_id}.
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 Minimum score for approval: {self.state.min_score}
 Verify alignment with the macro vision.
@@ -291,7 +294,7 @@ Verify alignment with the macro vision.
                 memory=True,
                 planning=True,
                 planning_llm=llm_planning,
-                knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
+                knowledge_sources=[vision_knowledge(vision_context)],
             )
 
             with HookScope(
@@ -370,6 +373,8 @@ Verify alignment with the macro vision.
         """Phase C: Fresh re-implementation by independent agent (no dialectic context)."""
         self.state.phases_executed.append("reimplement")
         print(f"   {self.state.task_id} starting independent re-implementation (Phase C)...")
+        vision_context = VisionContext(self.state.vision_context)
+        vision_label = _vision_label(vision_context)
 
         failed_checks = self.state.verification.checks_failed
         failed_text = "\n".join(f"- {c}" for c in failed_checks) if failed_checks else "N/A"
@@ -406,13 +411,13 @@ Fix ONLY the identified gaps. Use the file reading and writing tools.
             agent=reimpl_agent,
         )
 
-        reval_agent = create_validador_macro()
+        reval_agent = create_validador_macro(vision_context)
 
         task_revalidate = Task(
             description=f"""
 Evaluate whether the fix for task {self.state.task_id} resolved the issues.
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 Minimum score: {self.state.min_score}
 Verify alignment with the macro vision.
@@ -431,7 +436,7 @@ Verify alignment with the macro vision.
             process="sequential",
             verbose=True,
             memory=True,
-            knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
+            knowledge_sources=[vision_knowledge(vision_context)],
         )
 
         result = crew.kickoff()

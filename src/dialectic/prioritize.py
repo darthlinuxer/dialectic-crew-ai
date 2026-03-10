@@ -26,7 +26,7 @@ from typing import Any
 from crewai import Agent, Crew, Task
 from pydantic import ValidationError
 
-from dialectic.agents import llm_simple, vision_knowledge
+from dialectic.agents import _vision_label, llm_simple, vision_knowledge
 from dialectic.vision import VisionContext
 from schemas import (
     ImprovementOpportunity,
@@ -104,6 +104,7 @@ def dialectic_prioritize(
     remainder = presorted[max_to_debate:]
 
     opp_text = _build_opportunities_text(debate_candidates)
+    vision_label = _vision_label(vision_context)
 
     analyst = Agent(
         role="Strategic Improvement Analyst",
@@ -118,7 +119,7 @@ def dialectic_prioritize(
             "1. How well it aligns with the system's VISION and roadmap\n"
             "2. The strength and reliability of the supporting evidence\n"
             "3. Expected return on investment (quality uplift vs effort)\n\n"
-            "Consult the system's macro vision (VISION.md) via knowledge sources."
+            f"Consult the system's macro vision ({vision_label}) via knowledge sources."
         ),
         verbose=False,
         allow_delegation=False,
@@ -172,7 +173,7 @@ def dialectic_prioritize(
     task_analysis = Task(
         description=(
             f"Analyze and rank these improvement opportunities:\n\n{opp_text}\n\n"
-            "Consult the system's macro vision (VISION.md via knowledge sources). "
+            f"Consult the system's macro vision ({vision_label} via knowledge sources). "
             "Produce a thesis ranking ordered by strategic value."
         ),
         expected_output="Ranked analysis of each opportunity with rationale",

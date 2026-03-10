@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import main.cli as cli
 import pytest
 
 from main.cli import _command_requires_api, _command_requires_vision
@@ -32,6 +33,24 @@ class TestCliRequirementRouting:
 
     def test_status_does_not_require_vision(self):
         assert _command_requires_vision("status", ["status"]) is False
+
+    def test_main_disables_crewai_telemetry_by_default(self, monkeypatch):
+        monkeypatch.delenv("CREWAI_DISABLE_TELEMETRY", raising=False)
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "status"])
+        monkeypatch.setattr(cli, "cmd_status", lambda plan_path: None)
+
+        cli.main()
+
+        assert cli.os.environ["CREWAI_DISABLE_TELEMETRY"] == "true"
+
+    def test_main_respects_existing_telemetry_override(self, monkeypatch):
+        monkeypatch.setenv("CREWAI_DISABLE_TELEMETRY", "false")
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "status"])
+        monkeypatch.setattr(cli, "cmd_status", lambda plan_path: None)
+
+        cli.main()
+
+        assert cli.os.environ["CREWAI_DISABLE_TELEMETRY"] == "false"
 
 
 class TestVisionResolution:

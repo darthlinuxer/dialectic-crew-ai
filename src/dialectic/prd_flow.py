@@ -20,6 +20,7 @@ from crewai.flow.persistence import SQLiteFlowPersistence
 from crewai import Task, Crew
 
 from dialectic.agents import (
+    _vision_label,
     create_visionario,
     create_critico_socratico,
     create_sintetizador,
@@ -86,16 +87,19 @@ class DialecticFlow(Flow[DialecticState]):
     def rodar_rodada_dialetica(self):
         print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
 
-        vis = create_visionario()
-        crit = create_critico_socratico()
-        sint = create_sintetizador()
-        val = create_validador_macro()
+        vision_context = VisionContext(self.state.vision_context)
+        vision_label = _vision_label(vision_context)
+
+        vis = create_visionario(vision_context)
+        crit = create_critico_socratico(vision_context)
+        sint = create_sintetizador(vision_context)
+        val = create_validador_macro(vision_context)
 
         task_vision = Task(
             description=f"""
 Objective: {self.state.feature_objective}
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 Generate the complete initial thesis (PRD proposal) including:
 1. Feature name
 2. Clear objective
@@ -113,7 +117,7 @@ Generate the complete initial thesis (PRD proposal) including:
             description=f"""
 Apply the full Socratic method.
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 Analyze the Visionary's proposal (in context) and list ALL:
 1. Flaws and weak points
 2. Contradictions with the macro vision
@@ -133,7 +137,7 @@ Be relentless. Each critique must be specific and actionable.
             description="""
 Produce the final synthesis incorporating ALL critiques (thesis and antithesis are in context).
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 The synthesis must:
 1. Preserve what was good in the thesis
 2. Incorporate ALL critiques from the antithesis
@@ -152,7 +156,7 @@ Output: Complete PRD with corrected user stories, in structured format (objectiv
             description="""
 Evaluate the FINAL SYNTHESIS (output from the Synthesizer in context) and produce the final PRD.
 
-Consult the system's macro vision (VISION.md is available via your knowledge sources).
+Consult the system's macro vision ({vision_label} is available via your knowledge sources).
 
 The PRD must follow exactly the PRDSchema structure:
 - feature_name, version, objective
@@ -187,7 +191,7 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
             memory=True,
             planning=True,
             planning_llm=llm_planning,
-            knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
+            knowledge_sources=[vision_knowledge(vision_context)],
         )
 
         kickoff_kwargs: dict[str, Any] = {

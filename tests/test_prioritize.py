@@ -11,6 +11,7 @@ from dialectic.prioritize import (
     _prioritization_guardrail,
     dialectic_prioritize,
 )
+from dialectic.vision import VisionContext
 from schemas import (
     ImprovementOpportunity,
     PrioritizationResult,
@@ -393,3 +394,28 @@ class TestDialecticPrioritize:
         remaining_ids = [o.id for o in result[2:]]
         assert "c" in remaining_ids
         assert "d" in remaining_ids
+
+    @patch("dialectic.prioritize.vision_knowledge", return_value=MagicMock())
+    @patch("dialectic.prioritize.Crew")
+    def test_self_context_prompts_reference_self_vision(self, MockCrew, _mock_vk):
+        mock_result = MagicMock()
+        mock_result.pydantic = PrioritizationResult(
+            ranked=[_ranked(opportunity_id="opp-1", rank=1, score=9.0)],
+            debate_summary="ok",
+        )
+        mock_result.tasks_output = []
+        MockCrew.return_value.kickoff.return_value = mock_result
+
+        result = dialectic_prioritize(
+            [_opp(id="opp-1"), _opp(id="opp-2")],
+            vision_context=VisionContext.SELF,
+            max_to_debate=5,
+        )
+
+        crew_kwargs = MockCrew.call_args.kwargs
+        analyst = crew_kwargs["agents"][0]
+        analysis_task = crew_kwargs["tasks"][0]
+
+        assert len(result) == 2
+        assert "SELF_VISION.md" in analyst.backstory
+        assert "SELF_VISION.md" in analysis_task.description

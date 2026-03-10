@@ -257,7 +257,7 @@ def _run_verification(
         )
         ac_text += "\n".join(f"- {ac}" for ac in acceptance_criteria)
 
-    verify_agent = create_validador_macro()
+    verify_agent = create_validador_macro(ctx)
     verify_agent.tools = [file_read_tool]
 
     verify_crew_task = CrewTask(

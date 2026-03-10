@@ -142,7 +142,8 @@ def run_dialectic_execution(
     Each task runs through TaskExecutionFlow:
       dialectic → @router → verify (A+B) → @router → reimplement (C) if needed
 
-    VISION.md is loaded via TextFileKnowledgeSource on each Crew, not injected as text.
+    The active vision document is loaded via TextFileKnowledgeSource on each
+    Crew according to the provided VisionContext, not injected as raw text.
     """
     out_dir = Path(output_dir or EXEC_OUTPUT_DIR)
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")

@@ -13,7 +13,12 @@ from dialectic.tools import (
     directory_read_tool,
     code_docs_tool,
 )
-from dialectic.vision import VisionContext, prepare_vision_runtime, get_vision_path
+from dialectic.vision import (
+    VisionContext,
+    _VISION_PATHS,
+    prepare_vision_runtime,
+    get_vision_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,19 +117,27 @@ def vision_knowledge(
     return TextFileKnowledgeSource(file_paths=[vision_path])
 
 
+def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
+    """Return the human-readable vision document name for prompts."""
+    return _VISION_PATHS[context].name
+
+
 # ---------------------------------------------------------------------------
 # Agent factory functions — each call returns a fresh Agent instance
 # to avoid cross-flow contamination when memory=True.
 # ---------------------------------------------------------------------------
 
-def create_visionario() -> Agent:
+def create_visionario(
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> Agent:
+    vision_label = _vision_label(vision_context)
     return Agent(
         role="Senior Visionary Architect",
         goal="Propose the most elegant initial solution aligned with the system's macro vision",
         backstory=(
             "You are an architect with 18 years of experience. You always think of the "
             "system as a whole. Your first proposal (thesis) must be bold and comprehensive.\n\n"
-            "You ALWAYS consult the system's macro vision (VISION.md, available via your "
+            f"You ALWAYS consult the system's macro vision ({vision_label}, available via your "
             "knowledge sources) before anything else.\n\n"
             "Before proposing anything, analyze:\n"
             "1. What the macro vision requires\n"
@@ -143,7 +156,10 @@ def create_visionario() -> Agent:
     )
 
 
-def create_critico_socratico() -> Agent:
+def create_critico_socratico(
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> Agent:
+    vision_label = _vision_label(vision_context)
     return Agent(
         role="Relentless Socratic Critic",
         goal="Rigorously evaluate whether the implementation meets what was requested in the task, without expanding scope",
@@ -154,7 +170,7 @@ def create_critico_socratico() -> Agent:
             "Do NOT request CI/CD, CODEOWNERS, security automation, or anything the task did not ask for.\n\n"
             "Your job — ALWAYS within the task's scope:\n"
             "1. Was the task description met point by point?\n"
-            "2. Are there contradictions with VISION.md in what was done?\n"
+            f"2. Are there contradictions with {vision_label} in what was done?\n"
             "3. Did the implementer do MORE than requested (overscope)?\n"
             "4. Are there bugs or technical errors in what was delivered?\n"
             "5. Assign a FAIR score of 1-10 considering ONLY the task's scope\n\n"
@@ -171,7 +187,9 @@ def create_critico_socratico() -> Agent:
     )
 
 
-def create_sintetizador() -> Agent:
+def create_sintetizador(
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> Agent:
     return Agent(
         role="Dialectic Synthesizer",
         goal="Transform thesis + antithesis into a superior version, eliminating ALL weaknesses",
@@ -201,13 +219,16 @@ def create_sintetizador() -> Agent:
     )
 
 
-def create_validador_macro() -> Agent:
+def create_validador_macro(
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> Agent:
+    vision_label = _vision_label(vision_context)
     return Agent(
         role="Macro & Quality Validator",
         goal="Assign a final score of 0-10 and decide whether to approve or force a retry",
         backstory=(
             "You are the final gate. Your job is to validate the final PRD with rigor.\n\n"
-            "You ALWAYS consult the macro vision (VISION.md, available via your knowledge "
+            f"You ALWAYS consult the macro vision ({vision_label}, available via your knowledge "
             "sources) for the final comparison.\n\n"
             "Respond ONLY with:\n"
             "- quality_score: float (exactly one decimal place, e.g.: 8.5)\n"
@@ -221,7 +242,7 @@ def create_validador_macro() -> Agent:
             "4. Non-functional requirements covered?\n"
             "5. User stories consistent and complete?\n"
             "6. 5+ anti-drift questions answered?\n"
-            "7. Zero contradictions with VISION.md?"
+            f"7. Zero contradictions with {vision_label}?"
         ),
         verbose=True,
         allow_delegation=False,
@@ -230,14 +251,17 @@ def create_validador_macro() -> Agent:
     )
 
 
-def create_implementer() -> Agent:
+def create_implementer(
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> Agent:
+    vision_label = _vision_label(vision_context)
     return Agent(
         role="Technical Implementer",
-        goal="Execute the task as described, generating code/config/files aligned with VISION.md",
+        goal=f"Execute the task as described, generating code/config/files aligned with {vision_label}",
         backstory=(
             "You are an experienced technical implementer. Your role is to execute "
-            "implementation tasks as specified in the plan, strictly following VISION.md.\n\n"
-            "You ALWAYS consult the macro vision (VISION.md, available via your knowledge "
+            f"implementation tasks as specified in the plan, strictly following {vision_label}.\n\n"
+            f"You ALWAYS consult the macro vision ({vision_label}, available via your knowledge "
             "sources) before implementing.\n\n"
             "Rules:\n"
             "1. Implement exactly what the task asks for, without overscope\n"

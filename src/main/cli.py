@@ -48,7 +48,8 @@ Commands:
 
   prd "your feature request" [--files file1.pdf file2.png ...]
       Generates a PRD (Product Requirement Document) using the dialectic method
-      (thesis → antithesis → synthesis → validation). Requires knowledge/VISION.md.
+      (thesis → antithesis → synthesis → validation). By default requires
+      knowledge/VISION.md; use --self to run against internal/SELF_VISION.md.
       Saves to prd_output/ (JSON + Markdown).
       Use --files to attach reference documents (PDF, images, text) for agents to analyze.
       Ex.: python main.py prd "Login with 2FA"
@@ -112,8 +113,8 @@ Manual overrides (the execute command handles these automatically):
             --stash-dirty
                                     Stash current-branch changes before creating the
                                     self-improve branch. The stash is left in the stash stack.
-      CrewAI telemetry is disabled automatically during this command to avoid
-      noisy exporter failures from external telemetry endpoints.
+    CrewAI telemetry is disabled automatically by the CLI to avoid noisy
+    exporter failures from external telemetry endpoints.
       If a prior run was interrupted on a `self-improve/*` branch, stale
       self-improve-only worktree changes are discarded automatically.
       Ex.: python main.py self-improve --dry-run
@@ -131,7 +132,8 @@ Manual overrides (the execute command handles these automatically):
       Shows this message.
 
 Requirements:
-  - knowledge/VISION.md (for prd, plan, and execute)
+    - knowledge/VISION.md (for prd, plan, and execute by default)
+    - internal/SELF_VISION.md (when using --self or self-improve)
   - API key in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY)
 """
 
@@ -302,6 +304,7 @@ def cmd_help():
 
 
 def main():
+    os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
     args = sys.argv[1:]
     if not args:
         print(BANNER)
