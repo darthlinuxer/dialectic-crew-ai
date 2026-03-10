@@ -19,13 +19,14 @@ Flow structure:
 import os
 from typing import Any
 
-from crewai import Task, Crew, Agent
+from crewai import Task, Crew, Agent, Process
 from crewai.flow.flow import Flow, start, listen, router
 from crewai.flow.persistence import SQLiteFlowPersistence
 from pydantic import BaseModel, Field
 
 from dialectic.agents import (
     _vision_label,
+    crew_memory,
     create_implementer,
     create_validador_macro,
     create_critico_socratico,
@@ -177,7 +178,7 @@ Fill in:
             agents=[verify_agent],
             tasks=[task_verify],
             verbose=True,
-            memory=True,
+            memory=crew_memory(VisionContext(self.state.vision_context), "task_verify"),
             knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
         )
         result = crew.kickoff()
@@ -289,9 +290,9 @@ Verify alignment with the macro vision.
             crew = Crew(
                 agents=[impl, crit, sint, val],
                 tasks=[task_impl, task_critica, task_sintese, task_val],
-                process="sequential",
+                process=Process.sequential,
                 verbose=True,
-                memory=True,
+                memory=crew_memory(vision_context, "task_dialectic"),
                 planning=True,
                 planning_llm=llm_planning,
                 knowledge_sources=[vision_knowledge(vision_context)],
@@ -347,6 +348,8 @@ Verify alignment with the macro vision.
             return "verify"
         return "mark_failed"
 
+    # Router outputs remain string labels because CrewAI emits route names here,
+    # not method references.
     @listen("verify")
     def verify_implementation(self):
         """Phase A: Verify artifacts + Phase B: Check acceptance criteria."""
@@ -368,6 +371,8 @@ Verify alignment with the macro vision.
             return "mark_completed"
         return "reimplement"
 
+    # Router outputs remain string labels because CrewAI emits route names here,
+    # not method references.
     @listen("reimplement")
     def independent_reimplement(self):
         """Phase C: Fresh re-implementation by independent agent (no dialectic context)."""
@@ -433,9 +438,9 @@ Verify alignment with the macro vision.
         crew = Crew(
             agents=[reimpl_agent, reval_agent],
             tasks=[task_fix, task_revalidate],
-            process="sequential",
+            process=Process.sequential,
             verbose=True,
-            memory=True,
+            memory=crew_memory(vision_context, "task_reimplement"),
             knowledge_sources=[vision_knowledge(vision_context)],
         )
 
@@ -489,6 +494,8 @@ Verify alignment with the macro vision.
             return "mark_completed"
         return "mark_failed"
 
+    # Router outputs remain string labels because CrewAI emits route names here,
+    # not method references.
     @listen("mark_completed")
     def on_completed(self):
         phases = " → ".join(self.state.phases_executed)
@@ -508,6 +515,8 @@ Verify alignment with the macro vision.
         )
         return self._build_result(success=True)
 
+    # Router outputs remain string labels because CrewAI emits route names here,
+    # not method references.
     @listen("mark_failed")
     def on_failed(self):
         phases = " → ".join(self.state.phases_executed)

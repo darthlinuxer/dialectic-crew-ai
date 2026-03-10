@@ -17,10 +17,12 @@ from typing import Any
 
 from crewai.flow import Flow, start, listen, router, or_
 from crewai.flow.persistence import SQLiteFlowPersistence
-from crewai import Task, Crew
+from crewai import Task, Crew, Process
+from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
 from dialectic.agents import (
     _vision_label,
+    crew_memory,
     create_visionario,
     create_critico_socratico,
     create_sintetizador,
@@ -45,17 +47,87 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = "prd_output"
+RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD = 4000
+
+
+def _build_retry_feedback_context(
+    retry_feedback: str,
+    retry_count: int,
+) -> tuple[str, list[StringKnowledgeSource]]:
+    """Return retry feedback prompt text plus optional knowledge sources.
+
+    Normal-sized validator feedback is embedded in full directly in the task
+    prompt so the next round gets exact instructions with zero retrieval risk.
+    Oversized feedback is attached as semantic knowledge to avoid ballooning the
+    prompt while still preserving the full context via chunked retrieval.
+    """
+    cleaned_feedback = retry_feedback.strip()
+    if not cleaned_feedback or retry_count <= 0:
+        return "", []
+
+    if len(cleaned_feedback) <= RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD:
+        return (
+            f"""
+
+PREVIOUS ROUND VALIDATION FEEDBACK:
+{cleaned_feedback}
+
+You MUST address every issue listed above in this round.
+""",
+            [],
+        )
+
+    feedback_source = StringKnowledgeSource(
+        content=(
+            "Previous round validation feedback for the current PRD retry. "
+            "Every issue in this feedback must be resolved in the next round.\n\n"
+            f"{cleaned_feedback}"
+        ),
+        chunk_size=1200,
+        chunk_overlap=150,
+    )
+    return (
+        """
+
+PREVIOUS ROUND VALIDATION FEEDBACK:
+The full validator feedback from the previous round is available in your knowledge sources.
+You MUST consult it and address every issue listed there in this round.
+""",
+        [feedback_source],
+    )
 
 
 # ---------------------------------------------------------------------------
 # Guardrail: validates PRDSchema output from Validador
 # ---------------------------------------------------------------------------
 
+def _extract_prd_from_result(result) -> PRDSchema | None:
+    """Extract a PRDSchema from a task result's pydantic or raw JSON output."""
+    pydantic_obj = getattr(result, "pydantic", None)
+    if isinstance(pydantic_obj, PRDSchema):
+        return pydantic_obj
+
+    raw_text = getattr(result, "raw", None)
+    if not isinstance(raw_text, str) or not raw_text.strip():
+        return None
+
+    try:
+        import re
+
+        matches = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
+        json_str = matches[-1].strip() if matches else raw_text
+        start_idx = json_str.find("{")
+        if start_idx >= 0:
+            json_str = json_str[start_idx:]
+        return PRDSchema.model_validate(json.loads(json_str))
+    except Exception:
+        return None
+
 def _prd_guardrail(result) -> tuple[bool, Any]:
     """Ensures validation task returns a valid PRDSchema."""
-    pydantic_obj = getattr(result, "pydantic", None)
-    if pydantic_obj and isinstance(pydantic_obj, PRDSchema):
-        if pydantic_obj.user_stories and len(pydantic_obj.user_stories) >= 1:
+    prd = _extract_prd_from_result(result)
+    if prd is not None:
+        if prd.user_stories and len(prd.user_stories) >= 1:
             return (True, result)
         emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="no_user_stories")
         return (False, "PRD must include at least one user story")
@@ -83,40 +155,23 @@ class DialecticFlow(Flow[DialecticState]):
         print(f"{'='*60}\n")
         return "rodar_rodada"
 
-    @listen(or_("iniciar_dialetica", "fazer_retry"))
+    # Router outputs remain string labels because CrewAI emits route names here,
+    # not method references.
+    @listen("retry")
+    def fazer_retry(self):
+        return "rodar_rodada"
+
+    @listen(or_(iniciar_dialetica, fazer_retry))
     def rodar_rodada_dialetica(self):
         print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
 
         vision_context = VisionContext(self.state.vision_context)
         vision_label = _vision_label(vision_context)
-
-        # region agent log
-        try:
-            import time
-
-            log_path = "/home/darthlinuxer/dialectic-crew-ai/.cursor/debug-5709be.log"
-            os.makedirs(os.path.dirname(log_path), exist_ok=True)
-            with open(log_path, "a", encoding="utf-8") as _f:
-                _f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "5709be",
-                            "runId": "pre-fix",
-                            "hypothesisId": "H1",
-                            "location": "src/dialectic/prd_flow.py:rodar_rodada_dialetica",
-                            "message": "Computed vision_label before crew kickoff",
-                            "data": {
-                                "vision_context": self.state.vision_context,
-                                "vision_label": vision_label,
-                            },
-                            "timestamp": time.time(),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # endregion
+        retry_feedback = (self.state.final_validation_notes or "").strip()
+        retry_feedback_block, retry_feedback_sources = _build_retry_feedback_context(
+            retry_feedback,
+            self.state.retry_count,
+        )
 
         vis = create_visionario(vision_context)
         crit = create_critico_socratico(vision_context)
@@ -136,6 +191,7 @@ Generate the complete initial thesis (PRD proposal) including:
 5. Non-functional requirements
 6. Identified risks
 7. Macro impact
+{retry_feedback_block}
 """,
             expected_output="Complete initial proposal in structured PRD format",
             agent=vis,
@@ -205,21 +261,22 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
 """,
             expected_output="Valid PRDSchema with quality_score and consensus_reached",
             agent=val,
-            output_pydantic=PRDSchema,
             guardrail=_prd_guardrail,
             guardrail_max_retries=2,
             context=[task_vision, task_critica, task_sintese],
         )
 
+        knowledge_sources = [vision_knowledge(vision_context), *retry_feedback_sources]
+
         crew = Crew(
             agents=[vis, crit, sint, val],
             tasks=[task_vision, task_critica, task_sintese, task_validacao],
-            process="sequential",
+            process=Process.sequential,
             verbose=True,
-            memory=True,
+            memory=crew_memory(vision_context, "prd"),
             planning=True,
             planning_llm=llm_planning,
-            knowledge_sources=[vision_knowledge(vision_context)],
+            knowledge_sources=knowledge_sources,
         )
 
         kickoff_kwargs: dict[str, Any] = {
@@ -323,10 +380,8 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
             print(f"   What is missing: {notes_str}...")
             return "retry"
 
-    @listen("retry")
-    def fazer_retry(self):
-        return "rodar_rodada"
-
+    # Router outputs remain string labels because CrewAI emits route names here,
+    # not method references.
     @listen("aprovar")
     def salvar_prd_final(self):
         os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -372,13 +427,14 @@ MANDATORY - use EXACTLY these English values (never in Portuguese):
                 config = get_export_config()
                 exporter = PRDExporter()
                 created_paths = exporter.export(prd, config)
-                json_path = next((p for p in created_paths if p.endswith(".json")), "")
-                md_path = next((p for p in created_paths if p.endswith(".md")), "")
+                created_path_strings = [str(path) for path in created_paths]
+                json_path = next((p for p in created_path_strings if p.endswith(".json")), "")
+                md_path = next((p for p in created_path_strings if p.endswith(".md")), "")
                 self.state.prd_path_json = json_path
                 self.state.prd_path_md = md_path
-                logger.info("PRD exported via PRDExporter: %s", created_paths)
+                logger.info("PRD exported via PRDExporter: %s", created_path_strings)
                 print(f"\nPRD APPROVED with score {self.state.quality_score}!")
-                for p in created_paths:
+                for p in created_path_strings:
                     print(f"Saved to: {p}")
                 return prd
             except Exception as e:
