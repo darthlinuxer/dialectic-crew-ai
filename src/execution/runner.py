@@ -11,25 +11,18 @@ from typing import Union
 from schemas import UserStoryExecutionPlan
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from execution.plan_loader import find_latest_plan, load_plan
 
 EXEC_OUTPUT_DIR = "exec_output"
 
 
 def _find_latest_plan() -> Path:
     """Find the most recent execution plan in prd_output/ (exec_*.json)."""
-    base = Path(PRD_OUTPUT_DIR)
-    if not base.exists():
-        raise FileNotFoundError(f"Directory {PRD_OUTPUT_DIR} not found.")
-    jsons = list(base.glob("exec_*.json"))
-    if not jsons:
-        raise FileNotFoundError(f"No execution plan found in {PRD_OUTPUT_DIR}/ (expected exec_*.json)")
-    return max(jsons, key=lambda p: p.stat().st_mtime)
+    return find_latest_plan(PRD_OUTPUT_DIR)
 
 
 def _load_plan(plan_path: str) -> UserStoryExecutionPlan:
-    with open(plan_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return UserStoryExecutionPlan.model_validate(data)
+    return load_plan(plan_path)
 
 
 def _artifact_markdown(plan: UserStoryExecutionPlan) -> str:

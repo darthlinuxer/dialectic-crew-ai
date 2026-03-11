@@ -143,12 +143,14 @@ These should be addressed during the refactor:
 
 ## Incremental Migration Steps
 
-### Phase 1 — Extract shared helpers (low risk, highest deduplication payoff)
+### Phase 1 — Extract shared helpers (low risk, highest deduplication payoff) ✅ Completed 2026-03-11
 
 1. Create `src/execution/plan_loader.py` with `find_latest_plan()` + `load_plan()`
 2. Update `runner.py`, `verify.py`, `dialectic_execution.py` to import from `plan_loader`
 3. Delete all 3 `_find_latest_plan` / `_load_plan` copies
 4. Run tests ✓
+
+Completed with shared helpers in `src/execution/plan_loader.py` plus focused regression coverage in `tests/test_plan_loader.py`.
 
 ### Phase 2 — Split `self_improve.py` (798L → 6 files)
 

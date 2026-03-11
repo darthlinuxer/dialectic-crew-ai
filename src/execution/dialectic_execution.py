@@ -32,6 +32,7 @@ from schemas import (
     ExecutionCheckpoint,
 )
 from execution.runner import _artifact_markdown
+from execution.plan_loader import find_latest_plan, load_plan as load_plan_file
 from execution.verify import (
     update_task_status,
     update_user_story_status,
@@ -51,24 +52,6 @@ DEFAULT_MIN_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
 # ---------------------------------------------------------------------------
 # Plan loading / topological sort
 # ---------------------------------------------------------------------------
-
-def _find_latest_plan() -> Path:
-    base = Path(PRD_OUTPUT_DIR)
-    if not base.exists():
-        raise FileNotFoundError(f"Directory {PRD_OUTPUT_DIR} not found.")
-    jsons = list(base.glob("exec_*.json"))
-    if not jsons:
-        raise FileNotFoundError(
-            f"No execution plan found in {PRD_OUTPUT_DIR}/ (expected exec_*.json)"
-        )
-    return max(jsons, key=lambda p: p.stat().st_mtime)
-
-
-def _load_plan(plan_path: str) -> UserStoryExecutionPlan:
-    with open(plan_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return UserStoryExecutionPlan.model_validate(data)
-
 
 def _topological_sort(tasks: list[ImplementationTask]) -> list[ImplementationTask]:
     by_id = {t.id: t for t in tasks}
@@ -195,12 +178,12 @@ def run_dialectic_execution(
         checkpoint = None
         path = plan_path
         if path is None or path == "--latest":
-            path = str(_find_latest_plan())
+            path = str(find_latest_plan(PRD_OUTPUT_DIR))
 
     if not os.path.exists(path):
         raise FileNotFoundError(f"Plan not found: {path}")
 
-    plan = _load_plan(path)
+    plan = load_plan_file(path)
     ordered_tasks = _topological_sort(plan.tasks)
 
     if checkpoint is None:
@@ -359,7 +342,7 @@ def run_dialectic_execution(
     # ------------------------------------------------------------------
     # Post-execution: verify completed tasks against PRD acceptance criteria
     # ------------------------------------------------------------------
-    plan = _load_plan(path)  # reload to pick up status changes
+    plan = load_plan_file(path)  # reload to pick up status changes
     completed_task_ids = [r.task_id for r in task_results if r.success]
     verified_ids: list[str] = []
     failed_verification_ids: list[str] = []

@@ -19,6 +19,7 @@ from typing import Literal
 from schemas import UserStoryExecutionPlan, PRDSchema, ImplementationTask
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from execution.plan_loader import find_latest_plan, load_plan as load_plan_file
 from execution.verify_runtime import build_verification_crew
 
 _STORY_STATUS = Literal[
@@ -32,13 +33,7 @@ DEFAULT_VERIFICATION_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
 # ---------------------------------------------------------------------------
 
 def _find_latest_plan() -> Path:
-    base = Path(PRD_OUTPUT_DIR)
-    if not base.exists():
-        raise FileNotFoundError(f"Directory {PRD_OUTPUT_DIR} not found.")
-    jsons = list(base.glob("exec_*.json"))
-    if not jsons:
-        raise FileNotFoundError(f"No plan found in {PRD_OUTPUT_DIR}/ (expected exec_*.json)")
-    return max(jsons, key=lambda p: p.stat().st_mtime)
+    return find_latest_plan(PRD_OUTPUT_DIR)
 
 
 def load_plan(plan_path: str | None) -> tuple[UserStoryExecutionPlan, str]:
@@ -49,9 +44,7 @@ def load_plan(plan_path: str | None) -> tuple[UserStoryExecutionPlan, str]:
         path = plan_path
     if not os.path.exists(path):
         raise FileNotFoundError(f"Plan not found: {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return UserStoryExecutionPlan.model_validate(data), path
+    return load_plan_file(path), path
 
 
 def save_plan(plan: UserStoryExecutionPlan, path: str) -> None:
