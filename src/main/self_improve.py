@@ -16,7 +16,6 @@ import os
 import shutil
 import subprocess
 import sys
-import textwrap
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,6 +35,12 @@ from main.git_helpers import (
     git_worktree_clean,
     recover_stale_self_improve_worktree,
     run_cmd,
+)
+from main.test_runner import (
+    emit_test_failure_details,
+    pytest_command,
+    self_improve_test_timeout,
+    snapshot_tests,
 )
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
@@ -72,81 +77,35 @@ def _run_cmd(
 
 def _self_improve_test_timeout() -> int:
     """Return the pytest timeout used by self-improvement validation."""
-    raw = os.getenv("SELF_IMPROVE_TEST_TIMEOUT", str(DEFAULT_SELF_IMPROVE_TEST_TIMEOUT))
-    try:
-        timeout = int(raw)
-    except ValueError:
-        logger.warning(
-            "Invalid SELF_IMPROVE_TEST_TIMEOUT=%r; using default %s",
-            raw,
-            DEFAULT_SELF_IMPROVE_TEST_TIMEOUT,
-        )
-        return DEFAULT_SELF_IMPROVE_TEST_TIMEOUT
-    if timeout <= 0:
-        logger.warning(
-            "Non-positive SELF_IMPROVE_TEST_TIMEOUT=%r; using default %s",
-            raw,
-            DEFAULT_SELF_IMPROVE_TEST_TIMEOUT,
-        )
-        return DEFAULT_SELF_IMPROVE_TEST_TIMEOUT
-    return timeout
+    return self_improve_test_timeout(
+        os.getenv("SELF_IMPROVE_TEST_TIMEOUT"),
+        default_timeout=DEFAULT_SELF_IMPROVE_TEST_TIMEOUT,
+        logger=logger,
+    )
 
 
 def _snapshot_tests(project_root: Path, timeout: int | None = None) -> dict:
     """Run pytest and return pass/fail summary."""
-    timeout = timeout or _self_improve_test_timeout()
-    cmd = _pytest_command()
-    try:
-        r = _run_cmd(cmd, cwd=project_root, timeout=timeout)
-        return {
-            "returncode": r.returncode,
-            "passed": r.returncode == 0,
-            "timed_out": False,
-            "timeout_seconds": timeout,
-            "command": cmd,
-            "stdout_tail": r.stdout[-500:] if r.stdout else "",
-            "stderr_tail": r.stderr[-500:] if r.stderr else "",
-        }
-    except subprocess.TimeoutExpired as exc:
-        stdout_tail = exc.output[-500:] if isinstance(exc.output, str) and exc.output else ""
-        stderr_tail = exc.stderr[-500:] if isinstance(exc.stderr, str) and exc.stderr else ""
-        return {
-            "returncode": -1,
-            "passed": False,
-            "timed_out": True,
-            "timeout_seconds": timeout,
-            "command": cmd,
-            "stdout_tail": stdout_tail,
-            "stderr_tail": stderr_tail,
-        }
+    return snapshot_tests(
+        project_root,
+        timeout=timeout,
+        timeout_resolver=_self_improve_test_timeout,
+        pytest_command_fn=_pytest_command,
+        run_cmd_fn=_run_cmd,
+    )
 
 
 def _pytest_command() -> list[str]:
     """Prefer uv-managed pytest, then fall back to the active Python environment."""
-    if _command_available("uv"):
-        return ["uv", "run", "pytest", "--tb=short", "-q", "--reruns", "1"]
-    return [sys.executable, "-m", "pytest", "--tb=short", "-q", "--reruns", "1"]
+    return pytest_command(
+        command_available_fn=_command_available,
+        python_executable=sys.executable,
+    )
 
 
 def _emit_test_failure_details(snapshot: dict, prefix: str = "  ") -> None:
     """Print concise diagnostics for a failing pytest snapshot."""
-    cmd = snapshot.get("command") or []
-    command_str = " ".join(cmd) if cmd else "pytest"
-    timeout_seconds = snapshot.get("timeout_seconds")
-    if snapshot.get("timed_out"):
-        print(f"{prefix}Pytest timed out after {timeout_seconds}s: {command_str}")
-    else:
-        print(f"{prefix}Pytest exited with code {snapshot.get('returncode')}: {command_str}")
-
-    stdout_tail = (snapshot.get("stdout_tail") or "").strip()
-    stderr_tail = (snapshot.get("stderr_tail") or "").strip()
-
-    if stdout_tail:
-        print(f"{prefix}stdout tail:")
-        print(textwrap.indent(stdout_tail[-500:], prefix + "  "))
-    if stderr_tail:
-        print(f"{prefix}stderr tail:")
-        print(textwrap.indent(stderr_tail[-500:], prefix + "  "))
+    emit_test_failure_details(snapshot, prefix=prefix)
 
 
 def _metrics_stable(
