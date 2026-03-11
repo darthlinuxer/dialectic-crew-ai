@@ -43,7 +43,7 @@ Planning is not implemented as a CrewAI `Flow` subclass, but it still runs a dia
 Current behavior:
 
 - loads a PRD and resolves one user story
-- builds the planning crew through `src/planning/runtime.py` using YAML-backed task templates from `src/planning/config/tasks.yaml`
+- builds the planning crew through `src/planning/runtime.py` using YAML-backed agent/task templates from `src/planning/config/agents.yaml` and `src/planning/config/tasks.yaml`
 - retries until the plan reaches `MIN_PLAN_SCORE` (default `7.5`) or exhausts retries
 - exports `UserStoryExecutionPlan` artifacts to `prd_output/`
 - uses the active vision context, including `VisionContext.SELF` when requested
@@ -71,6 +71,8 @@ flowchart TD
 Key details:
 
 - the main dialectic crew is built through `src/execution/runtime.py` using YAML-backed task templates from `src/execution/config/tasks_dialectic.yaml`
+- the independent verifier now builds its task through `src/execution/task_verify_runtime.py` using `src/execution/config/tasks_taskflow_verify.yaml`
+- the independent reimplementer now builds its tasks through `src/execution/task_reimplement_runtime.py` using `src/execution/config/tasks_taskflow_reimplement.yaml`
 - the verifier reads actual files, not just prior agent output
 - the reimplementer is intentionally fresh and context-light
 - task-level metrics are emitted passively
@@ -114,7 +116,7 @@ Current behavior worth documenting, because code now enforces it:
 - baseline tests must already pass
 - `git` must exist
 - worktree must be clean before branch creation
-- improvement-opportunity debate is built through `src/dialectic/prioritize_runtime.py` using YAML-backed prioritize agent/task templates
+- improvement-opportunity debate is built through `src/dialectic/prioritize_runtime.py` using YAML-backed prioritize agent/task templates, while graceful degradation remains explicit in `src/dialectic/prioritize.py`
 - exact PRD, plan, and execution artifact paths are carried between stages
 - PRD flow IDs and task flow IDs are stored in `.dialectic/self_improve/<cycle-id>.json`
 - `dialectic-crew self-improve --resume <cycle-id>` reloads that snapshot and resumes from the next unfinished stage
@@ -142,6 +144,7 @@ Stable crew/task text now lives in package-local YAML files, while orchestration
 - `src/dialectic/config/tasks_prd.yaml`
 - `src/dialectic/config/agents_prioritize.yaml`
 - `src/dialectic/config/tasks_prioritize.yaml`
+- `src/planning/config/agents.yaml`
 - `src/planning/config/tasks.yaml`
 - `src/execution/config/tasks_dialectic.yaml`
 - `src/execution/config/tasks_verify.yaml`

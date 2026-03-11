@@ -16,34 +16,21 @@ Flow structure:
     └── "failed"  → on_failed
 """
 
-import json
 import os
 from typing import Any, Literal
 from uuid import uuid4
 
-from crewai import Task, Crew, Agent, Process
 from crewai.flow.flow import Flow, start, listen, router
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from pydantic import BaseModel, Field
 
-from dialectic.agents import (
-    _vision_label,
-    crew_memory,
-    create_implementer,
-    create_validador_macro,
-    create_critico_socratico,
-    create_sintetizador,
-    llm_planning,
-    llm_complex,
-    llm_simple,
-    vision_knowledge,
-)
 from dialectic.vision import VisionContext
-from dialectic.tools import file_read_tool, file_write_tool, directory_read_tool
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
 from dialectic.flow_persistence import build_sqlite_flow_persistence
 from execution.runtime import build_task_dialectic_crew
+from execution.task_reimplement_runtime import build_task_flow_reimplementation_crew
+from execution.task_verify_runtime import build_task_flow_verification_crew
 from schemas import (
     ValidationOutput,
     VerificationResult,
@@ -144,54 +131,12 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
 
     def _run_independent_verifier(self, checks: list[str] | None = None) -> VerificationResult:
         checks_to_verify = checks or self.state.acceptance_checks
-        checks_text = ""
-        if checks_to_verify:
-            checks_text = "\n\nACCEPTANCE CHECKS (verify each one):\n"
-            checks_text += "\n".join(f"- {c}" for c in checks_to_verify)
-
-        verify_agent = Agent(
-            role="Independent Verifier",
-            goal="Verify whether implementation artifacts exist in the codebase",
-            backstory="You verify implementations by reading actual project files. "
-                      "Be objective: the artifact either exists or it does not.",
-            verbose=True,
-            allow_delegation=False,
-            reasoning=True,
-            max_reasoning_attempts=2,
-            llm=llm_simple,
-            tools=[file_read_tool, directory_read_tool],
-        )
-
-        task_verify = Task(
-            description=f"""
-Verify whether task {self.state.task_id} — {self.state.task_title} was implemented.
-
-TASK DESCRIPTION:
-{self.state.task_description}
-
-Use the file reading tool to verify whether the artifacts exist.
-For each check, verify whether the file/function/config actually exists.
-{checks_text}
-
-Fill in:
-- verified: true if ALL essential artifacts exist
-- checks_passed: list of checks that passed
-- checks_failed: list of checks that failed
-- notes: explanation of what was verified
-""",
-            expected_output="VerificationResult",
-            agent=verify_agent,
-            output_pydantic=VerificationResult,
-            guardrail=_verification_guardrail,
-            guardrail_max_retries=2,
-        )
-
-        crew = Crew(
-            agents=[verify_agent],
-            tasks=[task_verify],
-            verbose=True,
-            memory=crew_memory(VisionContext(self.state.vision_context), "task_verify"),
-            knowledge_sources=[vision_knowledge(VisionContext(self.state.vision_context))],
+        crew = build_task_flow_verification_crew(
+            task_id=self.state.task_id,
+            task_title=self.state.task_title,
+            task_description=self.state.task_description,
+            acceptance_checks=checks_to_verify,
+            vision_context=VisionContext(self.state.vision_context),
         )
         result = crew.kickoff()
 
@@ -233,7 +178,6 @@ Fill in:
             self.state.phases_executed.append("dialectic")
         synthesis_for_retry: str | None = None
         vision_context = VisionContext(self.state.vision_context)
-        vision_label = _vision_label(vision_context)
 
         for retry in range(self.state.max_retries + 1):
             crew = build_task_dialectic_crew(
@@ -337,69 +281,16 @@ Fill in:
             self.state.phases_executed.append("reimplement")
         print(f"   {self.state.task_id} starting independent re-implementation (Phase C)...")
         vision_context = VisionContext(self.state.vision_context)
-        vision_label = _vision_label(vision_context)
 
         failed_checks = self.state.verification.checks_failed
-        failed_text = "\n".join(f"- {c}" for c in failed_checks) if failed_checks else "N/A"
-
-        reimpl_agent = Agent(
-            role="Independent Implementer",
-            goal="Fix failed implementation based on checks that did not pass",
-            backstory="You are an implementer focused on fixing specific gaps. "
-                      "Read existing files, identify what is missing, and fix it.",
-            verbose=True,
-            allow_delegation=False,
-            reasoning=True,
-            max_reasoning_attempts=2,
-            llm=llm_complex,
-            tools=[file_read_tool, file_write_tool, directory_read_tool],
-        )
-
-        task_fix = Task(
-            description=f"""
-Task {self.state.task_id} — {self.state.task_title} was implemented but verification failed.
-
-TASK DESCRIPTION:
-{self.state.task_description}
-
-FAILED CHECKS:
-{failed_text}
-
-VERIFICATION NOTES:
-{self.state.verification.notes[:2000]}
-
-Fix ONLY the identified gaps. Use the file reading and writing tools.
-""",
-            expected_output="Description of what was fixed",
-            agent=reimpl_agent,
-        )
-
-        reval_agent = create_validador_macro(vision_context)
-
-        task_revalidate = Task(
-            description=f"""
-Evaluate whether the fix for task {self.state.task_id} resolved the issues.
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-Minimum score: {self.state.min_score}
-Verify alignment with the macro vision.
-""",
-            expected_output="ValidationOutput",
-            agent=reval_agent,
-            output_pydantic=ValidationOutput,
-            guardrail=_quality_guardrail,
-            guardrail_max_retries=2,
-            context=[task_fix],
-        )
-
-        crew = Crew(
-            agents=[reimpl_agent, reval_agent],
-            tasks=[task_fix, task_revalidate],
-            process=Process.sequential,
-            verbose=True,
-            memory=crew_memory(vision_context, "task_reimplement"),
-            knowledge_sources=[vision_knowledge(vision_context)],
+        crew = build_task_flow_reimplementation_crew(
+            task_id=self.state.task_id,
+            task_title=self.state.task_title,
+            task_description=self.state.task_description,
+            failed_checks=failed_checks,
+            verification_notes=self.state.verification.notes,
+            min_score=self.state.min_score,
+            vision_context=vision_context,
         )
 
         result = crew.kickoff()

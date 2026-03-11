@@ -1,0 +1,28 @@
+reimplement_task_fix:
+  description: |
+    Task {task_id} — {task_title} was implemented but verification failed.
+
+    TASK DESCRIPTION:
+    {task_description}
+
+    FAILED CHECKS:
+    {failed_checks}
+
+    VERIFICATION NOTES:
+    {verification_notes}
+
+    Fix ONLY the identified gaps. Use the file reading and writing tools.
+  expected_output: Description of what was fixed
+
+reimplement_task_validate:
+  description: |
+    Evaluate whether the fix for task {task_id} resolved the issues.
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    Minimum score: {min_score}
+    Verify alignment with the macro vision.
+  expected_output: ValidationOutput
+  output_schema: ValidationOutput
+  guardrail: quality
+  guardrail_max_retries: 2

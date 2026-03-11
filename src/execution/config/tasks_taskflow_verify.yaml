@@ -1,0 +1,19 @@
+verify_task_flow_implementation:
+  description: |
+    Verify whether task {task_id} — {task_title} was implemented.
+
+    TASK DESCRIPTION:
+    {task_description}
+
+    Use the file reading tool to verify whether the artifacts exist.
+    For each check, verify whether the file/function/config actually exists.{acceptance_checks_block}
+
+    Fill in:
+    - verified: true if ALL essential artifacts exist
+    - checks_passed: list of checks that passed
+    - checks_failed: list of checks that failed
+    - notes: explanation of what was verified
+  expected_output: VerificationResult
+  output_schema: VerificationResult
+  guardrail: verification
+  guardrail_max_retries: 2

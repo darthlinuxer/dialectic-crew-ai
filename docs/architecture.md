@@ -107,8 +107,8 @@ graph TB
 | `hooks.py` | HookScope, token budgets, protected-path enforcement, cost tracking |
 | `metrics.py` | SQLite-backed metrics store, defaulting to `.dialectic/metrics.db` |
 | `introspect.py` | Four-lens introspection engine |
-| `prioritize.py` | Dialectic prioritization for improvement opportunities |
-| `prioritize_runtime.py` | YAML-backed prioritization crew builder |
+| `prioritize.py` | Dialectic prioritization for improvement opportunities, plus graceful-degradation fallback |
+| `prioritize_runtime.py` | YAML-backed prioritization crew builder kept separate from fallback orchestration |
 | `vision.py` | Vision context resolution and project-root helpers |
 | `tools.py` | Shared CrewAI tool setup |
 | `config/*.yaml` | Shared declarative agent/task templates for core dialectic crews |
@@ -119,6 +119,7 @@ graph TB
 |---|---|
 | `flow.py` | User-story planning dialectic with plan export and score thresholding |
 | `runtime.py` | YAML-backed planning crew builder |
+| `config/agents.yaml` | Declarative planning-specific agent personas |
 | `config/tasks.yaml` | Declarative planning task templates |
 
 ### `src/execution/`
@@ -129,6 +130,8 @@ graph TB
 | `task_flow.py` | Per-task dialectic → verify → reimplement pipeline |
 | `runtime.py` | YAML-backed task dialectic crew builder |
 | `verify.py` | Shared task/story verification and status persistence |
+| `task_reimplement_runtime.py` | YAML-backed independent reimplementation task builder used inside `task_flow.py` |
+| `task_verify_runtime.py` | YAML-backed independent verifier task builder used inside `task_flow.py` |
 | `verify_runtime.py` | YAML-backed standalone verification crew builder with read-only validator override |
 | `runner.py` | Static spec generation (`--spec-only`) |
 | `config/*.yaml` | Declarative execution and verification task templates |
@@ -162,6 +165,8 @@ That context is resolved once and then attached as a CrewAI knowledge source for
 LLM connectors are module-level singletons, but agents themselves are factory-created per run. This avoids cross-run memory contamination while keeping configuration centralized.
 
 Static agent and task text now lives in package-local YAML files where the content is stable. Thin runtime builder modules bind those templates to live CrewAI objects, knowledge sources, memory scopes, schema classes, guardrails, and runtime-only overrides.
+
+Prioritization intentionally remains on this runtime-builder pattern rather than migrating to `CrewBase` today. The current split keeps the debate crew small and declarative while leaving failure handling and fallback ordering explicit in `src/dialectic/prioritize.py`.
 
 ### 3. Execution distrusts execution
 

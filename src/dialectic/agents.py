@@ -197,14 +197,8 @@ def _resolve_bundle(name: str, registry: dict[str, list[Any]], kind: str) -> lis
     return [item for item in bundle if item]
 
 
-def _build_agent(
-    name: str,
-    vision_context: VisionContext = VisionContext.PROJECT,
-) -> Agent:
-    config = render_yaml_config(
-        _get_agent_config(name, vision_context),
-        {"vision_label": _vision_label(vision_context)},
-    )
+def build_agent_from_config(config: dict[str, Any]) -> Agent:
+    """Instantiate an Agent from rendered YAML-backed config."""
     config = dict(config)
 
     llm_tier = config.pop("llm_tier")
@@ -225,6 +219,17 @@ def _build_agent(
     if mcps:
         kwargs["mcps"] = mcps
     return Agent(**kwargs)
+
+
+def _build_agent(
+    name: str,
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> Agent:
+    config = render_yaml_config(
+        _get_agent_config(name, vision_context),
+        {"vision_label": _vision_label(vision_context)},
+    )
+    return build_agent_from_config(config)
 
 
 # ---------------------------------------------------------------------------

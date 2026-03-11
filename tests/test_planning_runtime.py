@@ -19,10 +19,14 @@ def test_build_planning_crew_uses_yaml_templates(monkeypatch):
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "create_visionario", lambda ctx: "visionario")
-    monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "critico")
-    monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
-    monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
+    created_agents = []
+
+    def fake_build_agent(template, placeholders):
+        agent = f"agent:{template['role']}:{placeholders['vision_label']}"
+        created_agents.append(agent)
+        return agent
+
+    monkeypatch.setattr(runtime, "_build_agent", fake_build_agent)
     monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}")
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: f"knowledge:{ctx.value}")
 
@@ -45,6 +49,12 @@ def test_build_planning_crew_uses_yaml_templates(monkeypatch):
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
     assert captured_tasks[3]["output_pydantic"].__name__ == "UserStoryExecutionPlan"
     assert captured_tasks[3]["guardrail"].__name__ == "_plan_guardrail"
+    assert created_agents == [
+        "agent:User Story Planning Visionary:SELF_VISION.md",
+        "agent:User Story Planning Critic:SELF_VISION.md",
+        "agent:User Story Planning Synthesizer:SELF_VISION.md",
+        "agent:User Story Planning Validator:SELF_VISION.md",
+    ]
     assert captured_crew["planning"] is True
     assert captured_crew["planning_llm"] is runtime.llm_planning
     assert captured_crew["knowledge_sources"] == ["knowledge:self"]
@@ -65,10 +75,7 @@ def test_build_planning_crew_preserves_agent_order(monkeypatch):
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "create_visionario", lambda ctx: "visionario")
-    monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "critico")
-    monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
-    monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
+    monkeypatch.setattr(runtime, "_build_agent", lambda template, placeholders: template["role"])
     monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "knowledge")
 
@@ -83,4 +90,45 @@ def test_build_planning_crew_preserves_agent_order(monkeypatch):
         min_plan_score=7.5,
     )
 
-    assert captured_crew["agents"] == ["visionario", "critico", "sint", "val"]
+    assert captured_crew["agents"] == [
+        "User Story Planning Visionary",
+        "User Story Planning Critic",
+        "User Story Planning Synthesizer",
+        "User Story Planning Validator",
+    ]
+
+
+def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
+    from planning import runtime
+
+    captured = {}
+
+    def fake_build_agent_from_config(config):
+        captured.update(config)
+        return "agent"
+
+    monkeypatch.setattr(runtime, "build_agent_from_config", fake_build_agent_from_config)
+
+    agent = runtime._build_agent(
+        {
+            "role": "Planner for {vision_label}",
+            "goal": "Plan {us_title}",
+            "backstory": "Context {feature_context}",
+            "llm_tier": "planning",
+            "tool_bundle": "read_only",
+        },
+        {
+            "vision_label": "VISION.md",
+            "us_title": "US1",
+            "feature_context": "Feature ABC",
+        },
+    )
+
+    assert agent == "agent"
+    assert captured == {
+        "role": "Planner for VISION.md",
+        "goal": "Plan US1",
+        "backstory": "Context Feature ABC",
+        "llm_tier": "planning",
+        "tool_bundle": "read_only",
+    }

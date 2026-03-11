@@ -23,11 +23,14 @@ The repository now splits stable text from live runtime wiring:
 - `src/dialectic/config/agents_prioritize.yaml` → prioritization-only personas
 - `src/dialectic/config/tasks_prd.yaml` → PRD dialectic tasks
 - `src/dialectic/config/tasks_prioritize.yaml` → prioritization debate tasks
+- `src/planning/config/agents.yaml` → planning-specific personas
 - `src/planning/config/tasks.yaml` → planning tasks
 - `src/execution/config/tasks_dialectic.yaml` → execution dialectic tasks
 - `src/execution/config/tasks_verify.yaml` → standalone verification task
 
 Runtime modules such as `src/dialectic/prd_runtime.py`, `src/dialectic/prioritize_runtime.py`, `src/planning/runtime.py`, `src/execution/runtime.py`, and `src/execution/verify_runtime.py` turn those YAML definitions into live CrewAI objects.
+
+`src/planning/runtime.py` now loads dedicated planning personas from `src/planning/config/agents.yaml` while still relying on shared runtime binding conventions for LLM tiers, tools, MCP bundles, memory, and knowledge sources.
 
 ## Agent overview
 
@@ -150,10 +153,10 @@ Optional CrewAI tools degrade gracefully when their dependencies are unavailable
 
 ## Dynamically created execution agents
 
-Beyond the five core factories, execution creates two short-lived agents in `src/execution/task_flow.py`:
+Beyond the five core factories, execution still uses two short-lived execution-only agents, now wired through narrow runtime helpers rather than large inline task strings:
 
-- **Independent Verifier** — file-reading verifier used after dialectic execution
-- **Independent Reimplementer** — fresh implementer used only when verification fails
+- **Independent Verifier** — file-reading verifier used after dialectic execution, with task text loaded through `src/execution/task_verify_runtime.py`
+- **Independent Reimplementer** — fresh implementer used only when verification fails, with task text loaded through `src/execution/task_reimplement_runtime.py`
 
 Those agents are intentionally isolated from the earlier dialectic context so verification is less self-congratulatory. A rare and beautiful trait in both humans and software.
 

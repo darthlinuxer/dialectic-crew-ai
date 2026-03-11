@@ -6,12 +6,9 @@ from typing import Any, Mapping
 from crewai import Crew, Process, Task
 
 from dialectic.agents import (
+    build_agent_from_config,
     _vision_label,
     crew_memory,
-    create_critico_socratico,
-    create_sintetizador,
-    create_validador_macro,
-    create_visionario,
     llm_planning,
     vision_knowledge,
 )
@@ -24,6 +21,7 @@ from dialectic.yaml_config import (
 from dialectic.vision import VisionContext
 
 
+_AGENTS_CONFIG_PATH = Path(__file__).with_name("config") / "agents.yaml"
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks.yaml"
 
 
@@ -35,6 +33,7 @@ def build_planning_crew(
     vision_context: VisionContext,
     min_plan_score: float,
 ) -> Crew:
+    agent_templates = load_yaml_config(_AGENTS_CONFIG_PATH)
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
     placeholders = {
         "feature_context": feature_context,
@@ -45,15 +44,15 @@ def build_planning_crew(
         "min_plan_score": min_plan_score,
     }
 
-    vis = create_visionario(vision_context)
-    crit = create_critico_socratico(vision_context)
-    sint = create_sintetizador(vision_context)
-    val = create_validador_macro(vision_context)
+    vis = _build_agent(agent_templates["planning_visionary"], placeholders)
+    crit = _build_agent(agent_templates["planning_critic"], placeholders)
+    sint = _build_agent(agent_templates["planning_synthesizer"], placeholders)
+    val = _build_agent(agent_templates["planning_validator"], placeholders)
     agents = {
-        "visionario": vis,
-        "critico_socratico": crit,
-        "sintetizador": sint,
-        "validador_macro": val,
+        "planning_visionary": vis,
+        "planning_critic": crit,
+        "planning_synthesizer": sint,
+        "planning_validator": val,
     }
 
     task_tese = _build_task(task_templates["thesis_plan"], placeholders, agents)
@@ -87,6 +86,11 @@ def build_planning_crew(
         planning_llm=llm_planning,
         knowledge_sources=[vision_knowledge(vision_context)],
     )
+
+
+def _build_agent(template: dict[str, Any], placeholders: dict[str, Any]):
+    config = render_yaml_config(template, placeholders)
+    return build_agent_from_config(config)
 
 
 def _build_task(

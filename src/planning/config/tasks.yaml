@@ -16,7 +16,7 @@ thesis_plan:
 
     Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
   expected_output: Structured implementation plan (approach + tasks + risks + notes)
-  agent: visionario
+  agent: planning_visionary
 
 antithesis_plan:
   description: |
@@ -33,7 +33,7 @@ antithesis_plan:
 
     Be relentless. Each critique must be specific and actionable.
   expected_output: Detailed critique of the implementation plan
-  agent: critico_socratico
+  agent: planning_critic
 
 synthesis_plan:
   description: |
@@ -54,7 +54,7 @@ synthesis_plan:
 
     Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
   expected_output: Refined implementation plan (approach + tasks + mitigated risks + notes)
-  agent: sintetizador
+  agent: planning_synthesizer
 
 validation_plan:
   description: |
@@ -75,7 +75,7 @@ validation_plan:
     - consensus_reached: true if the plan is ready for execution
     - final_validation_notes: brief explanation
   expected_output: Valid UserStoryExecutionPlan with quality_score and consensus_reached
-  agent: validador_macro
+  agent: planning_validator
   output_schema: UserStoryExecutionPlan
   guardrail: plan
   guardrail_max_retries: 2
