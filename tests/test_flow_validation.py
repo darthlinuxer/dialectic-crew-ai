@@ -55,6 +55,15 @@ def test_execution_plan_export_md():
     return True
 
 
+def test_execution_plan_export_md_rejects_invalid_dict():
+    try:
+        execution_plan_to_markdown({"user_story_id": "US-001"})
+    except ValueError as exc:
+        assert "Invalid execution plan data" in str(exc)
+    else:
+        raise AssertionError("Expected invalid execution plan data to raise ValueError")
+
+
 def test_get_user_story():
     """Resolve user story by id and by index."""
     path = Path(__file__).parent.parent / "prd_output" / "PRD_test_fixture.json"

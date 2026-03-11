@@ -32,6 +32,10 @@ def cmd_prd(
     resume_id: str | None = None,
     get_prd_resume_state_fn=get_prd_resume_state,
 ) -> None:
+    if not resume_id and not feature_request:
+        print("Provide the feature: python main.py prd 'your feature here'")
+        sys.exit(1)
+
     if resume_id and not get_prd_resume_state_fn(resume_id):
         print(f"Persisted PRD flow not found: {resume_id}")
         sys.exit(1)

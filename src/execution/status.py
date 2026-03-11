@@ -46,9 +46,9 @@ def save_plan(plan: UserStoryExecutionPlan, path: str) -> None:
 
 
 def find_task(plan: UserStoryExecutionPlan, task_id: str) -> ImplementationTask:
-    normalized = task_id.strip().upper()
+    normalized = task_id.strip().casefold()
     for task in plan.tasks:
-        if task.id.upper() == normalized:
+        if task.id.casefold() == normalized:
             return task
     available = [task.id for task in plan.tasks]
     raise ValueError(f"Task '{task_id}' not found. Available: {available}")

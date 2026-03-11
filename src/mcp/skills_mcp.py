@@ -5,8 +5,20 @@ from enum import Enum
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
-from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError:
+    class FastMCP:  # type: ignore[no-redef]
+        def __init__(self, name: str):
+            self.name = name
+
+        def tool(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
 
 from .skills_index import SkillIndex, SkillSource, SkillMetadata
 

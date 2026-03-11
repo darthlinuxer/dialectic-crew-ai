@@ -61,6 +61,12 @@ class TestCliRequirementRouting:
         with pytest.raises(SystemExit):
             cli.main()
 
+    def test_cmd_prd_requires_feature_when_not_resuming(self, monkeypatch):
+        monkeypatch.setattr("main.cli_commands.run_dialectic_flow", lambda *args, **kwargs: None)
+
+        with pytest.raises(SystemExit):
+            cli.cmd_prd(None, resume_id=None)
+
     def test_execute_resume_run_passes_id_through(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(cli, "_check_api_key", lambda: True)

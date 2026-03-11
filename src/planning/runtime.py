@@ -28,6 +28,8 @@ def build_planning_crew(
     us_context: str,
     vision_context: VisionContext,
     min_plan_score: float,
+    retry_feedback_block: str = "",
+    retry_feedback_sources: list[Any] | None = None,
 ) -> Crew:
     agent_templates = load_yaml_config(_AGENTS_CONFIG_PATH)
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
@@ -38,6 +40,7 @@ def build_planning_crew(
         "us_title": us.title,
         "vision_label": _vision_label(vision_context),
         "min_plan_score": min_plan_score,
+        "retry_feedback_block": retry_feedback_block,
     }
 
     vis = _build_agent(agent_templates["planning_visionary"], placeholders)
@@ -80,7 +83,7 @@ def build_planning_crew(
         memory=crew_memory(vision_context, "planning"),
         planning=True,
         planning_llm=llm_planning,
-        knowledge_sources=[vision_knowledge(vision_context)],
+        knowledge_sources=[vision_knowledge(vision_context), *(retry_feedback_sources or [])],
     )
 
 

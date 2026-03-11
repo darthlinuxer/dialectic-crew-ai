@@ -41,6 +41,8 @@ def test_build_planning_crew_uses_yaml_templates(monkeypatch):
         us_context=us_context,
         vision_context=VisionContext.SELF,
         min_plan_score=7.5,
+        retry_feedback_block="",
+        retry_feedback_sources=None,
     )
 
     assert len(captured_tasks) == 4
@@ -88,6 +90,8 @@ def test_build_planning_crew_preserves_agent_order(monkeypatch):
         us_context="story",
         vision_context=VisionContext.PROJECT,
         min_plan_score=7.5,
+        retry_feedback_block="",
+        retry_feedback_sources=None,
     )
 
     assert captured_crew["agents"] == [
@@ -96,6 +100,41 @@ def test_build_planning_crew_preserves_agent_order(monkeypatch):
         "User Story Planning Synthesizer",
         "User Story Planning Validator",
     ]
+
+
+def test_build_planning_crew_appends_retry_feedback_sources(monkeypatch):
+    from planning import runtime
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    captured_crew = {}
+
+    class FakeCrew:
+        def __init__(self, **kwargs):
+            captured_crew.update(kwargs)
+
+    monkeypatch.setattr(runtime, "Task", FakeTask)
+    monkeypatch.setattr(runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(runtime, "_build_agent", lambda template, placeholders: template["role"])
+    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision-source")
+
+    prd = make_prd()
+    us = prd.user_stories[0]
+
+    runtime.build_planning_crew(
+        feature_context="feature",
+        us=us,
+        us_context="story",
+        vision_context=VisionContext.PROJECT,
+        min_plan_score=7.5,
+        retry_feedback_block="RETRY BLOCK",
+        retry_feedback_sources=["feedback-source"],
+    )
+
+    assert captured_crew["knowledge_sources"] == ["vision-source", "feedback-source"]
 
 
 def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):

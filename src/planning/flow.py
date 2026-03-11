@@ -13,8 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from dialectic.knowledge import _vision_label
+from pydantic import ValidationError
+
 from dialectic.export import execution_plan_to_markdown
+from dialectic.prd_guardrails import _build_retry_feedback_context
 from dialectic.prd_flow import OUTPUT_DIR
 from dialectic.vision import VisionContext, get_vision_hash
 from planning.runtime import build_planning_crew
@@ -59,6 +61,8 @@ def _load_prd(path: str) -> tuple[PRDSchema, dict]:
 
 
 def _normalize_us_ref(s: str) -> str:
+    if not isinstance(s, str):
+        raise TypeError("user story reference must be a string")
     s = s.strip().upper()
     if s.isdigit():
         return s
@@ -77,8 +81,10 @@ def _get_user_story(prd: PRDSchema, ref: str | None):
     try:
         idx = int(ref)
         return prd.user_stories[idx]
-    except (ValueError, IndexError):
-        raise ValueError(f"User story not found: {ref}. Available: {[u.id for u in prd.user_stories]}")
+    except (ValueError, IndexError) as exc:
+        raise ValueError(
+            f"User story not found: {ref}. Available: {[u.id for u in prd.user_stories]}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +140,7 @@ def _extract_plan(result, us) -> UserStoryExecutionPlan | None:
         plan_dict.setdefault("user_story_id", us.id)
         plan_dict.setdefault("user_story_title", us.title)
         return UserStoryExecutionPlan.model_validate(plan_dict)
-    except Exception:
+    except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
         return None
 
 
@@ -170,10 +176,16 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
     print(f"{'='*60}\n")
 
     plan_valid: UserStoryExecutionPlan | None = None
+    retry_feedback = ""
 
     for attempt in range(MAX_PLAN_RETRIES + 1):
         if attempt > 0:
             print(f"\n--- Planning retry {attempt}/{MAX_PLAN_RETRIES} ---\n")
+
+        retry_feedback_block, retry_feedback_sources = _build_retry_feedback_context(
+            retry_feedback,
+            attempt,
+        )
 
         result = build_planning_crew(
             feature_context=feature_context,
@@ -181,11 +193,14 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
             us_context=us_context,
             vision_context=vision_context,
             min_plan_score=MIN_PLAN_SCORE,
+            retry_feedback_block=retry_feedback_block,
+            retry_feedback_sources=retry_feedback_sources,
         ).kickoff()
         plan_valid = _extract_plan(result, us)
 
         if plan_valid is None:
             print(f"   Failed to extract structured plan (attempt {attempt + 1})")
+            retry_feedback = "The previous planning round failed to produce a valid structured execution plan."
             continue
 
         plan_valid = _ensure_acceptance_checks(plan_valid, us)
@@ -197,6 +212,7 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
             break
 
         print(f"   Plan score {plan_valid.quality_score}/10 < {MIN_PLAN_SCORE}")
+        retry_feedback = plan_valid.final_validation_notes.strip()
 
     if plan_valid is None:
         raise RuntimeError(

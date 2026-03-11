@@ -16,11 +16,13 @@ def run_cmd(
     cwd: str | Path | None = None,
     timeout: int = 120,
 ) -> subprocess.CompletedProcess[str]:
+    safe_timeout = max(int(timeout), 1)
     return subprocess.run(
         cmd,
         capture_output=True,
         text=True,
-        timeout=timeout,
+        check=False,
+        timeout=safe_timeout,
         cwd=str(cwd) if cwd else None,
     )
 

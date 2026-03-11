@@ -2,40 +2,40 @@
 
 import pytest
 
-from planning.flow import (
-    _normalize_us_ref,
-    _get_user_story,
-    _plan_guardrail,
-    _ensure_acceptance_checks,
-)
+import planning.flow as planning_flow
+from dialectic.vision import VisionContext
 from schemas import UserStoryExecutionPlan
 from conftest import make_prd, make_task
 
 
 class TestNormalizeUsRef:
     def test_us_dash_number(self):
-        assert _normalize_us_ref("US-001") == "US-001"
+        assert planning_flow._normalize_us_ref("US-001") == "US-001"
 
     def test_us_no_dash(self):
-        result = _normalize_us_ref("US001")
+        result = planning_flow._normalize_us_ref("US001")
         assert result == "US1"
 
     def test_digit_only(self):
-        assert _normalize_us_ref("1") == "1"
+        assert planning_flow._normalize_us_ref("1") == "1"
 
     def test_lowercase(self):
-        result = _normalize_us_ref("us001")
+        result = planning_flow._normalize_us_ref("us001")
         assert result == "US1"
 
     def test_whitespace(self):
-        result = _normalize_us_ref("  US-001  ")
+        result = planning_flow._normalize_us_ref("  US-001  ")
         assert result == "US-001"
+
+    def test_rejects_non_string(self):
+        with pytest.raises(TypeError, match="must be a string"):
+            planning_flow._normalize_us_ref(None)
 
 
 class TestGetUserStory:
     def test_none_returns_first(self):
         prd = make_prd()
-        us = _get_user_story(prd, None)
+        us = planning_flow._get_user_story(prd, None)
         assert us.id == "US-001"
 
     def test_by_id(self):
@@ -48,7 +48,7 @@ class TestGetUserStory:
                          acceptance_criteria=["a", "b", "c"], effort="M"),
             ]
         )
-        us = _get_user_story(prd, "US-002")
+        us = planning_flow._get_user_story(prd, "US-002")
         assert us.id == "US-002"
 
     def test_by_index(self):
@@ -61,22 +61,22 @@ class TestGetUserStory:
                          acceptance_criteria=["a", "b", "c"], effort="M"),
             ]
         )
-        us = _get_user_story(prd, "1")
+        us = planning_flow._get_user_story(prd, "1")
         assert us.id == "US-002"
 
     def test_not_found(self):
         prd = make_prd()
         with pytest.raises(ValueError, match="not found"):
-            _get_user_story(prd, "US-999")
+            planning_flow._get_user_story(prd, "US-999")
 
 
 class TestPlanGuardrail:
     def _make_result(self, pydantic_obj):
         class FakeResult:
-            pass
-        r = FakeResult()
-        r.pydantic = pydantic_obj
-        return r
+            def __init__(self, pydantic):
+                self.pydantic = pydantic
+
+        return FakeResult(pydantic_obj)
 
     def test_valid_plan(self):
         plan = UserStoryExecutionPlan(
@@ -87,7 +87,7 @@ class TestPlanGuardrail:
             quality_score=9.0,
             final_validation_notes="ok",
         )
-        ok, result = _plan_guardrail(self._make_result(plan))
+        ok, _ = planning_flow._plan_guardrail(self._make_result(plan))
         assert ok is True
 
     def test_empty_tasks(self):
@@ -104,14 +104,14 @@ class TestPlanGuardrail:
         class FakeResult:
             pydantic = plan
 
-        ok, msg = _plan_guardrail(FakeResult())
+        ok, msg = planning_flow._plan_guardrail(FakeResult())
         assert ok is False
         assert "task" in msg.lower()
 
     def test_non_pydantic(self):
         class FakeResult:
             pydantic = None
-        ok, msg = _plan_guardrail(FakeResult())
+        ok, msg = planning_flow._plan_guardrail(FakeResult())
         assert ok is False
         assert "UserStoryExecutionPlan" in msg
 
@@ -129,7 +129,7 @@ class TestEnsureAcceptanceChecks:
             final_validation_notes="ok",
         )
 
-        normalized = _ensure_acceptance_checks(plan, us)
+        normalized = planning_flow._ensure_acceptance_checks(plan, us)
 
         assert normalized.tasks[0].acceptance_checks
         assert any("Contributes to acceptance criterion" in item for item in normalized.tasks[0].acceptance_checks)
@@ -146,6 +146,60 @@ class TestEnsureAcceptanceChecks:
             final_validation_notes="ok",
         )
 
-        normalized = _ensure_acceptance_checks(plan, us)
+        normalized = planning_flow._ensure_acceptance_checks(plan, us)
 
         assert normalized.tasks[0].acceptance_checks == ["file exists"]
+
+
+class TestPlanningRetryFeedback:
+    def test_retry_propagates_previous_validation_notes(self, tmp_path, monkeypatch):
+        prd = make_prd()
+        prd_path = tmp_path / "prd.json"
+        prd_path.write_text(prd.model_dump_json(indent=2), encoding="utf-8")
+        monkeypatch.setattr(planning_flow, "OUTPUT_DIR", str(tmp_path))
+        monkeypatch.setattr(planning_flow, "MIN_PLAN_SCORE", 7.5)
+        monkeypatch.setattr(planning_flow, "MAX_PLAN_RETRIES", 1)
+
+        captured_retry_blocks: list[str] = []
+
+        plans = [
+            UserStoryExecutionPlan(
+                user_story_id="US-001",
+                user_story_title="Story",
+                approach_summary="First pass",
+                tasks=[make_task()],
+                quality_score=6.5,
+                final_validation_notes="Cover the missing acceptance criteria.",
+            ),
+            UserStoryExecutionPlan(
+                user_story_id="US-001",
+                user_story_title="Story",
+                approach_summary="Second pass",
+                tasks=[make_task()],
+                quality_score=8.5,
+                final_validation_notes="Looks good.",
+            ),
+        ]
+
+        class FakeCrew:
+            def __init__(self, plan):
+                self._plan = plan
+
+            def kickoff(self):
+                return type("CrewResult", (), {"pydantic": self._plan})()
+
+        def fake_build_planning_crew(**kwargs):
+            captured_retry_blocks.append(kwargs["retry_feedback_block"])
+            return FakeCrew(plans[len(captured_retry_blocks) - 1])
+
+        monkeypatch.setattr(planning_flow, "build_planning_crew", fake_build_planning_crew)
+
+        result = planning_flow.run_user_story_planning(
+            prd_path=str(prd_path),
+            user_story_ref=None,
+            vision_context=VisionContext.PROJECT,
+        )
+
+        assert result["quality_score"] == 8.5
+        assert captured_retry_blocks[0] == ""
+        assert "Cover the missing acceptance criteria." in captured_retry_blocks[1]

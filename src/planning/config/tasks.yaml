@@ -6,6 +6,8 @@ thesis_plan:
     USER STORY TO IMPLEMENT:
     {us_context}
 
+    {retry_feedback_block}
+
     Consult the system's macro vision ({vision_label} is available via your knowledge sources).
     Generate the THESIS: an initial implementation plan for this user story.
     Include:
@@ -45,6 +47,8 @@ synthesis_plan:
     - The thesis: implementation plan from the Visionary
     - The antithesis: critiques from the Socratic Critic
 
+    {retry_feedback_block}
+
     Produce the SYNTHESIS: a refined implementation plan that:
     1. Preserves what was good in the thesis
     2. Incorporates ALL critiques from the antithesis
@@ -62,6 +66,8 @@ validation_plan:
     produce the final document.
 
     Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    {retry_feedback_block}
 
     Fill in:
     - user_story_id: "{us_id}"

@@ -10,11 +10,13 @@ from dialectic.agents import (
     create_implementer,
 )
 from dialectic.knowledge import vision_knowledge
+from dialectic.markdown_renderers import prd_to_markdown, execution_plan_to_markdown
+from dialectic.prd_exporter import PRDExporter
+from dialectic.export_validation import validate_consistency
 from dialectic.state import DialecticState
 from dialectic.prd_flow import DialecticFlow, run_dialectic_flow, OUTPUT_DIR
 from dialectic import prd_runtime
 from dialectic import prioritize_runtime
-from dialectic.export import prd_to_markdown, execution_plan_to_markdown
 from dialectic.vision import VisionContext
 
 __all__ = [
@@ -31,6 +33,8 @@ __all__ = [
     "OUTPUT_DIR",
     "prd_runtime",
     "prioritize_runtime",
+    "PRDExporter",
+    "validate_consistency",
     "prd_to_markdown",
     "execution_plan_to_markdown",
 ]

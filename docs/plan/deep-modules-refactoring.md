@@ -225,11 +225,15 @@ Status: completed on 2026-03-11 via `src/execution/status.py` and `src/execution
 3. **(Optional) Evaluate DC-4**: Consider upgrading validator `llm_tier` from `simple` to `complex` in `agents.yaml` / `planning/config/agents.yaml` — config-only change, no structural impact
 4. Run full test suite ✓
 
+Status: completed on 2026-03-11. Planning retries now propagate validator feedback through YAML-backed retry context and optional knowledge sources, execution ordering warns on unknown dependency IDs, status lookups use `casefold()`, CLI PRD entrypoints reject missing feature input when not resuming, git subprocess helpers clamp invalid timeouts, and execution-plan markdown export now raises a meaningful validation error for malformed dict payloads. Focused Phase 9 regressions passed: `tests/test_planning_runtime.py tests/test_planning_helpers.py tests/test_self_improve.py tests/test_self_improve_git_safety.py tests/test_flow_validation.py tests/test_topological_sort.py tests/test_cli_runtime.py` (`103 passed`).
+
 ### Phase 10 — Update `__init__.py` public APIs
 
 1. Update all 5 package `__init__.py` files to re-export from new file locations
 2. Ensure all external imports still work
 3. Run full test suite ✓
+
+Status: completed on 2026-03-11. Package exports were refreshed for `dialectic`, `execution`, `planning`, and `main`, with package smoke coverage added in `tests/test_package_exports.py`. `src/mcp/` intentionally remains a namespace package instead of gaining a package-level `__init__.py` because adding one would shadow the optional third-party `mcp` dependency used by `crewai_tools`. Final verification passed with the full repository suite (`485 passed`) plus an import smoke check under the `src/` package path.
 
 ---
 

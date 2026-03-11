@@ -1,5 +1,7 @@
 """Tests for extracted execution ordering and context helpers."""
 
+import logging
+
 from conftest import make_task
 from execution.context_builder import build_task_context
 from execution.topological_sort import topological_sort
@@ -51,6 +53,18 @@ class TestTopologicalSort:
         result = topological_sort(tasks)
         assert len(result) == 1
         assert result[0].id == "T-001"
+
+    def test_warns_for_unknown_dependencies(self, caplog):
+        tasks = [
+            make_task(id="T-001", order=1, dependencies=["T-999"]),
+            make_task(id="T-002", order=2),
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            result = topological_sort(tasks)
+
+        assert [task.id for task in result] == ["T-001", "T-002"]
+        assert "unknown dependencies" in caplog.text
 
 
 class TestBuildTaskContext:

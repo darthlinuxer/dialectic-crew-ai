@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 def execution_plan_to_markdown(plan: Union[UserStoryExecutionPlan, dict]) -> str:
     """Convert an execution plan to Markdown."""
     if isinstance(plan, dict):
-        plan = UserStoryExecutionPlan.model_validate(plan)
+        try:
+            plan = UserStoryExecutionPlan.model_validate(plan)
+        except Exception as exc:
+            raise ValueError("Invalid execution plan data for markdown export") from exc
     lines = [
         f"# Execution Plan — {plan.user_story_id} {plan.user_story_title}",
         "",

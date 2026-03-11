@@ -2,11 +2,13 @@
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from dialectic.metrics import MetricsStore, _reset_metrics_store
 from main.self_improve import _git_worktree_clean, _recover_stale_self_improve_worktree, run_self_improve
+from main.git_helpers import run_cmd
 
 
 @pytest.fixture(autouse=True)
@@ -49,6 +51,23 @@ class TestGitWorktreeClean:
         assert clean is False
         assert "metrics.db" in reason
         assert "scratch.txt" in reason
+
+
+class TestRunCmd:
+    def test_clamps_timeout_to_minimum_one_second(self, monkeypatch):
+        captured = {}
+
+        def fake_subprocess_run(cmd, capture_output, text, check, timeout, cwd):
+            captured["timeout"] = timeout
+            captured["cwd"] = cwd
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        monkeypatch.setattr("main.git_helpers.subprocess.run", fake_subprocess_run)
+
+        run_cmd(["git", "status"], cwd=Path("."), timeout=0)
+
+        assert captured["timeout"] == 1
+        assert captured["cwd"] == "."
 
 
 class TestRecoverStaleSelfImproveWorktree:
