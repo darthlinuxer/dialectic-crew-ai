@@ -804,6 +804,7 @@ dependencies = [
     { name = "mcp" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "reportlab" },
     { name = "tiktoken" },
 ]
@@ -823,6 +824,7 @@ requires-dist = [
     { name = "mcp" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "python-dotenv" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "reportlab", specifier = ">=4.0.0" },
     { name = "tiktoken", specifier = ">=0.7.0" },
 ]
