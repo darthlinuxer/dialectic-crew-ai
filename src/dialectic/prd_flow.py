@@ -11,7 +11,6 @@ Uses native CrewAI features:
 
 import json
 import os
-from collections.abc import Mapping
 from datetime import datetime
 import logging
 from typing import Any
@@ -19,7 +18,6 @@ from typing import Any
 from crewai.flow import Flow, start, listen, router, or_
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from crewai import Process
-from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
 from dialectic.knowledge import _vision_label
 from dialectic.state import DialecticState, MAX_RETRIES
@@ -29,6 +27,14 @@ from dialectic.config import get_export_config
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
 from dialectic.flow_persistence import build_sqlite_flow_persistence
+from dialectic.prd_guardrails import (
+    RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD,
+    _build_retry_feedback_context,
+    _extract_prd_from_result,
+    _guardrail_success_output,
+    _materialize_plain_data,
+    _prd_guardrail,
+)
 from dialectic.prd_runtime import build_prd_crew
 from schemas import PRDSchema
 
@@ -41,131 +47,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = "prd_output"
-RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD = 4000
-
-
-def _build_retry_feedback_context(
-    retry_feedback: str,
-    retry_count: int,
-) -> tuple[str, list[StringKnowledgeSource]]:
-    """Return retry feedback prompt text plus optional knowledge sources.
-
-    Normal-sized validator feedback is embedded in full directly in the task
-    prompt so the next round gets exact instructions with zero retrieval risk.
-    Oversized feedback is attached as semantic knowledge to avoid ballooning the
-    prompt while still preserving the full context via chunked retrieval.
-    """
-    cleaned_feedback = retry_feedback.strip()
-    if not cleaned_feedback or retry_count <= 0:
-        return "", []
-
-    if len(cleaned_feedback) <= RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD:
-        return (
-            f"""
-
-PREVIOUS ROUND VALIDATION FEEDBACK:
-{cleaned_feedback}
-
-You MUST address every issue listed above in this round.
-""",
-            [],
-        )
-
-    feedback_source = StringKnowledgeSource(
-        content=(
-            "Previous round validation feedback for the current PRD retry. "
-            "Every issue in this feedback must be resolved in the next round.\n\n"
-            f"{cleaned_feedback}"
-        ),
-        chunk_size=1200,
-        chunk_overlap=150,
-    )
-    return (
-        """
-
-PREVIOUS ROUND VALIDATION FEEDBACK:
-The full validator feedback from the previous round is available in your knowledge sources.
-You MUST consult it and address every issue listed there in this round.
-""",
-        [feedback_source],
-    )
-
-
-def _materialize_plain_data(value: Any) -> Any:
-    """Convert flow-state proxy containers into plain Python data recursively."""
-    if isinstance(value, Mapping):
-        return {str(k): _materialize_plain_data(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_materialize_plain_data(item) for item in value]
-    if isinstance(value, tuple):
-        return [_materialize_plain_data(item) for item in value]
-    return value
-
-
-# ---------------------------------------------------------------------------
-# Guardrail: validates PRDSchema output from Validador
-# ---------------------------------------------------------------------------
-
-def _extract_prd_from_result(result) -> PRDSchema | None:
-    """Extract a PRDSchema from a task result's pydantic or raw JSON output."""
-    pydantic_obj = getattr(result, "pydantic", None)
-    if isinstance(pydantic_obj, PRDSchema):
-        return pydantic_obj
-
-    json_dict = getattr(result, "json_dict", None)
-    if isinstance(json_dict, dict):
-        try:
-            return PRDSchema.model_validate(json_dict)
-        except Exception:
-            pass
-
-    raw_text = getattr(result, "raw", None)
-    if not isinstance(raw_text, str) or not raw_text.strip():
-        return None
-
-    try:
-        import re
-
-        matches = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
-        json_str = matches[-1].strip() if matches else raw_text
-        start_idx = json_str.find("{")
-        if start_idx >= 0:
-            json_str = json_str[start_idx:]
-        return PRDSchema.model_validate(json.loads(json_str))
-    except Exception:
-        return None
-
-
-def _guardrail_success_output(result, validated_model: PRDSchema) -> str:
-    """Return a CrewAI-compatible guardrail payload.
-
-    CrewAI task guardrails should return either a string or a TaskOutput.
-    Returning arbitrary result objects is fragile when structured outputs and
-    retries are enabled, because CrewAI may attempt to store a Pydantic model
-    directly in ``TaskOutput.raw``. Prefer normalized JSON strings here so
-    CrewAI can reconstruct ``pydantic`` / ``json_dict`` safely.
-    """
-    return validated_model.model_dump_json()
-
-def _prd_guardrail(result) -> tuple[bool, Any]:
-    """Ensures validation task returns a valid PRDSchema."""
-    prd = _extract_prd_from_result(result)
-    if prd is not None:
-        if prd.user_stories and len(prd.user_stories) >= 1:
-            return (True, _guardrail_success_output(result, prd))
-        emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="no_user_stories")
-        return (False, "PRD must include at least one user story")
-    emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="invalid_schema")
-    return (
-        False,
-        "Output must be a valid PRDSchema JSON. Include all required fields: "
-        "feature_name, objective, macro_impact, user_stories (min 1), "
-        "anti_drift_questions (min 5), quality_score, consensus_reached, "
-        "final_validation_notes. Use English values for risk_level "
-        "(LOW/MEDIUM/HIGH) and effort (XS/S/M/L/XL). Return ONLY the JSON.",
-    )
-
-
 @persist()
 class DialecticFlow(Flow[DialecticState]):
     """Dialectic flow with automatic retry and state persistence"""

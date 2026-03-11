@@ -41,7 +41,11 @@ def test_build_prd_crew_uses_yaml_templates(monkeypatch):
     assert "RETRY FEEDBACK" in captured_tasks[0]["description"]
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
     assert captured_tasks[2]["context"] == [captured_crew["tasks"][0], captured_crew["tasks"][1]]
-    assert captured_tasks[3]["context"] == [captured_crew["tasks"][2]]
+    assert captured_tasks[3]["context"] == [
+        captured_crew["tasks"][0],
+        captured_crew["tasks"][1],
+        captured_crew["tasks"][2],
+    ]
     assert captured_tasks[3]["output_pydantic"].__name__ == "PRDSchema"
     assert captured_tasks[3]["guardrail"].__name__ == "_prd_guardrail"
     assert captured_crew["knowledge_sources"] == ["vision:self", "feedback-source"]

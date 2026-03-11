@@ -4,6 +4,7 @@ import inspect
 import json
 from types import SimpleNamespace
 
+import dialectic.prd_guardrails as prd_guardrails
 import dialectic.prd_flow as prd_flow
 from schemas import AntiDriftQuestion, MacroImpact, PRDSchema, UserStory
 
@@ -11,7 +12,7 @@ from schemas import AntiDriftQuestion, MacroImpact, PRDSchema, UserStory
 def test_build_retry_feedback_context_inlines_full_feedback_below_threshold():
     feedback = "Issue A\nIssue B\nIssue C"
 
-    prompt_block, knowledge_sources = prd_flow._build_retry_feedback_context(
+    prompt_block, knowledge_sources = prd_guardrails._build_retry_feedback_context(
         feedback,
         retry_count=1,
     )
@@ -29,10 +30,10 @@ def test_build_retry_feedback_context_uses_knowledge_for_large_feedback(monkeypa
         def __init__(self, **kwargs):
             captured.append(kwargs)
 
-    monkeypatch.setattr(prd_flow, "StringKnowledgeSource", FakeStringKnowledgeSource)
-    feedback = "A" * (prd_flow.RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD + 1)
+    monkeypatch.setattr(prd_guardrails, "StringKnowledgeSource", FakeStringKnowledgeSource)
+    feedback = "A" * (prd_guardrails.RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD + 1)
 
-    prompt_block, knowledge_sources = prd_flow._build_retry_feedback_context(
+    prompt_block, knowledge_sources = prd_guardrails._build_retry_feedback_context(
         feedback,
         retry_count=2,
     )
@@ -46,7 +47,7 @@ def test_build_retry_feedback_context_uses_knowledge_for_large_feedback(monkeypa
 
 
 def test_build_retry_feedback_context_skips_first_round():
-    prompt_block, knowledge_sources = prd_flow._build_retry_feedback_context(
+    prompt_block, knowledge_sources = prd_guardrails._build_retry_feedback_context(
         "Issue A",
         retry_count=0,
     )
@@ -95,7 +96,7 @@ def test_extract_prd_from_result_accepts_raw_json():
     class Result:
         raw = json.dumps(prd.model_dump())
 
-    extracted = prd_flow._extract_prd_from_result(Result())
+    extracted = prd_guardrails._extract_prd_from_result(Result())
 
     assert extracted is not None
     assert extracted.feature_name == prd.feature_name
@@ -108,7 +109,7 @@ def test_extract_prd_from_result_accepts_json_dict():
     class Result:
         json_dict = prd.model_dump()
 
-    extracted = prd_flow._extract_prd_from_result(Result())
+    extracted = prd_guardrails._extract_prd_from_result(Result())
 
     assert extracted is not None
     assert extracted.feature_name == prd.feature_name
@@ -121,7 +122,7 @@ def test_extract_prd_from_result_accepts_pydantic_instance():
     class Result:
         pydantic = prd
 
-    extracted = prd_flow._extract_prd_from_result(Result())
+    extracted = prd_guardrails._extract_prd_from_result(Result())
 
     assert extracted is prd
 
@@ -138,7 +139,7 @@ def test_materialize_plain_data_recursively_converts_proxy_mappings():
         }
     )
 
-    plain = prd_flow._materialize_plain_data(proxied)
+    plain = prd_guardrails._materialize_plain_data(proxied)
 
     assert isinstance(plain, dict)
     assert isinstance(plain["macro_impact"], dict)
@@ -151,7 +152,7 @@ def test_prd_guardrail_accepts_raw_json():
     class Result:
         raw = json.dumps(prd.model_dump())
 
-    ok, payload = prd_flow._prd_guardrail(Result())
+    ok, payload = prd_guardrails._prd_guardrail(Result())
 
     assert ok is True
     assert isinstance(payload, str)
@@ -165,7 +166,7 @@ def test_prd_guardrail_accepts_pydantic_result():
         pydantic = prd
         raw = json.dumps(prd.model_dump())
 
-    ok, payload = prd_flow._prd_guardrail(Result())
+    ok, payload = prd_guardrails._prd_guardrail(Result())
 
     assert ok is True
     assert isinstance(payload, str)
@@ -178,7 +179,7 @@ def test_prd_guardrail_serializes_pydantic_without_raw():
     class Result:
         pydantic = prd
 
-    ok, payload = prd_flow._prd_guardrail(Result())
+    ok, payload = prd_guardrails._prd_guardrail(Result())
 
     assert ok is True
     assert isinstance(payload, str)
@@ -192,7 +193,7 @@ def test_prd_guardrail_ignores_unrelated_raw_json_fragments():
         pydantic = prd
         raw = '{"file_path": "internal/SELF_VISION.md", "line_count": 200}'
 
-    ok, payload = prd_flow._prd_guardrail(Result())
+    ok, payload = prd_guardrails._prd_guardrail(Result())
 
     assert ok is True
     assert isinstance(payload, str)
@@ -207,13 +208,12 @@ def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
     assert '@listen(or_("iniciar_dialetica", "fazer_retry"))' not in source
 
 
-def test_dialectic_flow_validator_uses_synthesis_as_only_context():
+def test_dialectic_flow_validator_uses_full_dialectic_context():
     import dialectic.prd_runtime as prd_runtime
 
     source = inspect.getsource(prd_runtime.build_prd_crew)
 
-    assert 'context=[task_sintese]' in source
-    assert 'context=[task_vision, task_critica, task_sintese]' not in source
+    assert 'context=[task_vision, task_critica, task_sintese]' in source
 
 
 def test_dialectic_flow_synthesizer_requests_candidate_prd_json():
@@ -261,7 +261,7 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     flow.state.final_validation_notes = ""
     flow.state.file_paths = []
 
-    next_step = flow.rodar_rodada_dialetica()
+    next_step = prd_flow.DialecticFlow.rodar_rodada_dialetica(flow)
 
     assert next_step == "avaliar"
     assert flow.state.prd_data["feature_name"] == prd.feature_name
@@ -271,21 +271,18 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
 
 
 def test_run_dialectic_flow_returns_flow_id(monkeypatch):
-    mock_flow = type("MockFlow", (), {})()
-    mock_flow.flow_id = "flow-123"
-    mock_flow.state = type(
-        "State",
-        (),
-        {
-            "consensus_reached": True,
-            "quality_score": 9.2,
-            "retry_count": 1,
-            "prd_data": {"feature_name": "Feature"},
-            "prd_path_json": "prd_output/test.json",
-            "prd_path_md": "prd_output/test.md",
-            "final_validation_notes": "ok",
-        },
-    )()
+    mock_flow = SimpleNamespace(
+        flow_id="flow-123",
+        state=SimpleNamespace(
+            consensus_reached=True,
+            quality_score=9.2,
+            retry_count=1,
+            prd_data={"feature_name": "Feature"},
+            prd_path_json="prd_output/test.json",
+            prd_path_md="prd_output/test.md",
+            final_validation_notes="ok",
+        ),
+    )
 
     captured = {}
 

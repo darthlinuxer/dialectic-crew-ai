@@ -2,7 +2,7 @@
 
 import pytest
 
-from dialectic.prd_flow import _prd_guardrail
+from dialectic.prd_guardrails import _prd_guardrail
 from execution.task_flow import _quality_guardrail, _verification_guardrail
 from schemas import (
     PRDSchema,
@@ -39,7 +39,7 @@ class TestPrdGuardrail:
 
     def test_no_user_stories(self):
         prd = make_prd()
-        prd.__dict__["user_stories"] = []
+        object.__setattr__(prd, "user_stories", [])
         ok, msg = _prd_guardrail(_FakeResult(prd))
         assert ok is False
         assert "user story" in msg.lower()

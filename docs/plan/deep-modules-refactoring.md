@@ -199,6 +199,8 @@ Status: completed on 2026-03-11 via `src/dialectic/prd_exporter.py`, `src/dialec
 3. **Address DC-1**: In `prd_runtime.py`, update `task_validacao` context from `[task_sintese]` to `[task_vision, task_critica, task_sintese]` for cross-surface consistency
 4. Run tests ✓
 
+Status: completed on 2026-03-11 via `src/dialectic/prd_guardrails.py`; `src/dialectic/prd_flow.py` now imports guardrail/retry helpers from the focused module, and `src/dialectic/prd_runtime.py` now validates against the full thesis/antithesis/synthesis context. Focused PRD/runtime regressions passed after the split.
+
 ### Phase 7 — Split `cli.py` (518L → 2 files) + `dialectic_execution.py` (471L → 4 files)
 
 1. Extract `cli_commands.py` (all `cmd_*` functions)

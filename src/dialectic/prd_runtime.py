@@ -68,7 +68,7 @@ def build_prd_crew(
         task_templates["prd_validation"],
         placeholders,
         agents,
-        context=[task_sintese],
+        context=[task_vision, task_critica, task_sintese],
     )
 
     tasks = [task_vision, task_critica, task_sintese, task_validacao]
