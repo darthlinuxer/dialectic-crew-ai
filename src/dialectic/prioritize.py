@@ -17,11 +17,9 @@ Usage::
     )
 """
 
-from __future__ import annotations
-
 import json
 import logging
-from typing import Any
+from typing import Any, Tuple
 
 from pydantic import ValidationError
 
@@ -53,7 +51,7 @@ def _build_opportunities_text(opportunities: list[ImprovementOpportunity]) -> st
     return "\n".join(lines)
 
 
-def _prioritization_guardrail(result):
+def _prioritization_guardrail(result) -> Tuple[bool, Any]:
     """Validate that the Ranker agent produces a valid PrioritizationResult."""
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, PrioritizationResult):

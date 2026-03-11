@@ -11,7 +11,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 
 from pydantic import ValidationError
 
@@ -27,7 +27,7 @@ from schemas import PRDSchema, UserStoryExecutionPlan
 # Guardrail: validates plan structure from output_pydantic
 # ---------------------------------------------------------------------------
 
-def _plan_guardrail(result) -> tuple[bool, Any]:
+def _plan_guardrail(result) -> Tuple[bool, Any]:
     """Ensures validation task returns a valid UserStoryExecutionPlan."""
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, UserStoryExecutionPlan):

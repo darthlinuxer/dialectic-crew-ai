@@ -1,11 +1,9 @@
 """Guardrails and retry-feedback helpers for the PRD dialectic flow."""
 
-from __future__ import annotations
-
 import json
 import logging
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Tuple
 
 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
@@ -104,7 +102,7 @@ def _guardrail_success_output(result, validated_model: PRDSchema) -> str:
     return validated_model.model_dump_json()
 
 
-def _prd_guardrail(result) -> tuple[bool, Any]:
+def _prd_guardrail(result) -> Tuple[bool, Any]:
     """Ensure the validation task returns a valid PRDSchema."""
     prd = _extract_prd_from_result(result)
     if prd is not None:

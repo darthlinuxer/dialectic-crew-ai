@@ -1,8 +1,6 @@
 """Guardrails for task execution and verification flows."""
 
-from __future__ import annotations
-
-from typing import Any
+from typing import Any, Tuple
 
 from pydantic import BaseModel
 
@@ -15,7 +13,7 @@ def _guardrail_success_output(_result, validated_model: BaseModel) -> str:
     return validated_model.model_dump_json()
 
 
-def _quality_guardrail(result) -> tuple[bool, Any]:
+def _quality_guardrail(result) -> Tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, ValidationOutput):
         if 0.0 <= pydantic_obj.quality_score <= 10.0:
@@ -26,7 +24,7 @@ def _quality_guardrail(result) -> tuple[bool, Any]:
     return False, "Output must be valid JSON: quality_score, consensus_reached, final_validation_notes"
 
 
-def _verification_guardrail(result) -> tuple[bool, Any]:
+def _verification_guardrail(result) -> Tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, VerificationResult):
         return True, _guardrail_success_output(result, pydantic_obj)
