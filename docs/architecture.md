@@ -17,24 +17,30 @@ graph TB
 
     subgraph Core[src/dialectic]
         AGENTS[agents.py]
+        YAMLCFG[yaml_config.py]
         PRDFLOW[prd_flow.py]
+        PRDRT[prd_runtime.py]
         EXPORT[export.py]
         STATE[state.py]
         HOOKS[hooks.py]
         METRICS[metrics.py]
         INTRO[introspect.py]
         PRIOR[prioritize.py]
+        PRIORRT[prioritize_runtime.py]
         VISION[vision.py]
     end
 
     subgraph Planning[src/planning]
         PFLOW[flow.py]
+        PRT[runtime.py]
     end
 
     subgraph Execution[src/execution]
         ORCH[dialectic_execution.py]
         TFLOW[task_flow.py]
+        TRT[runtime.py]
         VERIFY[verify.py]
+        VRT[verify_runtime.py]
         RUNNER[runner.py]
     end
 
@@ -60,8 +66,12 @@ graph TB
     SELF --> ORCH
 
     PRDFLOW --> AGENTS
+    PRDFLOW --> PRDRT
     PFLOW --> AGENTS
+    PFLOW --> PRT
     TFLOW --> AGENTS
+    TFLOW --> TRT
+    VERIFY --> VRT
     AGENTS --> SKMCP
     SKMCP --> SKIDX
     SKIDX --> SKILLS
@@ -87,7 +97,9 @@ graph TB
 | File | Responsibility |
 |---|---|
 | `agents.py` | Core agent factories, LLM tier setup, MCP wiring, `vision_knowledge()` |
+| `yaml_config.py` | Shared YAML config loader, placeholder rendering, and symbolic schema/guardrail resolution |
 | `prd_flow.py` | PRD dialectic flow with retry, export, hooks, and persistence |
+| `prd_runtime.py` | YAML-backed PRD crew builder used by `prd_flow.py` |
 | `flow_persistence.py` | Shared CrewAI flow persistence backend selection (`.dialectic/flows.db` by default) |
 | `state.py` | Flow state for PRD generation |
 | `export.py` | JSON/Markdown export helpers |
@@ -96,14 +108,18 @@ graph TB
 | `metrics.py` | SQLite-backed metrics store, defaulting to `.dialectic/metrics.db` |
 | `introspect.py` | Four-lens introspection engine |
 | `prioritize.py` | Dialectic prioritization for improvement opportunities |
+| `prioritize_runtime.py` | YAML-backed prioritization crew builder |
 | `vision.py` | Vision context resolution and project-root helpers |
 | `tools.py` | Shared CrewAI tool setup |
+| `config/*.yaml` | Shared declarative agent/task templates for core dialectic crews |
 
 ### `src/planning/`
 
 | File | Responsibility |
 |---|---|
 | `flow.py` | User-story planning dialectic with plan export and score thresholding |
+| `runtime.py` | YAML-backed planning crew builder |
+| `config/tasks.yaml` | Declarative planning task templates |
 
 ### `src/execution/`
 
@@ -111,8 +127,11 @@ graph TB
 |---|---|
 | `dialectic_execution.py` | Orchestrates task execution, dependency ordering, post-verification, and final reporting |
 | `task_flow.py` | Per-task dialectic → verify → reimplement pipeline |
+| `runtime.py` | YAML-backed task dialectic crew builder |
 | `verify.py` | Shared task/story verification and status persistence |
+| `verify_runtime.py` | YAML-backed standalone verification crew builder with read-only validator override |
 | `runner.py` | Static spec generation (`--spec-only`) |
+| `config/*.yaml` | Declarative execution and verification task templates |
 
 The architecture now distinguishes two SQLite stores under `.dialectic/` by default:
 
@@ -141,6 +160,8 @@ That context is resolved once and then attached as a CrewAI knowledge source for
 ### 2. Fresh agents, persistent connectors
 
 LLM connectors are module-level singletons, but agents themselves are factory-created per run. This avoids cross-run memory contamination while keeping configuration centralized.
+
+Static agent and task text now lives in package-local YAML files where the content is stable. Thin runtime builder modules bind those templates to live CrewAI objects, knowledge sources, memory scopes, schema classes, guardrails, and runtime-only overrides.
 
 ### 3. Execution distrusts execution
 
@@ -173,6 +194,16 @@ Runtime metrics are stored in `.dialectic/metrics.db` by default, not in a track
 External MCP servers are loaded only when prerequisites are present. Missing Docker or missing API keys should reduce capability, not crash the entire run.
 
 The local `skills_mcp` server is treated differently: it is a project capability and is wired directly into four core agents.
+
+### 7. YAML-backed crews, Python-owned orchestration
+
+The repository now follows a clearer split:
+
+- YAML holds stable prompt and persona text
+- runtime builder modules instantiate live CrewAI `Agent`, `Task`, and `Crew` objects
+- Flow classes and orchestrators remain in Python, along with persistence, retries, result extraction, and safety logic
+
+That keeps core orchestration explicit while making prompt-heavy modules much leaner.
 
 ## Self-improve architecture
 

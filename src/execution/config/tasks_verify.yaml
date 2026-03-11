@@ -1,0 +1,15 @@
+verify_single_task:
+  description: |
+    Verify whether the task below was correctly implemented in the codebase.
+
+    TASK: {task_id} — {task_title}
+    DESCRIPTION: {task_description}
+
+    Use the file reading tools to verify whether:
+    1. The files/artifacts described in the task exist
+    2. The content is correct and aligned with the description
+    3. There are no obvious errors{acceptance_criteria_block}
+
+    Respond with quality_score (0-10), consensus_reached (true if task is complete), and final_validation_notes explaining what was verified.
+  expected_output: ValidationOutput with quality_score, consensus_reached, final_validation_notes
+  output_schema: ValidationOutput

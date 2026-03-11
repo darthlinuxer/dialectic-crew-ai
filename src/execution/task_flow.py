@@ -43,6 +43,7 @@ from dialectic.tools import file_read_tool, file_write_tool, directory_read_tool
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
 from dialectic.flow_persistence import build_sqlite_flow_persistence
+from execution.runtime import build_task_dialectic_crew
 from schemas import (
     ValidationOutput,
     VerificationResult,
@@ -235,95 +236,16 @@ Fill in:
         vision_label = _vision_label(vision_context)
 
         for retry in range(self.state.max_retries + 1):
-            impl = create_implementer(vision_context)
-            crit = create_critico_socratico(vision_context)
-            sint = create_sintetizador(vision_context)
-            val = create_validador_macro(vision_context)
-
-            if synthesis_for_retry is None:
-                tese_input = f"""
-TASK TO IMPLEMENT: {self.state.task_id} — {self.state.task_title}
-
-{self.state.task_description}
-
-CONTEXT:
-{self.state.context_str}
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-"""
-            else:
-                tese_input = f"""
-RETRY {retry}/{self.state.max_retries} — Incorporate ALL refinements below.
-
-TASK: {self.state.task_id} — {self.state.task_title}
-
-{self.state.task_description}
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-CRITIQUES AND REFINEMENTS:
-{synthesis_for_retry[:3000]}
-
-Re-implement incorporating these refinements.
-"""
-
-            task_impl = Task(
-                description=tese_input,
-                expected_output="Description of what was implemented and files created/modified",
-                agent=impl,
-            )
-            task_critica = Task(
-                description=f"""
-Analyze the implementation of task {self.state.task_id} — {self.state.task_title}.
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-SCOPE: Evaluate ONLY whether it meets the description: \"\"\"{self.state.task_description}\"\"\"
-Do NOT critique outside the scope. Do NOT request additional features.
-Check for contradictions with the macro vision.
-""",
-                expected_output="Detailed critique of the implementation",
-                agent=crit,
-                context=[task_impl],
-            )
-            task_sintese = Task(
-                description=f"""
-Produce the SYNTHESIS for task {self.state.task_id}: incorporate ALL critiques.
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-Ensure the synthesis is aligned with the macro vision.
-Include clear instructions for retry if necessary.
-""",
-                expected_output="Refined synthesis with instructions",
-                agent=sint,
-                context=[task_impl, task_critica],
-            )
-            task_val = Task(
-                description=f"""
-Evaluate the implementation of task {self.state.task_id}.
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-Minimum score for approval: {self.state.min_score}
-Verify alignment with the macro vision.
-""",
-                expected_output="ValidationOutput",
-                agent=val,
-                output_pydantic=ValidationOutput,
-                guardrail=_quality_guardrail,
-                guardrail_max_retries=2,
-                context=[task_impl, task_critica, task_sintese],
-            )
-
-            crew = Crew(
-                agents=[impl, crit, sint, val],
-                tasks=[task_impl, task_critica, task_sintese, task_val],
-                process=Process.sequential,
-                verbose=True,
-                memory=crew_memory(vision_context, "task_dialectic"),
-                planning=True,
-                planning_llm=llm_planning,
-                knowledge_sources=[vision_knowledge(vision_context)],
+            crew = build_task_dialectic_crew(
+                task_id=self.state.task_id,
+                task_title=self.state.task_title,
+                task_description=self.state.task_description,
+                context_str=self.state.context_str,
+                min_score=self.state.min_score,
+                vision_context=vision_context,
+                synthesis_for_retry=synthesis_for_retry,
+                retry=retry,
+                max_retries=self.state.max_retries,
             )
 
             with HookScope(

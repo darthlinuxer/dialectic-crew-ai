@@ -13,21 +13,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from crewai import Task, Crew
-
 from dialectic.agents import (
     _vision_label,
-    crew_memory,
-    create_visionario,
-    create_critico_socratico,
-    create_sintetizador,
-    create_validador_macro,
-    llm_planning,
-    vision_knowledge,
 )
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_flow import OUTPUT_DIR
 from dialectic.vision import VisionContext, get_vision_hash
+from planning.runtime import build_planning_crew
 from schemas import PRDSchema, UserStoryExecutionPlan
 
 
@@ -174,117 +166,6 @@ Effort: {us.effort}
 Dependencies: {', '.join(us.dependencies) or 'None'}
 """
     feature_context = f"Feature (PRD): {prd.feature_name}. Objective: {prd.objective}"
-    vision_label = _vision_label(vision_context)
-
-    def _build_planning_crew() -> Crew:
-        vis = create_visionario(vision_context)
-        crit = create_critico_socratico(vision_context)
-        sint = create_sintetizador(vision_context)
-        val = create_validador_macro(vision_context)
-
-        task_tese = Task(
-            description=f"""
-FEATURE CONTEXT:
-{feature_context}
-
-USER STORY TO IMPLEMENT:
-{us_context}
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-Generate the THESIS: an initial implementation plan for this user story.
-Include:
-1. Summarized technical approach (approach_summary)
-2. List of implementation tasks (id, title, description, order, dependencies)
-3. Risks you already foresee
-4. Relevant technical notes
-
-Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
-""",
-            expected_output="Structured implementation plan (approach + tasks + risks + notes)",
-            agent=vis,
-        )
-
-        task_antitese = Task(
-            description=f"""
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-The implementation proposal (thesis) for the user story is in context.
-
-Apply the Socratic method. List ALL:
-1. Flaws and weak points of the plan
-2. Contradictions with the macro vision or the feature PRD
-3. Risks of technical debt or overscope
-4. Missing or poorly ordered tasks
-5. Acceptance criteria not covered by the plan
-
-Be relentless. Each critique must be specific and actionable.
-""",
-            expected_output="Detailed critique of the implementation plan",
-            agent=crit,
-            context=[task_tese],
-        )
-
-        task_sintese = Task(
-            description=f"""
-USER STORY: {us.id} — {us.title}
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-You received:
-- The thesis: implementation plan from the Visionary
-- The antithesis: critiques from the Socratic Critic
-
-Produce the SYNTHESIS: a refined implementation plan that:
-1. Preserves what was good in the thesis
-2. Incorporates ALL critiques from the antithesis
-3. Lists clear tasks (id, title, description, order, dependencies)
-4. Includes approach_summary, risks_mitigated, tech_notes
-5. Is aligned with the macro vision and the PRD
-
-Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
-""",
-            expected_output="Refined implementation plan (approach + tasks + mitigated risks + notes)",
-            agent=sint,
-            context=[task_tese, task_antitese],
-        )
-
-        task_validacao = Task(
-            description=f"""
-Based on the SYNTHESIS of the implementation plan for user story {us.id} — {us.title},
-produce the final document.
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-Fill in:
-- user_story_id: "{us.id}"
-- user_story_title: "{us.title}"
-- approach_summary: summary of the approach (from synthesis)
-- tasks: list of ImplementationTask (id, title, description, order, dependencies, acceptance_checks)
-  Every task MUST include at least one concrete acceptance_check that can be verified in the codebase.
-- risks_mitigated: list of risks that were mitigated
-- tech_notes: technical notes
-- quality_score: float 0-10 (one decimal place). Approve if >= {MIN_PLAN_SCORE}
-- consensus_reached: true if the plan is ready for execution
-- final_validation_notes: brief explanation
-""",
-            expected_output="Valid UserStoryExecutionPlan with quality_score and consensus_reached",
-            agent=val,
-            output_pydantic=UserStoryExecutionPlan,
-            guardrail=_plan_guardrail,
-            guardrail_max_retries=2,
-            context=[task_tese, task_antitese, task_sintese],
-        )
-
-        return Crew(
-            agents=[vis, crit, sint, val],
-            tasks=[task_tese, task_antitese, task_sintese, task_validacao],
-            process="sequential",
-            verbose=True,
-            memory=crew_memory(vision_context, "planning"),
-            planning=True,
-            planning_llm=llm_planning,
-            knowledge_sources=[vision_knowledge(vision_context)],
-        )
 
     print(f"\n{'='*60}")
     print(f"Dialectic planning — {us.id} {us.title}")
@@ -296,7 +177,13 @@ Fill in:
         if attempt > 0:
             print(f"\n--- Planning retry {attempt}/{MAX_PLAN_RETRIES} ---\n")
 
-        result = _build_planning_crew().kickoff()
+        result = build_planning_crew(
+            feature_context=feature_context,
+            us=us,
+            us_context=us_context,
+            vision_context=vision_context,
+            min_plan_score=MIN_PLAN_SCORE,
+        ).kickoff()
         plan_valid = _extract_plan(result, us)
 
         if plan_valid is None:

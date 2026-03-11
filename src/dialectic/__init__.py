@@ -12,6 +12,8 @@ from dialectic.agents import (
 )
 from dialectic.state import DialecticState
 from dialectic.prd_flow import DialecticFlow, run_dialectic_flow, OUTPUT_DIR
+from dialectic import prd_runtime
+from dialectic import prioritize_runtime
 from dialectic.export import prd_to_markdown, execution_plan_to_markdown
 from dialectic.vision import VisionContext
 
@@ -27,6 +29,8 @@ __all__ = [
     "DialecticFlow",
     "run_dialectic_flow",
     "OUTPUT_DIR",
+    "prd_runtime",
+    "prioritize_runtime",
     "prd_to_markdown",
     "execution_plan_to_markdown",
 ]

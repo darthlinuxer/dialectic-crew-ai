@@ -1,0 +1,86 @@
+prd_thesis:
+  description: |
+    Objective: {feature_objective}
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Generate the complete initial thesis (PRD proposal) including:
+    1. Feature name
+    2. Clear objective
+    3. Affected modules
+    4. User stories (minimum 3)
+    5. Non-functional requirements
+    6. Identified risks
+    7. Macro impact
+    {retry_feedback_block}
+  expected_output: Complete initial proposal in structured PRD format
+  agent: visionario
+
+prd_antithesis:
+  description: |
+    Apply the full Socratic method.
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Analyze the Visionary's proposal (in context) and list ALL:
+    1. Flaws and weak points
+    2. Contradictions with the macro vision
+    3. Drift risks
+    4. Overscope and technical debt
+    5. Forgotten non-functional requirements
+    6. Weak or incomplete user stories
+
+    Be relentless. Each critique must be specific and actionable.
+  expected_output: Detailed critique with list of issues and score
+  agent: critico_socratico
+
+prd_synthesis:
+  description: |
+    Produce the final synthesis incorporating ALL critiques (thesis and antithesis are in context).
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    The synthesis must:
+    1. Preserve what was good in the thesis
+    2. Incorporate ALL critiques from the antithesis
+    3. Eliminate ALL identified weaknesses
+    4. Be better than both individual proposals
+    5. Be aligned with the macro vision
+
+    Output a CANDIDATE PRD as raw JSON with these fields only:
+    - feature_name
+    - version
+    - objective
+    - macro_impact
+    - user_stories
+    - anti_drift_questions
+
+    Do NOT include quality_score, consensus_reached, or final_validation_notes in the synthesis output.
+    Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
+  expected_output: Candidate PRD as raw JSON for validator review
+  agent: sintetizador
+
+prd_validation:
+  description: |
+    Evaluate the FINAL SYNTHESIS candidate PRD (the only task context provided below) and produce the final PRD.
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    The PRD must follow exactly the PRDSchema structure:
+    - feature_name, version, objective
+    - macro_impact: {{ modules_affected, risk_level, performance_impact, security_impact }}
+    - user_stories: [ {{ id, title, description, acceptance_criteria, effort, dependencies }} ]
+    - anti_drift_questions: [ {{ question, answer }} ]
+    - quality_score: float (one decimal place, 0-10)
+    - consensus_reached: true or false
+    - final_validation_notes: string
+
+    Use the synthesis content to fill in the fields. If score < 9.0, explain in final_validation_notes what is missing.
+
+    Checklist for score: (1) Feature aligned with macro vision? (2) Affected modules? (3) Risks mitigated? (4) NFRs covered? (5) Consistent user stories? (6) 5+ anti-drift?
+
+    MANDATORY - use EXACTLY these English values (never in Portuguese):
+    - risk_level: only "LOW", "MEDIUM" or "HIGH"
+    - effort: only "XS", "S", "M", "L" or "XL"
+  expected_output: Valid PRDSchema with quality_score and consensus_reached
+  agent: validador_macro
+  output_schema: PRDSchema
+  guardrail: prd
+  guardrail_max_retries: 2

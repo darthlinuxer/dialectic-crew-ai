@@ -18,18 +18,11 @@ from typing import Any
 
 from crewai.flow import Flow, start, listen, router, or_
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
-from crewai import Task, Crew, Process
+from crewai import Process
 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
 from dialectic.agents import (
     _vision_label,
-    crew_memory,
-    create_visionario,
-    create_critico_socratico,
-    create_sintetizador,
-    create_validador_macro,
-    llm_planning,
-    vision_knowledge,
 )
 from dialectic.state import DialecticState, MAX_RETRIES
 from dialectic.vision import VisionContext
@@ -38,6 +31,7 @@ from dialectic.config import get_export_config
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
 from dialectic.flow_persistence import build_sqlite_flow_persistence
+from dialectic.prd_runtime import build_prd_crew
 from schemas import PRDSchema
 
 try:
@@ -217,120 +211,11 @@ class DialecticFlow(Flow[DialecticState]):
             self.state.retry_count,
         )
 
-        vis = create_visionario(vision_context)
-        crit = create_critico_socratico(vision_context)
-        sint = create_sintetizador(vision_context)
-        val = create_validador_macro(vision_context)
-
-        task_vision = Task(
-            description=f"""
-Objective: {self.state.feature_objective}
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-Generate the complete initial thesis (PRD proposal) including:
-1. Feature name
-2. Clear objective
-3. Affected modules
-4. User stories (minimum 3)
-5. Non-functional requirements
-6. Identified risks
-7. Macro impact
-{retry_feedback_block}
-""",
-            expected_output="Complete initial proposal in structured PRD format",
-            agent=vis,
-        )
-
-        task_critica = Task(
-            description=f"""
-Apply the full Socratic method.
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-Analyze the Visionary's proposal (in context) and list ALL:
-1. Flaws and weak points
-2. Contradictions with the macro vision
-3. Drift risks
-4. Overscope and technical debt
-5. Forgotten non-functional requirements
-6. Weak or incomplete user stories
-
-Be relentless. Each critique must be specific and actionable.
-""",
-            expected_output="Detailed critique with list of issues and score",
-            agent=crit,
-            context=[task_vision],
-        )
-
-        task_sintese = Task(
-            description=f"""
-Produce the final synthesis incorporating ALL critiques (thesis and antithesis are in context).
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-The synthesis must:
-1. Preserve what was good in the thesis
-2. Incorporate ALL critiques from the antithesis
-3. Eliminate ALL identified weaknesses
-4. Be better than both individual proposals
-5. Be aligned with the macro vision
-
-Output a CANDIDATE PRD as raw JSON with these fields only:
-- feature_name
-- version
-- objective
-- macro_impact
-- user_stories
-- anti_drift_questions
-
-Do NOT include quality_score, consensus_reached, or final_validation_notes in the synthesis output.
-Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
-""",
-            expected_output="Candidate PRD as raw JSON for validator review",
-            agent=sint,
-            context=[task_vision, task_critica],
-        )
-
-        task_validacao = Task(
-            description=f"""
-Evaluate the FINAL SYNTHESIS candidate PRD (the only task context provided below) and produce the final PRD.
-
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
-
-            The PRD must follow exactly the PRDSchema structure:
-            - feature_name, version, objective
-            - macro_impact: {{ modules_affected, risk_level, performance_impact, security_impact }}
-            - user_stories: [ {{ id, title, description, acceptance_criteria, effort, dependencies }} ]
-            - anti_drift_questions: [ {{ question, answer }} ]
-- quality_score: float (one decimal place, 0-10)
-- consensus_reached: true or false
-- final_validation_notes: string
-
-Use the synthesis content to fill in the fields. If score < 9.0, explain in final_validation_notes what is missing.
-
-Checklist for score: (1) Feature aligned with macro vision? (2) Affected modules? (3) Risks mitigated? (4) NFRs covered? (5) Consistent user stories? (6) 5+ anti-drift?
-
-MANDATORY - use EXACTLY these English values (never in Portuguese):
-- risk_level: only "LOW", "MEDIUM" or "HIGH"
-- effort: only "XS", "S", "M", "L" or "XL"
-""",
-            expected_output="Valid PRDSchema with quality_score and consensus_reached",
-            agent=val,
-            output_pydantic=PRDSchema,
-            guardrail=_prd_guardrail,
-            guardrail_max_retries=2,
-            context=[task_sintese],
-        )
-
-        knowledge_sources = [vision_knowledge(vision_context), *retry_feedback_sources]
-
-        crew = Crew(
-            agents=[vis, crit, sint, val],
-            tasks=[task_vision, task_critica, task_sintese, task_validacao],
-            process=Process.sequential,
-            verbose=True,
-            memory=crew_memory(vision_context, "prd"),
-            planning=True,
-            planning_llm=llm_planning,
-            knowledge_sources=knowledge_sources,
+        crew = build_prd_crew(
+            feature_objective=self.state.feature_objective,
+            vision_context=vision_context,
+            retry_feedback_block=retry_feedback_block,
+            retry_feedback_sources=retry_feedback_sources,
         )
 
         kickoff_kwargs: dict[str, Any] = {

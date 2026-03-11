@@ -2,6 +2,8 @@
 
 Dialectic Crew AI defines **five core agent factories** in `src/dialectic/agents.py`. Each factory returns a fresh `Agent` instance so crews do not leak state across runs.
 
+Those shared factories are now backed by declarative YAML in `src/dialectic/config/agents.yaml`. The runtime factory code still owns LLM-tier binding, tool and MCP bundle resolution, and vision-aware interpolation.
+
 The same module also exports `vision_knowledge(context)`, which attaches the active vision document as a CrewAI `TextFileKnowledgeSource`.
 
 ## Vision knowledge
@@ -12,6 +14,20 @@ The same module also exports `vision_knowledge(context)`, which attaches the act
 | `vision_knowledge(VisionContext.SELF)` | `internal/SELF_VISION.md` | `--self` and `self-improve` workflows |
 
 Agents reference `VISION.md` generically in their backstories. The actual file comes from the crew's `knowledge_sources`, not from per-agent prompt branching.
+
+## Declarative agent/task assets
+
+The repository now splits stable text from live runtime wiring:
+
+- `src/dialectic/config/agents.yaml` → shared core personas
+- `src/dialectic/config/agents_prioritize.yaml` → prioritization-only personas
+- `src/dialectic/config/tasks_prd.yaml` → PRD dialectic tasks
+- `src/dialectic/config/tasks_prioritize.yaml` → prioritization debate tasks
+- `src/planning/config/tasks.yaml` → planning tasks
+- `src/execution/config/tasks_dialectic.yaml` → execution dialectic tasks
+- `src/execution/config/tasks_verify.yaml` → standalone verification task
+
+Runtime modules such as `src/dialectic/prd_runtime.py`, `src/dialectic/prioritize_runtime.py`, `src/planning/runtime.py`, `src/execution/runtime.py`, and `src/execution/verify_runtime.py` turn those YAML definitions into live CrewAI objects.
 
 ## Agent overview
 
@@ -140,3 +156,7 @@ Beyond the five core factories, execution creates two short-lived agents in `src
 - **Independent Reimplementer** — fresh implementer used only when verification fails
 
 Those agents are intentionally isolated from the earlier dialectic context so verification is less self-congratulatory. A rare and beautiful trait in both humans and software.
+
+Standalone verification in `src/execution/verify.py` now reuses the shared `create_validador_macro()` factory through `src/execution/verify_runtime.py`, applying a narrow read-only tool override instead of defining a second validator persona.
+
+Prioritization likewise uses dedicated YAML-backed personas in `src/dialectic/config/agents_prioritize.yaml`, instantiated by `src/dialectic/prioritize_runtime.py` for the analyst/critic/ranker debate.

@@ -7,6 +7,39 @@
 - Primary goal: make core files leaner without regressing advanced CrewAI-native runtime behavior already present in the codebase.
 - Secondary goal: reduce custom inline prompt wiring and move closer to documented CrewAI project structure where it fits naturally.
 
+### Implementation progress
+
+- 2026-03-11: completed the first Phase 0-1 execution slice for shared agents.
+- Added `src/dialectic/yaml_config.py` as the thin YAML loader/rendering helper.
+- Added `src/dialectic/config/agents.yaml` and migrated the five shared agent factories in `src/dialectic/agents.py` to YAML-backed static config.
+- Added focused regression coverage in `tests/test_yaml_config_runtime.py` and `tests/test_agents.py`.
+- 2026-03-11: completed the second Phase 0 slice for symbolic registry helpers.
+- Added generic output-schema and guardrail resolution helpers to `src/dialectic/yaml_config.py` for later task YAML migration.
+- Expanded `tests/test_yaml_config_runtime.py` to cover successful and failing symbolic lookups.
+- 2026-03-11: completed the first Phase 2 planning slice for task-template extraction.
+- Added `src/planning/config/tasks.yaml` and `src/planning/runtime.py` to move the planning crew's task text out of `src/planning/flow.py`.
+- Kept shared agent factories and `run_user_story_planning()` behavior intact while routing crew construction through the new planning runtime builder.
+- Added focused builder coverage in `tests/test_planning_runtime.py` and verified downstream self-improve planning consumers.
+- 2026-03-11: completed the first Phase 3 PRD slice for task-template extraction.
+- Added `src/dialectic/config/tasks_prd.yaml` and `src/dialectic/prd_runtime.py` to move PRD crew task text out of `src/dialectic/prd_flow.py`.
+- Kept `DialecticFlow` orchestration, persistence, retry evaluation, metrics, and export behavior in Python while routing PRD crew construction through the new runtime builder.
+- Added focused builder coverage in `tests/test_prd_runtime.py` and updated PRD flow tests to validate the extracted-builder architecture.
+- 2026-03-11: completed the first Phase 4 execution slice for dialectic task-template extraction.
+- Added `src/execution/config/tasks_dialectic.yaml` and `src/execution/runtime.py` to move the main execution dialectic task text out of `src/execution/task_flow.py`.
+- Kept task-flow branching, verifier/reimplementation phases, persistence, metrics, and result assembly in Python while routing the dialectic crew construction through the new runtime builder.
+- Added focused builder coverage in `tests/test_execution_runtime.py` and verified execution, resume, CLI, and self-improve consumers with a focused regression suite.
+- 2026-03-11: completed the Phase 5 prioritization slice for YAML-backed crew extraction.
+- Added `src/dialectic/config/agents_prioritize.yaml`, `src/dialectic/config/tasks_prioritize.yaml`, and `src/dialectic/prioritize_runtime.py` to move the prioritization crew's static agent/task definitions out of `src/dialectic/prioritize.py`.
+- Kept fallback sorting, prioritization result extraction, ranking application, and graceful degradation in Python while routing crew construction through the new prioritization runtime builder.
+- Added focused builder coverage in `tests/test_prioritize_runtime.py`, updated prioritization behavior tests for the extracted-builder architecture, and verified downstream self-improve prioritization integration.
+- 2026-03-11: completed the Phase 6 verification slice for YAML-backed verification task extraction.
+- Added `src/execution/config/tasks_verify.yaml` and `src/execution/verify_runtime.py` to move the standalone verification task prompt out of `src/execution/verify.py` while keeping validator tool override behavior explicit.
+- Kept plan lookup, acceptance-criteria extraction, structured result parsing, CLI status updates, and verification fallback behavior in Python while routing crew construction through the new verification runtime builder.
+- Added focused runtime and delegation coverage in `tests/test_verify_runtime.py` and `tests/test_verify_ops.py`, then verified broader guardrail and CLI surfaces with a focused regression suite.
+- 2026-03-11: completed the Phase 7 docs and cleanup slice.
+- Updated `docs/architecture.md`, `docs/flows.md`, and `docs/agents.md` to describe the new YAML-backed runtime builders, config asset locations, and the remaining Python-owned orchestration responsibilities.
+- Documented the new prioritization and standalone verification runtime modules so contributors can extend the config-driven pattern without reintroducing large inline prompt blocks.
+
 This roadmap is designed for phased execution by an LLM coding agent. Each phase has a narrow objective, concrete file targets, explicit checklists, and verification gates. The plan deliberately distinguishes between what CrewAI already supports natively in YAML-backed crews and what must remain in Python because it depends on Flow control, runtime state, callables, or project-specific safety constraints.
 
 ## CrewAI alignment summary

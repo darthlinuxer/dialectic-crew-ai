@@ -94,3 +94,35 @@ def test_python_command_falls_back_to_python3(monkeypatch):
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/python3")
 
     assert agents._python_command() == "/usr/bin/python3"
+
+
+def test_create_visionario_uses_yaml_config(monkeypatch):
+    monkeypatch.setattr(
+        agents,
+        "_get_agent_config",
+        lambda name, vision_context: {
+            "role": "Custom Visionary",
+            "goal": "Guard {vision_label}",
+            "backstory": "Inspect {vision_label} first",
+            "verbose": False,
+            "allow_delegation": True,
+            "reasoning": False,
+            "max_reasoning_attempts": 1,
+            "tool_bundle": "read_only",
+            "mcp_bundle": "knowledge",
+            "llm_tier": "reasoning",
+        },
+    )
+
+    agent = agents.create_visionario(VisionContext.SELF)
+
+    assert agent.role == "Custom Visionary"
+    assert agent.goal == "Guard SELF_VISION.md"
+    assert agent.backstory == "Inspect SELF_VISION.md first"
+
+
+def test_agent_factories_return_fresh_instances():
+    first = agents.create_sintetizador(VisionContext.PROJECT)
+    second = agents.create_sintetizador(VisionContext.PROJECT)
+
+    assert first is not second

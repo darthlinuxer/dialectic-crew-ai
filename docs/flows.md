@@ -26,7 +26,7 @@ flowchart TD
 
 Current behavior:
 
-- builds a dialectic crew with `vision_knowledge(context)`
+- builds a dialectic crew through `src/dialectic/prd_runtime.py` using YAML-backed task templates from `src/dialectic/config/tasks_prd.yaml`
 - uses planning and memory inside the crew
 - validates outputs with Pydantic guardrails
 - emits metrics and hook summaries
@@ -43,6 +43,7 @@ Planning is not implemented as a CrewAI `Flow` subclass, but it still runs a dia
 Current behavior:
 
 - loads a PRD and resolves one user story
+- builds the planning crew through `src/planning/runtime.py` using YAML-backed task templates from `src/planning/config/tasks.yaml`
 - retries until the plan reaches `MIN_PLAN_SCORE` (default `7.5`) or exhausts retries
 - exports `UserStoryExecutionPlan` artifacts to `prd_output/`
 - uses the active vision context, including `VisionContext.SELF` when requested
@@ -69,6 +70,7 @@ flowchart TD
 
 Key details:
 
+- the main dialectic crew is built through `src/execution/runtime.py` using YAML-backed task templates from `src/execution/config/tasks_dialectic.yaml`
 - the verifier reads actual files, not just prior agent output
 - the reimplementer is intentionally fresh and context-light
 - task-level metrics are emitted passively
@@ -86,7 +88,7 @@ Responsibilities:
 - sorts tasks topologically when dependencies exist
 - feeds context from completed tasks into later tasks
 - persists task status changes into the plan artifact
-- post-verifies completed tasks against PRD acceptance criteria
+- post-verifies completed tasks against PRD acceptance criteria via `src/execution/verify.py`, whose standalone verification crew now comes from `src/execution/verify_runtime.py` and `src/execution/config/tasks_verify.yaml`
 - computes story status (`completed`, `partially_completed`, `failed`)
 - writes an execution report into `exec_output/`
 - writes `checkpoint.json` snapshots so interrupted runs can resume without redoing completed tasks
@@ -112,6 +114,7 @@ Current behavior worth documenting, because code now enforces it:
 - baseline tests must already pass
 - `git` must exist
 - worktree must be clean before branch creation
+- improvement-opportunity debate is built through `src/dialectic/prioritize_runtime.py` using YAML-backed prioritize agent/task templates
 - exact PRD, plan, and execution artifact paths are carried between stages
 - PRD flow IDs and task flow IDs are stored in `.dialectic/self_improve/<cycle-id>.json`
 - `dialectic-crew self-improve --resume <cycle-id>` reloads that snapshot and resumes from the next unfinished stage
@@ -130,6 +133,20 @@ Most flows operate against one of two contexts:
 - `VisionContext.SELF` → `internal/SELF_VISION.md`
 
 That context is passed through state or function arguments and becomes a CrewAI knowledge source via `vision_knowledge(context)`.
+
+## Declarative crew assets
+
+Stable crew/task text now lives in package-local YAML files, while orchestration stays in Python:
+
+- `src/dialectic/config/agents.yaml`
+- `src/dialectic/config/tasks_prd.yaml`
+- `src/dialectic/config/agents_prioritize.yaml`
+- `src/dialectic/config/tasks_prioritize.yaml`
+- `src/planning/config/tasks.yaml`
+- `src/execution/config/tasks_dialectic.yaml`
+- `src/execution/config/tasks_verify.yaml`
+
+Thin runtime builder modules bind those templates to live agents, schemas, guardrails, memory scopes, and knowledge sources at kickoff time.
 
 ## Metrics and hooks across flows
 

@@ -11,6 +11,7 @@ from execution.verify import (
     _find_task,
     mark_task,
     _load_prd_for_plan,
+    _run_verification,
     update_task_status,
     update_user_story_status,
     show_status,
@@ -127,3 +128,53 @@ class TestLoadPrdForPlan:
 
         assert loaded is not None
         assert loaded.feature_name == "Linked PRD"
+
+
+class TestRunVerification:
+    def test_uses_runtime_builder_and_task_output_pydantic(self, monkeypatch):
+        from schemas import ValidationOutput
+
+        class FakeCrew:
+            def kickoff(self):
+                task_output = type("TaskOutput", (), {"pydantic": ValidationOutput(quality_score=8.5, consensus_reached=True, final_validation_notes="looks good")})()
+                return type("CrewResult", (), {"pydantic": None, "tasks_output": [task_output]})()
+
+        captured: dict = {}
+
+        def fake_build_verification_crew(*, task, acceptance_criteria, vision_context):
+            captured["task"] = task
+            captured["acceptance_criteria"] = acceptance_criteria
+            captured["vision_context"] = vision_context
+            return FakeCrew()
+
+        monkeypatch.setattr("execution.verify.build_verification_crew", fake_build_verification_crew)
+
+        task = make_task(id="T-001", title="Ship feature", description="Implement feature")
+        result = _run_verification(task, ["AC1"])
+
+        assert captured["task"].id == "T-001"
+        assert captured["acceptance_criteria"] == ["AC1"]
+        assert result == {
+            "task_id": "T-001",
+            "verified": True,
+            "score": 8.5,
+            "notes": "looks good",
+        }
+
+    def test_returns_failure_when_structured_result_missing(self, monkeypatch):
+        class FakeCrew:
+            def kickoff(self):
+                return type("CrewResult", (), {"pydantic": None, "tasks_output": [], "raw": "not-json"})()
+
+        monkeypatch.setattr(
+            "execution.verify.build_verification_crew",
+            lambda **kwargs: FakeCrew(),
+        )
+
+        task = make_task(id="T-404", title="Missing", description="Nothing there")
+        result = _run_verification(task, ["AC1"])
+
+        assert result["task_id"] == "T-404"
+        assert result["verified"] is False
+        assert result["score"] == 0.0
+        assert "Failed to obtain structured result" in result["notes"]

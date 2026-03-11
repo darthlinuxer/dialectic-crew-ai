@@ -19,6 +19,7 @@ from typing import Literal
 from schemas import UserStoryExecutionPlan, PRDSchema, ImplementationTask
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from execution.verify_runtime import build_verification_crew
 
 _STORY_STATUS = Literal[
     "pending", "in_progress", "completed", "partially_completed", "failed"
@@ -241,51 +242,14 @@ def _run_verification(
 
     Returns dict with keys: task_id, verified, score, notes.
     """
-    from crewai import Task as CrewTask, Crew
-    from dialectic.agents import create_validador_macro, crew_memory, vision_knowledge
     from dialectic.vision import VisionContext
-    from dialectic.tools import file_read_tool
     from schemas import ValidationOutput
 
     ctx = vision_context or VisionContext.PROJECT
-
-    ac_text = ""
-    if acceptance_criteria:
-        ac_text = (
-            "\n\nACCEPTANCE CRITERIA for the User Story "
-            "(verify whether this task contributes to meeting them):\n"
-        )
-        ac_text += "\n".join(f"- {ac}" for ac in acceptance_criteria)
-
-    verify_agent = create_validador_macro(ctx)
-    verify_agent.tools = [file_read_tool]
-
-    verify_crew_task = CrewTask(
-        description=f"""
-Verify whether the task below was correctly implemented in the codebase.
-
-TASK: {task.id} — {task.title}
-DESCRIPTION: {task.description}
-
-Use the file reading tools to verify whether:
-1. The files/artifacts described in the task exist
-2. The content is correct and aligned with the description
-3. There are no obvious errors
-{ac_text}
-
-Respond with quality_score (0-10), consensus_reached (true if task is complete), and final_validation_notes explaining what was verified.
-""",
-        expected_output="ValidationOutput with quality_score, consensus_reached, final_validation_notes",
-        agent=verify_agent,
-        output_pydantic=ValidationOutput,
-    )
-
-    crew = Crew(
-        agents=[verify_agent],
-        tasks=[verify_crew_task],
-        verbose=True,
-        memory=crew_memory(ctx, "verify"),
-        knowledge_sources=[vision_knowledge(ctx)],
+    crew = build_verification_crew(
+        task=task,
+        acceptance_criteria=acceptance_criteria,
+        vision_context=ctx,
     )
     result = crew.kickoff()
 

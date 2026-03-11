@@ -1,0 +1,81 @@
+thesis_plan:
+  description: |
+    FEATURE CONTEXT:
+    {feature_context}
+
+    USER STORY TO IMPLEMENT:
+    {us_context}
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Generate the THESIS: an initial implementation plan for this user story.
+    Include:
+    1. Summarized technical approach (approach_summary)
+    2. List of implementation tasks (id, title, description, order, dependencies)
+    3. Risks you already foresee
+    4. Relevant technical notes
+
+    Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
+  expected_output: Structured implementation plan (approach + tasks + risks + notes)
+  agent: visionario
+
+antithesis_plan:
+  description: |
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    The implementation proposal (thesis) for the user story is in context.
+
+    Apply the Socratic method. List ALL:
+    1. Flaws and weak points of the plan
+    2. Contradictions with the macro vision or the feature PRD
+    3. Risks of technical debt or overscope
+    4. Missing or poorly ordered tasks
+    5. Acceptance criteria not covered by the plan
+
+    Be relentless. Each critique must be specific and actionable.
+  expected_output: Detailed critique of the implementation plan
+  agent: critico_socratico
+
+synthesis_plan:
+  description: |
+    USER STORY: {us_id} — {us_title}
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    You received:
+    - The thesis: implementation plan from the Visionary
+    - The antithesis: critiques from the Socratic Critic
+
+    Produce the SYNTHESIS: a refined implementation plan that:
+    1. Preserves what was good in the thesis
+    2. Incorporates ALL critiques from the antithesis
+    3. Lists clear tasks (id, title, description, order, dependencies)
+    4. Includes approach_summary, risks_mitigated, tech_notes
+    5. Is aligned with the macro vision and the PRD
+
+    Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
+  expected_output: Refined implementation plan (approach + tasks + mitigated risks + notes)
+  agent: sintetizador
+
+validation_plan:
+  description: |
+    Based on the SYNTHESIS of the implementation plan for user story {us_id} — {us_title},
+    produce the final document.
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    Fill in:
+    - user_story_id: "{us_id}"
+    - user_story_title: "{us_title}"
+    - approach_summary: summary of the approach (from synthesis)
+    - tasks: list of ImplementationTask (id, title, description, order, dependencies, acceptance_checks)
+      Every task MUST include at least one concrete acceptance_check that can be verified in the codebase.
+    - risks_mitigated: list of risks that were mitigated
+    - tech_notes: technical notes
+    - quality_score: float 0-10 (one decimal place). Approve if >= {min_plan_score}
+    - consensus_reached: true if the plan is ready for execution
+    - final_validation_notes: brief explanation
+  expected_output: Valid UserStoryExecutionPlan with quality_score and consensus_reached
+  agent: validador_macro
+  output_schema: UserStoryExecutionPlan
+  guardrail: plan
+  guardrail_max_retries: 2

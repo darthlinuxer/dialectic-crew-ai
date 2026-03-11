@@ -299,9 +299,8 @@ class TestDialecticPrioritize:
         assert len(result) == 1
         assert result[0].id == "only"
 
-    @patch("dialectic.prioritize.vision_knowledge", return_value=MagicMock())
-    @patch("dialectic.prioritize.Crew")
-    def test_returns_reordered_list(self, MockCrew, _mock_vk):
+    @patch("dialectic.prioritize.build_prioritization_crew")
+    def test_returns_reordered_list(self, mock_build_crew):
         opps = [
             _opp(id="low", impact="low"),
             _opp(id="high", impact="high"),
@@ -318,16 +317,15 @@ class TestDialecticPrioritize:
             debate_summary="Med is best",
         )
         mock_result.tasks_output = []
-        MockCrew.return_value.kickoff.return_value = mock_result
+        mock_build_crew.return_value.kickoff.return_value = mock_result
 
         result = dialectic_prioritize(opps, max_to_debate=5)
         assert result[0].id == "med"
         assert len(result) == 3
 
-    @patch("dialectic.prioritize.vision_knowledge", return_value=MagicMock())
-    @patch("dialectic.prioritize.Crew")
-    def test_fallback_on_crew_failure(self, MockCrew, _mock_vk):
-        MockCrew.return_value.kickoff.side_effect = RuntimeError("LLM down")
+    @patch("dialectic.prioritize.build_prioritization_crew")
+    def test_fallback_on_crew_failure(self, mock_build_crew):
+        mock_build_crew.return_value.kickoff.side_effect = RuntimeError("LLM down")
         opps = [
             _opp(id="low", impact="low"),
             _opp(id="high", impact="high"),
@@ -336,22 +334,20 @@ class TestDialecticPrioritize:
         assert result[0].id == "high"
         assert result[1].id == "low"
 
-    @patch("dialectic.prioritize.vision_knowledge", return_value=MagicMock())
-    @patch("dialectic.prioritize.Crew")
-    def test_fallback_on_invalid_output(self, MockCrew, _mock_vk):
+    @patch("dialectic.prioritize.build_prioritization_crew")
+    def test_fallback_on_invalid_output(self, mock_build_crew):
         mock_result = MagicMock()
         mock_result.pydantic = None
         mock_result.tasks_output = []
         mock_result.raw = "garbage"
-        MockCrew.return_value.kickoff.return_value = mock_result
+        mock_build_crew.return_value.kickoff.return_value = mock_result
 
         opps = [_opp(id="a", impact="high"), _opp(id="b", impact="low")]
         result = dialectic_prioritize(opps)
         assert result[0].id == "a"
 
-    @patch("dialectic.prioritize.vision_knowledge", return_value=MagicMock())
-    @patch("dialectic.prioritize.Crew")
-    def test_max_to_debate_limits_crew_input(self, MockCrew, _mock_vk):
+    @patch("dialectic.prioritize.build_prioritization_crew")
+    def test_max_to_debate_limits_crew_input(self, mock_build_crew):
         opps = [_opp(id=f"opp-{i}", impact="medium") for i in range(10)]
 
         mock_result = MagicMock()
@@ -360,16 +356,20 @@ class TestDialecticPrioritize:
             debate_summary="top 3",
         )
         mock_result.tasks_output = []
-        MockCrew.return_value.kickoff.return_value = mock_result
+        mock_build_crew.return_value.kickoff.return_value = mock_result
 
         result = dialectic_prioritize(opps, max_to_debate=3)
         assert len(result) == 10
         debated_ids = {result[i].id for i in range(3)}
         assert "opp-0" in debated_ids or "opp-1" in debated_ids or "opp-2" in debated_ids
+        build_kwargs = mock_build_crew.call_args.kwargs
+        assert "opp-0" in build_kwargs["opp_text"]
+        assert "opp-1" in build_kwargs["opp_text"]
+        assert "opp-2" in build_kwargs["opp_text"]
+        assert "opp-3" not in build_kwargs["opp_text"]
 
-    @patch("dialectic.prioritize.vision_knowledge", return_value=MagicMock())
-    @patch("dialectic.prioritize.Crew")
-    def test_non_debated_appended_in_order(self, MockCrew, _mock_vk):
+    @patch("dialectic.prioritize.build_prioritization_crew")
+    def test_non_debated_appended_in_order(self, mock_build_crew):
         opps = [
             _opp(id="a", impact="high"),
             _opp(id="b", impact="high"),
@@ -386,7 +386,7 @@ class TestDialecticPrioritize:
             debate_summary="debated a and b",
         )
         mock_result.tasks_output = []
-        MockCrew.return_value.kickoff.return_value = mock_result
+        mock_build_crew.return_value.kickoff.return_value = mock_result
 
         result = dialectic_prioritize(opps, max_to_debate=2)
         assert result[0].id == "b"
@@ -395,16 +395,15 @@ class TestDialecticPrioritize:
         assert "c" in remaining_ids
         assert "d" in remaining_ids
 
-    @patch("dialectic.prioritize.vision_knowledge", return_value=MagicMock())
-    @patch("dialectic.prioritize.Crew")
-    def test_self_context_prompts_reference_self_vision(self, MockCrew, _mock_vk):
+    @patch("dialectic.prioritize.build_prioritization_crew")
+    def test_self_context_passes_self_vision_to_builder(self, mock_build_crew):
         mock_result = MagicMock()
         mock_result.pydantic = PrioritizationResult(
             ranked=[_ranked(opportunity_id="opp-1", rank=1, score=9.0)],
             debate_summary="ok",
         )
         mock_result.tasks_output = []
-        MockCrew.return_value.kickoff.return_value = mock_result
+        mock_build_crew.return_value.kickoff.return_value = mock_result
 
         result = dialectic_prioritize(
             [_opp(id="opp-1"), _opp(id="opp-2")],
@@ -412,10 +411,5 @@ class TestDialecticPrioritize:
             max_to_debate=5,
         )
 
-        crew_kwargs = MockCrew.call_args.kwargs
-        analyst = crew_kwargs["agents"][0]
-        analysis_task = crew_kwargs["tasks"][0]
-
         assert len(result) == 2
-        assert "SELF_VISION.md" in analyst.backstory
-        assert "SELF_VISION.md" in analysis_task.description
+        assert mock_build_crew.call_args.kwargs["vision_context"] is VisionContext.SELF

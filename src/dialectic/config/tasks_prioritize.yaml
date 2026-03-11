@@ -1,0 +1,39 @@
+prioritize_analysis:
+  description: |
+    Analyze and rank these improvement opportunities:
+
+    {opp_text}
+
+    Consult the system's macro vision ({vision_label} via knowledge sources). Produce a thesis ranking ordered by strategic value.
+  expected_output: Ranked analysis of each opportunity with rationale
+  agent: prioritize_analyst
+
+prioritize_critique:
+  description: |
+    Review the Analyst's ranking (in context) and challenge each opportunity's feasibility, risk profile, and claimed impact.
+    Provide specific, constructive counter-arguments.
+  expected_output: Detailed critique of each opportunity's feasibility
+  agent: prioritize_critic
+
+prioritize_rank:
+  description: |
+    Synthesize the Analyst's thesis and the Critic's antithesis (both in context) into a final ranking.
+
+    You MUST rank ALL of these opportunity IDs: {opp_ids_str}
+
+    For each opportunity produce a PrioritizedOpportunity with:
+    - opportunity_id: the original ID (e.g. 'vision-gap-1')
+    - rank: integer starting from 1 (highest priority)
+    - justification: one paragraph
+    - feasibility_score: 0.0-10.0
+    - alignment_score: 0.0-10.0
+    - final_priority_score: 0.0-10.0
+
+    Also include a debate_summary (one paragraph).
+
+    Return ONLY valid JSON matching the PrioritizationResult schema.
+  expected_output: PrioritizationResult with ranked opportunities
+  agent: prioritize_ranker
+  output_schema: PrioritizationResult
+  guardrail: prioritization
+  guardrail_max_retries: 2

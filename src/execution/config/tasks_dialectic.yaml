@@ -1,0 +1,41 @@
+execute_task_thesis:
+  description: |
+    {tese_input}
+  expected_output: Description of what was implemented and files created/modified
+  agent: implementer
+
+execute_task_antithesis:
+  description: |
+    Analyze the implementation of task {task_id} — {task_title}.
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    SCOPE: Evaluate ONLY whether it meets the description: """{task_description}"""
+    Do NOT critique outside the scope. Do NOT request additional features.
+    Check for contradictions with the macro vision.
+  expected_output: Detailed critique of the implementation
+  agent: critico_socratico
+
+execute_task_synthesis:
+  description: |
+    Produce the SYNTHESIS for task {task_id}: incorporate ALL critiques.
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Ensure the synthesis is aligned with the macro vision.
+    Include clear instructions for retry if necessary.
+  expected_output: Refined synthesis with instructions
+  agent: sintetizador
+
+execute_task_validation:
+  description: |
+    Evaluate the implementation of task {task_id}.
+
+    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+
+    Minimum score for approval: {min_score}
+    Verify alignment with the macro vision.
+  expected_output: ValidationOutput
+  agent: validador_macro
+  output_schema: ValidationOutput
+  guardrail: quality
+  guardrail_max_retries: 2

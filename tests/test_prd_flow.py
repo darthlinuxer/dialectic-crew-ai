@@ -208,18 +208,23 @@ def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
 
 
 def test_dialectic_flow_validator_uses_synthesis_as_only_context():
-    source = inspect.getsource(prd_flow.DialecticFlow)
+    import dialectic.prd_runtime as prd_runtime
+
+    source = inspect.getsource(prd_runtime.build_prd_crew)
 
     assert 'context=[task_sintese]' in source
     assert 'context=[task_vision, task_critica, task_sintese]' not in source
 
 
 def test_dialectic_flow_synthesizer_requests_candidate_prd_json():
-    source = inspect.getsource(prd_flow.DialecticFlow)
+    runtime_source = inspect.getsource(prd_flow.build_prd_crew)
+    template_source = inspect.getsource(__import__("dialectic.prd_runtime", fromlist=["build_prd_crew"]).build_prd_crew)
+
+    source = runtime_source + template_source + open("/home/darthlinuxer/dialectic-crew-ai/src/dialectic/config/tasks_prd.yaml", "r", encoding="utf-8").read()
 
     assert 'Output a CANDIDATE PRD as raw JSON with these fields only:' in source
     assert 'Candidate PRD as raw JSON for validator review' in source
-    assert 'output_pydantic=PRDSchema' in source
+    assert 'output_schema: PRDSchema' in source
 
 
 def test_dialectic_flow_uses_shared_prd_extractor_after_kickoff():
@@ -232,17 +237,6 @@ def test_dialectic_flow_uses_shared_prd_extractor_after_kickoff():
 def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     prd = _make_prd()
 
-    monkeypatch.setattr(prd_flow, "create_visionario", lambda *_: "vision")
-    monkeypatch.setattr(prd_flow, "create_critico_socratico", lambda *_: "critic")
-    monkeypatch.setattr(prd_flow, "create_sintetizador", lambda *_: "synth")
-    monkeypatch.setattr(prd_flow, "create_validador_macro", lambda *_: "validator")
-    monkeypatch.setattr(prd_flow, "vision_knowledge", lambda *_: "vision-knowledge")
-    monkeypatch.setattr(prd_flow, "crew_memory", lambda *_: None)
-    monkeypatch.setattr(prd_flow, "llm_planning", object())
-
-    def fake_task(**kwargs):
-        return SimpleNamespace(**kwargs)
-
     class FakeHookScope:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
@@ -254,14 +248,10 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
             return False
 
     class FakeCrew:
-        def __init__(self, *, agents, tasks, process, verbose, memory, planning, planning_llm, knowledge_sources):
-            self.tasks = tasks
-
         def kickoff(self, **kwargs):
             return SimpleNamespace(pydantic=prd)
 
-    monkeypatch.setattr(prd_flow, "Task", fake_task)
-    monkeypatch.setattr(prd_flow, "Crew", FakeCrew)
+    monkeypatch.setattr(prd_flow, "build_prd_crew", lambda **kwargs: FakeCrew())
     monkeypatch.setattr(prd_flow, "HookScope", FakeHookScope)
 
     flow = prd_flow.DialecticFlow()

@@ -23,10 +23,9 @@ import json
 import logging
 from typing import Any
 
-from crewai import Agent, Crew, Task
 from pydantic import ValidationError
 
-from dialectic.agents import _vision_label, llm_simple, vision_knowledge
+from dialectic.prioritize_runtime import build_prioritization_crew
 from dialectic.vision import VisionContext
 from schemas import (
     ImprovementOpportunity,
@@ -104,123 +103,14 @@ def dialectic_prioritize(
     remainder = presorted[max_to_debate:]
 
     opp_text = _build_opportunities_text(debate_candidates)
-    vision_label = _vision_label(vision_context)
-
-    analyst = Agent(
-        role="Strategic Improvement Analyst",
-        goal=(
-            "Evaluate each improvement opportunity for alignment with the "
-            "system's macro vision, evidence strength, and estimated ROI"
-        ),
-        backstory=(
-            "You are an experienced technical strategist. Given a list of "
-            "improvement opportunities identified by the introspection engine, "
-            "you produce a thesis ranking. For each opportunity you assess:\n"
-            "1. How well it aligns with the system's VISION and roadmap\n"
-            "2. The strength and reliability of the supporting evidence\n"
-            "3. Expected return on investment (quality uplift vs effort)\n\n"
-            f"Consult the system's macro vision ({vision_label}) via knowledge sources."
-        ),
-        verbose=False,
-        allow_delegation=False,
-        llm=llm_simple,
-    )
-
-    critic = Agent(
-        role="Feasibility Critic",
-        goal=(
-            "Challenge each opportunity with implementation risks, dependency "
-            "issues, scope creep potential, and likelihood of test regressions"
-        ),
-        backstory=(
-            "You are a seasoned engineering critic. For each opportunity the "
-            "Analyst ranked, you provide a rigorous antithesis:\n"
-            "1. Implementation complexity and hidden dependencies\n"
-            "2. Risk of introducing regressions or breaking changes\n"
-            "3. Scope creep potential and maintenance burden\n"
-            "4. Whether the evidence truly supports the claimed impact\n\n"
-            "Be specific and constructive. Each critique must be actionable."
-        ),
-        verbose=False,
-        allow_delegation=False,
-        llm=llm_simple,
-    )
-
-    ranker = Agent(
-        role="Priority Ranker",
-        goal=(
-            "Synthesize the Analyst's thesis and the Critic's antithesis into "
-            "a final priority ranking with scores and justifications"
-        ),
-        backstory=(
-            "You synthesize competing perspectives into a definitive ranking. "
-            "For each opportunity produce:\n"
-            "- feasibility_score (0-10): how achievable it is\n"
-            "- alignment_score (0-10): how well it serves the vision\n"
-            "- final_priority_score (0-10): weighted synthesis\n"
-            "- justification: one-paragraph reasoning\n\n"
-            "Output the final PrioritizationResult with all opportunities "
-            "ranked from highest to lowest final_priority_score."
-        ),
-        verbose=False,
-        allow_delegation=False,
-        llm=llm_simple,
-    )
-
     opp_ids = [opp.id for opp in debate_candidates]
     opp_ids_str = ", ".join(opp_ids)
 
-    task_analysis = Task(
-        description=(
-            f"Analyze and rank these improvement opportunities:\n\n{opp_text}\n\n"
-            f"Consult the system's macro vision ({vision_label} via knowledge sources). "
-            "Produce a thesis ranking ordered by strategic value."
-        ),
-        expected_output="Ranked analysis of each opportunity with rationale",
-        agent=analyst,
-    )
-
-    task_critique = Task(
-        description=(
-            "Review the Analyst's ranking (in context) and challenge each "
-            "opportunity's feasibility, risk profile, and claimed impact. "
-            "Provide specific, constructive counter-arguments."
-        ),
-        expected_output="Detailed critique of each opportunity's feasibility",
-        agent=critic,
-        context=[task_analysis],
-    )
-
-    task_rank = Task(
-        description=(
-            "Synthesize the Analyst's thesis and the Critic's antithesis "
-            "(both in context) into a final ranking.\n\n"
-            f"You MUST rank ALL of these opportunity IDs: {opp_ids_str}\n\n"
-            "For each opportunity produce a PrioritizedOpportunity with:\n"
-            "- opportunity_id: the original ID (e.g. 'vision-gap-1')\n"
-            "- rank: integer starting from 1 (highest priority)\n"
-            "- justification: one paragraph\n"
-            "- feasibility_score: 0.0-10.0\n"
-            "- alignment_score: 0.0-10.0\n"
-            "- final_priority_score: 0.0-10.0\n\n"
-            "Also include a debate_summary (one paragraph).\n\n"
-            "Return ONLY valid JSON matching the PrioritizationResult schema."
-        ),
-        expected_output="PrioritizationResult with ranked opportunities",
-        agent=ranker,
-        output_pydantic=PrioritizationResult,
-        guardrail=_prioritization_guardrail,
-        guardrail_max_retries=2,
-        context=[task_analysis, task_critique],
-    )
-
     try:
-        crew = Crew(
-            agents=[analyst, critic, ranker],
-            tasks=[task_analysis, task_critique, task_rank],
-            process="sequential",
-            verbose=False,
-            knowledge_sources=[vision_knowledge(vision_context)],
+        crew = build_prioritization_crew(
+            opp_text=opp_text,
+            opp_ids_str=opp_ids_str,
+            vision_context=vision_context,
         )
         result = crew.kickoff()
     except Exception:

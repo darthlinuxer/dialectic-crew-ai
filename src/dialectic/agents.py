@@ -2,6 +2,8 @@ import logging
 import os
 import shutil
 import sys
+from pathlib import Path
+from typing import Any
 
 from crewai import Agent, LLM, Memory
 from crewai.mcp import MCPServerStdio, MCPServerHTTP
@@ -21,8 +23,11 @@ from dialectic.vision import (
     get_vision_path,
     resolve_project_root,
 )
+from dialectic.yaml_config import load_yaml_config, render_yaml_config
 
 logger = logging.getLogger(__name__)
+
+_AGENTS_CONFIG_PATH = Path(__file__).with_name("config") / "agents.yaml"
 
 
 def _python_command() -> str:
@@ -68,6 +73,13 @@ llm_complex = LLM(model=LLM_MODEL_COMPLEX, **_common)
 llm_reasoning = LLM(model=LLM_MODEL_REASONING, **_common)
 llm_planning = LLM(model=LLM_MODEL_PLANNING, **_common)
 
+_LLM_BY_TIER = {
+    "simple": llm_simple,
+    "complex": llm_complex,
+    "reasoning": llm_reasoning,
+    "planning": llm_planning,
+}
+
 # ---------------------------------------------------------------------------
 # MCP server configurations (optional; agents degrade gracefully if unavailable)
 # ---------------------------------------------------------------------------
@@ -102,6 +114,20 @@ mcp_skills = _make_mcp(
     command=_python_command(),
     args=["-m", "src.mcp.skills_mcp"],
 )
+
+_TOOL_BUNDLES = {
+    "none": [],
+    "read_only": [file_read_tool, code_docs_tool],
+    "validator_read": [file_read_tool, directory_read_tool, json_search_tool],
+    "implementer_io": [file_read_tool, file_write_tool, directory_read_tool],
+}
+
+_MCP_BUNDLES = {
+    "none": [],
+    "research": [mcp_context7, mcp_brave_search, mcp_skills],
+    "local_reasoning": [mcp_sequential_thinking, mcp_skills],
+    "knowledge": [mcp_context7, mcp_skills],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +178,55 @@ def crew_memory(
     return Memory(storage=str(storage_dir))
 
 
+def _get_agent_config(
+    name: str,
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> dict[str, Any]:
+    config = load_yaml_config(_AGENTS_CONFIG_PATH)
+    try:
+        return config[name]
+    except KeyError as exc:
+        raise KeyError(f"Unknown agent config: {name}") from exc
+
+
+def _resolve_bundle(name: str, registry: dict[str, list[Any]], kind: str) -> list[Any]:
+    try:
+        bundle = registry[name]
+    except KeyError as exc:
+        raise KeyError(f"Unknown {kind} bundle: {name}") from exc
+    return [item for item in bundle if item]
+
+
+def _build_agent(
+    name: str,
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> Agent:
+    config = render_yaml_config(
+        _get_agent_config(name, vision_context),
+        {"vision_label": _vision_label(vision_context)},
+    )
+    config = dict(config)
+
+    llm_tier = config.pop("llm_tier")
+    tool_bundle = config.pop("tool_bundle", "none")
+    mcp_bundle = config.pop("mcp_bundle", "none")
+
+    try:
+        llm = _LLM_BY_TIER[llm_tier]
+    except KeyError as exc:
+        raise KeyError(f"Unknown llm tier: {llm_tier}") from exc
+
+    kwargs = {
+        **config,
+        "llm": llm,
+        "tools": _resolve_bundle(tool_bundle, _TOOL_BUNDLES, "tool"),
+    }
+    mcps = _resolve_bundle(mcp_bundle, _MCP_BUNDLES, "MCP")
+    if mcps:
+        kwargs["mcps"] = mcps
+    return Agent(**kwargs)
+
+
 # ---------------------------------------------------------------------------
 # Agent factory functions — each call returns a fresh Agent instance
 # to avoid cross-flow contamination when memory=True.
@@ -160,154 +235,28 @@ def crew_memory(
 def create_visionario(
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> Agent:
-    vision_label = _vision_label(vision_context)
-    return Agent(
-        role="Senior Visionary Architect",
-        goal="Propose the most elegant initial solution aligned with the system's macro vision",
-        backstory=(
-            "You are an architect with 18 years of experience. You always think of the "
-            "system as a whole. Your first proposal (thesis) must be bold and comprehensive.\n\n"
-            f"You ALWAYS consult the system's macro vision ({vision_label}, available via your "
-            "knowledge sources) before anything else.\n\n"
-            "Before proposing anything, analyze:\n"
-            "1. What the macro vision requires\n"
-            "2. Which modules are affected\n"
-            "3. Which non-functional requirements matter\n"
-            "4. What is the ideal tradeoff between speed and quality\n\n"
-            "Your proposal must be holistic, coherent, and aligned with the macro vision."
-        ),
-        verbose=True,
-        allow_delegation=False,
-        llm=llm_reasoning,
-        reasoning=True,
-        max_reasoning_attempts=3,
-        tools=[t for t in [file_read_tool, code_docs_tool] if t],
-        mcps=[m for m in [mcp_context7, mcp_brave_search, mcp_skills] if m],
-    )
+    return _build_agent("visionario", vision_context)
 
 
 def create_critico_socratico(
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> Agent:
-    vision_label = _vision_label(vision_context)
-    return Agent(
-        role="Relentless Socratic Critic",
-        goal="Rigorously evaluate whether the implementation meets what was requested in the task, without expanding scope",
-        backstory=(
-            "You are the ultimate devil's advocate. Your method is 100% Socratic.\n\n"
-            "FUNDAMENTAL RULE: Evaluate ONLY what the task requests. Do NOT expand the scope.\n"
-            "If the task says 'add a variable to .env', evaluate whether the variable was added correctly.\n"
-            "Do NOT request CI/CD, CODEOWNERS, security automation, or anything the task did not ask for.\n\n"
-            "Your job — ALWAYS within the task's scope:\n"
-            "1. Was the task description met point by point?\n"
-            f"2. Are there contradictions with {vision_label} in what was done?\n"
-            "3. Did the implementer do MORE than requested (overscope)?\n"
-            "4. Are there bugs or technical errors in what was delivered?\n"
-            "5. Assign a FAIR score of 1-10 considering ONLY the task's scope\n\n"
-            "Be rigorous but fair. A simple task well executed deserves a high score.\n"
-            "Do not penalize for things that were not requested."
-        ),
-        verbose=True,
-        allow_delegation=False,
-        llm=llm_complex,
-        reasoning=True,
-        max_reasoning_attempts=2,
-        tools=[],
-        mcps=[m for m in [mcp_sequential_thinking, mcp_skills] if m],
-    )
+    return _build_agent("critico_socratico", vision_context)
 
 
 def create_sintetizador(
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> Agent:
-    vision_label = _vision_label(vision_context)
-    return Agent(
-        role="Dialectic Synthesizer",
-        goal="Transform thesis + antithesis into a superior version, eliminating ALL weaknesses",
-        backstory=(
-            "You are Hegel in code form. You receive the proposal + the critiques and "
-            "produce the final synthesis.\n\n"
-            "Your mission is to ensure the final version scores >= 9.0 with zero contradictions "
-            f"against the macro vision ({vision_label}).\n\n"
-            f"You ALWAYS consult the system's macro vision ({vision_label}, available via your "
-            "knowledge sources) before producing the synthesis.\n\n"
-            "When you receive:\n"
-            "- The original proposal (thesis) from the Visionary\n"
-            "- The critique (antithesis) from the Socratic Critic\n\n"
-            "You must create a SYNTHESIS that:\n"
-            "1. Preserves what was good in the thesis\n"
-            "2. Incorporates ALL critiques from the antithesis\n"
-            "3. Eliminates ALL identified weaknesses\n"
-            "4. Resolves contradictions creatively\n"
-            "5. Is better than both individual proposals\n\n"
-            "The synthesis is not a mediocre middle ground — it is a dialectical transcendence."
-        ),
-        verbose=True,
-        allow_delegation=False,
-        llm=llm_complex,
-        reasoning=True,
-        max_reasoning_attempts=2,
-        tools=[],
-        mcps=[m for m in [mcp_context7, mcp_skills] if m],
-    )
+    return _build_agent("sintetizador", vision_context)
 
 
 def create_validador_macro(
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> Agent:
-    vision_label = _vision_label(vision_context)
-    return Agent(
-        role="Macro & Quality Validator",
-        goal="Assign a final score of 0-10 and decide whether to approve or force a retry",
-        backstory=(
-            "You are the final gate. Your job is to validate the final PRD with rigor.\n\n"
-            f"You ALWAYS consult the macro vision ({vision_label}, available via your knowledge "
-            "sources) for the final comparison.\n\n"
-            "When the task requires a full PRD, respond with the complete schema requested by the task.\n"
-            "At minimum, your final response must always include:\n"
-            "- quality_score: float (exactly one decimal place, e.g.: 8.5)\n"
-            "- consensus_reached: true/false\n"
-            "- final_validation_notes: detailed explanation\n\n"
-            "If score < 9.0, explain EXACTLY what still needs improvement.\n\n"
-            "Validation checklist:\n"
-            "1. Feature aligned with macro vision?\n"
-            "2. Affected modules considered?\n"
-            "3. Risks mitigated?\n"
-            "4. Non-functional requirements covered?\n"
-            "5. User stories consistent and complete?\n"
-            "6. 5+ anti-drift questions answered?\n"
-            f"7. Zero contradictions with {vision_label}?"
-        ),
-        verbose=True,
-        allow_delegation=False,
-        llm=llm_simple,
-        tools=[t for t in [file_read_tool, directory_read_tool, json_search_tool] if t],
-    )
+    return _build_agent("validador_macro", vision_context)
 
 
 def create_implementer(
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> Agent:
-    vision_label = _vision_label(vision_context)
-    return Agent(
-        role="Technical Implementer",
-        goal=f"Execute the task as described, generating code/config/files aligned with {vision_label}",
-        backstory=(
-            "You are an experienced technical implementer. Your role is to execute "
-            f"implementation tasks as specified in the plan, strictly following {vision_label}.\n\n"
-            f"You ALWAYS consult the macro vision ({vision_label}, available via your knowledge "
-            "sources) before implementing.\n\n"
-            "Rules:\n"
-            "1. Implement exactly what the task asks for, without overscope\n"
-            "2. Respect the project's existing structure\n"
-            "3. Write clean, testable code aligned with the macro vision\n"
-            "4. If the task requires config, use .env or existing config\n"
-            "5. Document relevant changes\n\n"
-            "Upon completion, clearly describe what was done and which files were created/modified."
-        ),
-        verbose=True,
-        allow_delegation=False,
-        llm=llm_complex,
-        tools=[file_read_tool, file_write_tool, directory_read_tool],
-        mcps=[m for m in [mcp_context7, mcp_brave_search, mcp_skills] if m],
-    )
+    return _build_agent("implementer", vision_context)

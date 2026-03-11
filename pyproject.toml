@@ -26,6 +26,7 @@ dependencies = [
     "crewai-tools[mcp]>=1.10.0",
     "mcp",
     "pydantic>=2.10.0",
+    "PyYAML>=6.0",
     "tiktoken>=0.7.0",
     "python-dotenv",
     "reportlab>=4.0.0",
@@ -51,6 +52,11 @@ py-modules = ["schemas"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"dialectic" = ["config/*.yaml"]
+"planning" = ["config/*.yaml"]
+"execution" = ["config/*.yaml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
