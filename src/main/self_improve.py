@@ -26,6 +26,17 @@ from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.metrics import MetricRecord, MetricsStore, emit, get_metrics_store
 from dialectic.prioritize import dialectic_prioritize
 from dialectic.vision import VisionContext, resolve_project_root
+from main.git_helpers import (
+    command_available,
+    dirty_worktree_guidance,
+    git_branch_create,
+    git_current_branch,
+    git_discard_branch,
+    git_stash_worktree,
+    git_worktree_clean,
+    recover_stale_self_improve_worktree,
+    run_cmd,
+)
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
 logger = logging.getLogger(__name__)
@@ -48,7 +59,7 @@ def _configure_crewai_runtime() -> None:
 
 
 def _command_available(command: str) -> bool:
-    return shutil.which(command) is not None
+    return command_available(command)
 
 
 def _run_cmd(
@@ -56,13 +67,7 @@ def _run_cmd(
     cwd: str | Path | None = None,
     timeout: int = 120,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        cwd=str(cwd) if cwd else None,
-    )
+    return run_cmd(cmd, cwd=cwd, timeout=timeout)
 
 
 def _self_improve_test_timeout() -> int:
@@ -166,67 +171,39 @@ def _metrics_stable(
 
 
 def _git_branch_create(branch: str, cwd: Path) -> bool:
-    r = _run_cmd(["git", "checkout", "-b", branch], cwd=cwd)
-    return r.returncode == 0
+    return git_branch_create(branch, cwd, run_cmd_fn=_run_cmd)
 
 
 def _git_discard_branch(branch: str, cwd: Path) -> None:
-    _run_cmd(["git", "checkout", "-"], cwd=cwd)
-    _run_cmd(["git", "branch", "-D", branch], cwd=cwd)
+    git_discard_branch(branch, cwd, run_cmd_fn=_run_cmd)
 
 
 def _git_current_branch(cwd: Path) -> str:
-    r = _run_cmd(["git", "branch", "--show-current"], cwd=cwd)
-    if r.returncode != 0:
-        return ""
-    return r.stdout.strip()
+    return git_current_branch(cwd, run_cmd_fn=_run_cmd)
 
 
 def _recover_stale_self_improve_worktree(cwd: Path) -> tuple[bool, str]:
-    """Recover from an interrupted run only when already on a self-improve branch."""
-    branch = _git_current_branch(cwd)
-    if not branch.startswith("self-improve/"):
-        return False, "not on a self-improve branch"
-
-    reset_result = _run_cmd(["git", "reset", "--hard", "HEAD"], cwd=cwd)
-    if reset_result.returncode != 0:
-        return False, f"failed to reset stale self-improve branch {branch}"
-
-    clean_result = _run_cmd(["git", "clean", "-fd"], cwd=cwd)
-    if clean_result.returncode != 0:
-        return False, f"failed to clean stale self-improve branch {branch}"
-
-    return True, f"discarded stale self-improve worktree on {branch}"
+    return recover_stale_self_improve_worktree(
+        cwd,
+        git_current_branch_fn=_git_current_branch,
+        run_cmd_fn=_run_cmd,
+    )
 
 
 def _git_stash_worktree(cwd: Path, message: str) -> tuple[bool, str]:
-    r = _run_cmd(["git", "stash", "push", "--include-untracked", "-m", message], cwd=cwd)
-    if r.returncode != 0:
-        return False, "failed to stash current branch changes"
-    return True, (r.stdout or r.stderr or "stashed current branch changes").strip()
+    return git_stash_worktree(cwd, message, run_cmd_fn=_run_cmd)
 
 
 def _dirty_worktree_guidance(cwd: Path, worktree_reason: str) -> str:
-    branch = _git_current_branch(cwd) or "<detached HEAD>"
-    return (
-        f"{worktree_reason} on branch '{branch}'. "
-        "Commit the changes, discard them manually, or rerun with --stash-dirty "
-        "to stash current branch changes before self-improve continues."
+    return dirty_worktree_guidance(
+        cwd,
+        worktree_reason,
+        git_current_branch_fn=_git_current_branch,
     )
 
 
 def _git_worktree_clean(cwd: Path) -> tuple[bool, str]:
-    r = _run_cmd(["git", "status", "--porcelain"], cwd=cwd)
-    if r.returncode != 0:
-        return False, "Unable to determine git worktree status"
-
-    dirty_entries = [line.strip() for line in r.stdout.splitlines() if line.strip()]
-    if not dirty_entries:
-        return True, "clean"
-
-    preview = ", ".join(dirty_entries[:5])
-    suffix = "" if len(dirty_entries) <= 5 else f", +{len(dirty_entries) - 5} more"
-    return False, f"Worktree has uncommitted changes: {preview}{suffix}"
+    return git_worktree_clean(cwd, run_cmd_fn=_run_cmd)
 
 
 def _create_pr(branch: str, title: str, body: str, cwd: Path) -> str | None:

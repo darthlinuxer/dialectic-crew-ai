@@ -162,6 +162,8 @@ Completed with shared helpers in `src/execution/plan_loader.py` plus focused reg
 6. Slim `self_improve.py` to only `run_self_improve()` + `_CycleAbort`
 7. Run tests ✓ (especially `test_self_improve.py`, `test_self_improve_git_safety.py`, `test_self_improve_lineage.py`)
 
+Status: step 1 completed on 2026-03-11 via `src/main/git_helpers.py`; focused self-improve regressions passed.
+
 ### Phase 3 — Split `agents.py` (mixed concerns → 5 focused files)
 
 1. Extract `llm.py` (LLM singletons + `_LLM_BY_TIER`)
