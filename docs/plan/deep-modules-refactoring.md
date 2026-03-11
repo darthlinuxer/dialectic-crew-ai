@@ -181,6 +181,8 @@ Status: steps 1-5 completed on 2026-03-11 via `src/dialectic/llm.py`, `src/diale
 2. Keep `hooks.py` with `HookScope` + 4 hook functions (imports from `token_tracker`)
 3. Run tests ✓
 
+Status: completed on 2026-03-11 via `src/dialectic/token_tracker.py`; hook-focused regressions in `tests/test_token_tracker.py`, `tests/test_hooks.py`, and `tests/test_guardrails.py` passed after the extraction.
+
 ### Phase 5 — Split `export.py` (504L → 3 files)
 
 1. Extract `prd_exporter.py` (`PRDExporter` class)

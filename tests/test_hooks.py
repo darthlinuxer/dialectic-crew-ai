@@ -1,6 +1,5 @@
 """Tests for dialectic.hooks -- CrewAI execution hooks infrastructure."""
 
-import threading
 import time
 from unittest.mock import MagicMock, patch
 
@@ -17,16 +16,14 @@ from crewai.hooks import (
 )
 from dialectic.hooks import (
     HookScope,
-    TokenBudgetTracker,
     _after_llm_call_hook,
     _after_tool_call_hook,
     _before_llm_call_hook,
     _before_tool_call_hook,
     _active_scope,
-    count_messages_tokens,
-    count_tokens,
 )
 from dialectic.metrics import _reset_metrics_store
+from dialectic.token_tracker import TokenBudgetTracker
 
 
 @pytest.fixture(autouse=True)
@@ -39,164 +36,6 @@ def _clean_hooks():
     clear_all_global_hooks()
     _active_scope.current = None
     _reset_metrics_store()
-
-
-# ---------------------------------------------------------------------------
-# TokenBudgetTracker
-# ---------------------------------------------------------------------------
-
-
-class TestTokenBudgetTracker:
-    def test_initial_state(self):
-        t = TokenBudgetTracker(budget=1000)
-        assert t.budget == 1000
-        assert t.input_tokens == 0
-        assert t.output_tokens == 0
-        assert t.total_tokens == 0
-        assert t.llm_calls == 0
-        assert t.tool_calls == 0
-        assert t.estimated_cost == 0.0
-        assert t.budget_exceeded is False
-
-    def test_unlimited_budget(self):
-        t = TokenBudgetTracker(budget=0)
-        assert t.budget == 0
-        assert t.budget_exceeded is False
-        assert t.budget_remaining == -1
-
-    def test_add_input_tokens(self):
-        t = TokenBudgetTracker(budget=100)
-        t.add_input_tokens(50)
-        assert t.input_tokens == 50
-        assert t.total_tokens == 50
-        t.add_input_tokens(30)
-        assert t.input_tokens == 80
-        assert t.total_tokens == 80
-
-    def test_add_output_tokens(self):
-        t = TokenBudgetTracker(budget=100)
-        t.add_output_tokens(40)
-        assert t.output_tokens == 40
-        assert t.total_tokens == 40
-
-    def test_budget_exceeded_true_over_budget(self):
-        t = TokenBudgetTracker(budget=100)
-        t.add_input_tokens(60)
-        t.add_output_tokens(50)
-        assert t.budget_exceeded is True
-
-    def test_budget_exceeded_false_under_budget(self):
-        t = TokenBudgetTracker(budget=200)
-        t.add_input_tokens(50)
-        t.add_output_tokens(50)
-        assert t.budget_exceeded is False
-
-    def test_budget_remaining(self):
-        t = TokenBudgetTracker(budget=200)
-        t.add_input_tokens(50)
-        assert t.budget_remaining == 150
-        t.add_output_tokens(100)
-        assert t.budget_remaining == 50
-
-    def test_budget_remaining_at_zero(self):
-        t = TokenBudgetTracker(budget=100)
-        t.add_input_tokens(120)
-        assert t.budget_remaining == 0
-
-    def test_estimated_cost(self):
-        t = TokenBudgetTracker(
-            budget=0,
-            cost_per_input_token=0.001,
-            cost_per_output_token=0.002,
-        )
-        t.add_input_tokens(100)
-        t.add_output_tokens(50)
-        assert t.estimated_cost == pytest.approx(0.1 + 0.1)
-
-    def test_increment_llm_calls(self):
-        t = TokenBudgetTracker()
-        t.increment_llm_calls()
-        t.increment_llm_calls()
-        assert t.llm_calls == 2
-
-    def test_increment_tool_calls(self):
-        t = TokenBudgetTracker()
-        t.increment_tool_calls()
-        assert t.tool_calls == 1
-
-    def test_reset(self):
-        t = TokenBudgetTracker(budget=500)
-        t.add_input_tokens(100)
-        t.add_output_tokens(200)
-        t.increment_llm_calls()
-        t.increment_tool_calls()
-        t.reset()
-        assert t.total_tokens == 0
-        assert t.llm_calls == 0
-        assert t.tool_calls == 0
-
-    def test_snapshot(self):
-        t = TokenBudgetTracker(budget=500, cost_per_input_token=0.001, cost_per_output_token=0.002)
-        t.add_input_tokens(100)
-        t.add_output_tokens(50)
-        t.increment_llm_calls()
-        snap = t.snapshot()
-        assert snap["input_tokens"] == 100
-        assert snap["output_tokens"] == 50
-        assert snap["total_tokens"] == 150
-        assert snap["llm_calls"] == 1
-        assert snap["budget"] == 500
-        assert snap["budget_exceeded"] is False
-        assert snap["estimated_cost"] == pytest.approx(0.1 + 0.1)
-
-    def test_thread_safety(self):
-        t = TokenBudgetTracker(budget=0)
-        errors: list[Exception] = []
-
-        def add_tokens():
-            try:
-                for _ in range(1000):
-                    t.add_input_tokens(1)
-                    t.add_output_tokens(1)
-                    t.increment_llm_calls()
-            except Exception as e:
-                errors.append(e)
-
-        threads = [threading.Thread(target=add_tokens) for _ in range(4)]
-        for th in threads:
-            th.start()
-        for th in threads:
-            th.join()
-
-        assert not errors
-        assert t.input_tokens == 4000
-        assert t.output_tokens == 4000
-        assert t.llm_calls == 4000
-
-
-# ---------------------------------------------------------------------------
-# count_tokens / count_messages_tokens
-# ---------------------------------------------------------------------------
-
-
-class TestCountTokens:
-    def test_count_tokens_nonempty(self):
-        n = count_tokens("hello world")
-        assert n > 0
-
-    def test_count_tokens_empty(self):
-        assert count_tokens("") == 0
-
-    def test_count_messages_tokens(self):
-        msgs = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Hello!"},
-        ]
-        n = count_messages_tokens(msgs)
-        assert n > 0
-
-    def test_count_messages_tokens_empty(self):
-        assert count_messages_tokens([]) == 0
 
 
 # ---------------------------------------------------------------------------
