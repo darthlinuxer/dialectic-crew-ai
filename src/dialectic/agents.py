@@ -1,12 +1,10 @@
 import logging
-import os
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
 
 from crewai import Agent, Memory
-from crewai.mcp import MCPServerStdio, MCPServerHTTP
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
 from dialectic.llm import (
@@ -16,6 +14,7 @@ from dialectic.llm import (
     llm_reasoning,
     llm_simple,
 )
+from dialectic.mcp_config import MCP_BUNDLES, mcp_brave_search, mcp_context7, mcp_sequential_thinking, mcp_skills
 from dialectic.tools import (
     file_read_tool,
     file_write_tool,
@@ -41,62 +40,6 @@ def _python_command() -> str:
     """Return a reliable Python executable for local stdio MCP servers."""
     return sys.executable or shutil.which("python3") or "python3"
 
-
-def _make_mcp(constructor, *, required_env: str | None = None,
-              required_cmd: str | None = None, **kwargs):
-    """Instantiate an MCP server only when its configuration is valid.
-
-    Returns None (with a log warning) if a required env var is unset
-    or a required command is not found on PATH.
-    """
-    if required_env and not os.getenv(required_env):
-        logger.warning("MCP server skipped: env var %s not set", required_env)
-        return None
-    if required_cmd and not shutil.which(required_cmd):
-        logger.warning("MCP server skipped: command %r not found", required_cmd)
-        return None
-    try:
-        return constructor(**kwargs)
-    except Exception as exc:
-        logger.warning("MCP server failed to initialize: %s", exc)
-        return None
-
-
-# ---------------------------------------------------------------------------
-# MCP server configurations (optional; agents degrade gracefully if unavailable)
-# ---------------------------------------------------------------------------
-
-mcp_context7 = _make_mcp(
-    MCPServerHTTP,
-    required_env="CONTEXT7_API_KEY",
-    url="https://mcp.context7.com/mcp",
-    headers={"CONTEXT7_API_KEY": os.getenv("CONTEXT7_API_KEY", "")},
-    cache_tools_list=True,
-)
-
-mcp_sequential_thinking = _make_mcp(
-    MCPServerStdio,
-    required_cmd="docker",
-    command="docker",
-    args=["run", "--rm", "-i", "mcp/sequentialthinking"],
-)
-
-mcp_brave_search = _make_mcp(
-    MCPServerStdio,
-    required_env="BRAVE_API_KEY",
-    required_cmd="docker",
-    command="docker",
-    args=["run", "-i", "--rm", "-e", "BRAVE_API_KEY", "docker.io/mcp/brave-search"],
-    env={"BRAVE_API_KEY": os.getenv("BRAVE_API_KEY", "")},
-)
-
-# MCP server exposing local SKILL.md files via skills_mcp (skills_list_skills / skills_get_skill).
-mcp_skills = _make_mcp(
-    MCPServerStdio,
-    command=_python_command(),
-    args=["-m", "src.mcp.skills_mcp"],
-)
-
 _TOOL_BUNDLES = {
     "none": [],
     "read_only": [file_read_tool, code_docs_tool],
@@ -104,12 +47,7 @@ _TOOL_BUNDLES = {
     "implementer_io": [file_read_tool, file_write_tool, directory_read_tool],
 }
 
-_MCP_BUNDLES = {
-    "none": [],
-    "research": [mcp_context7, mcp_brave_search, mcp_skills],
-    "local_reasoning": [mcp_sequential_thinking, mcp_skills],
-    "knowledge": [mcp_context7, mcp_skills],
-}
+_MCP_BUNDLES = MCP_BUNDLES
 
 
 # ---------------------------------------------------------------------------
