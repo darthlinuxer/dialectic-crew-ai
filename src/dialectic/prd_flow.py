@@ -21,9 +21,7 @@ from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from crewai import Process
 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
-from dialectic.agents import (
-    _vision_label,
-)
+from dialectic.knowledge import _vision_label
 from dialectic.state import DialecticState, MAX_RETRIES
 from dialectic.vision import VisionContext
 from dialectic.export import prd_to_markdown, PRDExporter

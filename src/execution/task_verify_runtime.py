@@ -5,7 +5,8 @@ from typing import Any
 
 from crewai import Agent, Crew, Task
 
-from dialectic.agents import crew_memory, vision_knowledge, llm_simple
+from dialectic.knowledge import crew_memory, vision_knowledge
+from dialectic.llm import llm_simple
 from dialectic.tools import directory_read_tool, file_read_tool
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (

@@ -5,13 +5,9 @@ from typing import Any
 
 from crewai import Agent, Crew, Process, Task
 
-from dialectic.agents import (
-    _vision_label,
-    create_validador_macro,
-    crew_memory,
-    llm_complex,
-    vision_knowledge,
-)
+from dialectic.agents import create_validador_macro
+from dialectic.knowledge import _vision_label, crew_memory, vision_knowledge
+from dialectic.llm import llm_complex
 from dialectic.tools import directory_read_tool, file_read_tool, file_write_tool
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (

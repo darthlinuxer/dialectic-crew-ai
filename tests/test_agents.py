@@ -3,6 +3,8 @@
 from pathlib import Path
 
 import dialectic.agents as agents
+import dialectic.knowledge as knowledge
+import dialectic.mcp_config as mcp_config
 from dialectic.vision import VisionContext
 
 
@@ -15,20 +17,20 @@ def test_vision_knowledge_preserves_absolute_paths(monkeypatch, tmp_path):
         captured_paths.append(file_paths)
         return {"file_paths": file_paths}
 
-    monkeypatch.setattr(agents, "prepare_vision_runtime", lambda context: None)
+    monkeypatch.setattr(knowledge, "prepare_vision_runtime", lambda context: None)
     monkeypatch.setattr(
-        agents,
+        knowledge,
         "get_vision_path",
         lambda context: self_vision if context is VisionContext.SELF else project_vision,
     )
     monkeypatch.setattr(
-        agents,
+        knowledge,
         "TextFileKnowledgeSource",
         fake_text_file_knowledge_source,
     )
 
-    project_result = agents.vision_knowledge(VisionContext.PROJECT)
-    self_result = agents.vision_knowledge(VisionContext.SELF)
+    project_result = knowledge.vision_knowledge(VisionContext.PROJECT)
+    self_result = knowledge.vision_knowledge(VisionContext.SELF)
 
     assert project_result["file_paths"] == [project_vision]
     assert self_result["file_paths"] == [self_vision]
@@ -37,8 +39,8 @@ def test_vision_knowledge_preserves_absolute_paths(monkeypatch, tmp_path):
 
 
 def test_vision_label_matches_context():
-    assert agents._vision_label(VisionContext.PROJECT) == "VISION.md"
-    assert agents._vision_label(VisionContext.SELF) == "SELF_VISION.md"
+    assert knowledge._vision_label(VisionContext.PROJECT) == "VISION.md"
+    assert knowledge._vision_label(VisionContext.SELF) == "SELF_VISION.md"
 
 
 def test_agent_factories_reference_self_vision_label():
@@ -72,35 +74,35 @@ def test_crew_memory_uses_context_isolated_storage(monkeypatch, tmp_path):
         def __init__(self, **kwargs):
             captured.append(kwargs)
 
-    monkeypatch.setattr(agents, "resolve_project_root", lambda: tmp_path)
-    monkeypatch.setattr(agents, "Memory", FakeMemory)
+    monkeypatch.setattr(knowledge, "resolve_project_root", lambda: tmp_path)
+    monkeypatch.setattr(knowledge, "Memory", FakeMemory)
 
-    agents.crew_memory(VisionContext.PROJECT, "prd")
-    agents.crew_memory(VisionContext.SELF, "prd")
+    knowledge.crew_memory(VisionContext.PROJECT, "prd")
+    knowledge.crew_memory(VisionContext.SELF, "prd")
 
     assert captured[0]["storage"].endswith("/.crewai/memory/project/prd")
     assert captured[1]["storage"].endswith("/.crewai/memory/self/prd")
 
 
 def test_python_command_prefers_active_interpreter(monkeypatch):
-    monkeypatch.setattr(agents.sys, "executable", "/tmp/venv/bin/python")
-    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/python3")
+    monkeypatch.setattr(mcp_config.sys, "executable", "/tmp/venv/bin/python")
+    monkeypatch.setattr(mcp_config.shutil, "which", lambda name: "/usr/bin/python3")
 
-    assert agents._python_command() == "/tmp/venv/bin/python"
+    assert mcp_config._python_command() == "/tmp/venv/bin/python"
 
 
 def test_python_command_falls_back_to_python3(monkeypatch):
-    monkeypatch.setattr(agents.sys, "executable", "")
-    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/python3")
+    monkeypatch.setattr(mcp_config.sys, "executable", "")
+    monkeypatch.setattr(mcp_config.shutil, "which", lambda name: "/usr/bin/python3")
 
-    assert agents._python_command() == "/usr/bin/python3"
+    assert mcp_config._python_command() == "/usr/bin/python3"
 
 
 def test_create_visionario_uses_yaml_config(monkeypatch):
     monkeypatch.setattr(
         agents,
         "_get_agent_config",
-        lambda name, vision_context: {
+        lambda name: {
             "role": "Custom Visionary",
             "goal": "Guard {vision_label}",
             "backstory": "Inspect {vision_label} first",

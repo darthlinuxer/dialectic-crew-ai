@@ -13,9 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from dialectic.agents import (
-    _vision_label,
-)
+from dialectic.knowledge import _vision_label
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_flow import OUTPUT_DIR
 from dialectic.vision import VisionContext, get_vision_hash

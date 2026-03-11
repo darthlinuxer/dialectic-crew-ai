@@ -1,4 +1,4 @@
-"""Vision knowledge and crew memory helpers for dialectic agents."""
+"""Vision knowledge and crew memory helpers for dialectic crews."""
 
 from __future__ import annotations
 
@@ -7,12 +7,23 @@ from pathlib import Path
 from crewai import Memory
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
-from dialectic.vision import VisionContext
+from dialectic.vision import (
+    VisionContext,
+    _VISION_PATHS,
+    get_vision_path,
+    prepare_vision_runtime,
+    resolve_project_root,
+)
 
 
 def vision_label(vision_paths: dict[VisionContext, Path], context: VisionContext) -> str:
     """Return the human-readable vision document name for prompts."""
     return vision_paths[context].name
+
+
+def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
+    """Return the active vision filename for prompt rendering."""
+    return vision_label(_VISION_PATHS, context)
 
 
 def vision_knowledge_source(
@@ -26,6 +37,22 @@ def vision_knowledge_source(
     prepare_vision_runtime_fn(context)
     vision_path = get_vision_path_fn(context)
     return knowledge_source_cls(file_paths=[vision_path])
+
+
+def vision_knowledge(
+    context: VisionContext = VisionContext.PROJECT,
+    *,
+    prepare_vision_runtime_fn=None,
+    get_vision_path_fn=None,
+    knowledge_source_cls=None,
+):
+    """Create a knowledge source for the active vision document."""
+    return vision_knowledge_source(
+        context,
+        prepare_vision_runtime_fn=prepare_vision_runtime_fn or prepare_vision_runtime,
+        get_vision_path_fn=get_vision_path_fn or get_vision_path,
+        knowledge_source_cls=knowledge_source_cls or TextFileKnowledgeSource,
+    )
 
 
 def crew_memory_store(
@@ -46,3 +73,19 @@ def crew_memory_store(
     )
     storage_dir.mkdir(parents=True, exist_ok=True)
     return memory_cls(storage=str(storage_dir))
+
+
+def crew_memory(
+    context: VisionContext = VisionContext.PROJECT,
+    namespace: str = "shared",
+    *,
+    resolve_project_root_fn=None,
+    memory_cls=None,
+) -> Memory:
+    """Return a Memory instance isolated by vision context and crew namespace."""
+    return crew_memory_store(
+        context,
+        namespace,
+        resolve_project_root_fn=resolve_project_root_fn or resolve_project_root,
+        memory_cls=memory_cls or Memory,
+    )

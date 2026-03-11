@@ -5,7 +5,8 @@ from typing import Any
 
 from crewai import Crew, Task
 
-from dialectic.agents import crew_memory, create_validador_macro, vision_knowledge
+from dialectic.agents import create_validador_macro
+from dialectic.knowledge import crew_memory, vision_knowledge
 from dialectic.tools import file_read_tool
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import load_yaml_config, render_yaml_config, resolve_output_schema

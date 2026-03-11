@@ -5,7 +5,8 @@ from typing import Any, Mapping
 
 from crewai import Agent, Crew, Process, Task
 
-from dialectic.agents import _vision_label, llm_simple, vision_knowledge
+from dialectic.knowledge import _vision_label, vision_knowledge
+from dialectic.llm import llm_simple
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
     load_yaml_config,

@@ -8,8 +8,8 @@ from dialectic.agents import (
     create_sintetizador,
     create_validador_macro,
     create_implementer,
-    vision_knowledge,
 )
+from dialectic.knowledge import vision_knowledge
 from dialectic.state import DialecticState
 from dialectic.prd_flow import DialecticFlow, run_dialectic_flow, OUTPUT_DIR
 from dialectic import prd_runtime

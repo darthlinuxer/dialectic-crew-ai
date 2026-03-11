@@ -7,15 +7,13 @@ from crewai import Crew, Process, Task
 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
 from dialectic.agents import (
-    _vision_label,
-    crew_memory,
     create_critico_socratico,
     create_sintetizador,
     create_validador_macro,
     create_visionario,
-    llm_planning,
-    vision_knowledge,
 )
+from dialectic.knowledge import _vision_label, crew_memory, vision_knowledge
+from dialectic.llm import llm_planning
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
     load_yaml_config,
