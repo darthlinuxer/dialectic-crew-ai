@@ -17,7 +17,6 @@ Uses native CrewAI features:
 import json
 import logging
 import os
-from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -25,21 +24,26 @@ logger = logging.getLogger(__name__)
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
 from schemas import (
-    ImplementationTask,
-    UserStoryExecutionPlan,
     TaskExecutionResult,
     ExecutionReport,
     ExecutionCheckpoint,
 )
 from execution.runner import _artifact_markdown
+from execution.checkpoint import (
+    checkpoint_path,
+    load_checkpoint,
+    save_checkpoint,
+    upsert_task_result,
+)
+from execution.context_builder import build_task_context
 from execution.plan_loader import find_latest_plan, load_plan as load_plan_file
+from execution.topological_sort import topological_sort
 from execution.verify import (
     update_task_status,
     update_user_story_status,
     _run_verification,
     _load_prd_for_plan,
     _extract_acceptance_criteria,
-    load_plan,
 )
 from execution.task_flow import TaskExecutionFlow, _get_task_persistence
 from dialectic.vision import VisionContext, get_vision_hash
@@ -49,93 +53,12 @@ DEFAULT_MAX_RETRIES_PER_TASK = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
 DEFAULT_MIN_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
 
 
-# ---------------------------------------------------------------------------
-# Plan loading / topological sort
-# ---------------------------------------------------------------------------
-
-def _topological_sort(tasks: list[ImplementationTask]) -> list[ImplementationTask]:
-    by_id = {t.id: t for t in tasks}
-    in_degree = {t.id: 0 for t in tasks}
-    for t in tasks:
-        for dep in t.dependencies:
-            if dep in by_id:
-                in_degree[t.id] += 1
-    queue = deque(tid for tid, d in in_degree.items() if d == 0)
-    result: list[ImplementationTask] = []
-    while queue:
-        tid = queue.popleft()
-        result.append(by_id[tid])
-        for t in tasks:
-            if tid in t.dependencies:
-                in_degree[t.id] -= 1
-                if in_degree[t.id] == 0:
-                    queue.append(t.id)
-    if len(result) != len(tasks):
-        return sorted(tasks, key=lambda x: (x.order, x.id))
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Context builder
-# ---------------------------------------------------------------------------
-
-def _build_task_context(
-    plan: UserStoryExecutionPlan,
-    completed_outputs: dict[str, str],
-    current_task: ImplementationTask,
-) -> str:
-    lines = [
-        "## Execution plan",
-        "",
-        f"User Story: {plan.user_story_id} — {plan.user_story_title}",
-        f"Approach: {plan.approach_summary}",
-        "",
-        "## Previously executed tasks (outputs)",
-        "",
-    ]
-    if not completed_outputs:
-        lines.append("No previous tasks yet.")
-    else:
-        for tid, out in completed_outputs.items():
-            lines.append(f"### {tid}")
-            lines.append(out[:1500] + ("..." if len(out) > 1500 else ""))
-            lines.append("")
-    lines.extend([
-        "## Current task to implement",
-        "",
-        f"**{current_task.id} — {current_task.title}**",
-        "",
-        current_task.description,
-    ])
-    return "\n".join(lines)
-
-
-def _checkpoint_path(run_dir: Path) -> Path:
-    return run_dir / "checkpoint.json"
-
-
-def _save_checkpoint(run_dir: Path, checkpoint: ExecutionCheckpoint) -> None:
-    path = _checkpoint_path(run_dir)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(checkpoint.model_dump(), f, indent=2, ensure_ascii=False)
-
-
-def _load_checkpoint(run_dir: Path) -> ExecutionCheckpoint:
-    path = _checkpoint_path(run_dir)
-    if not path.exists():
-        raise FileNotFoundError(f"Execution checkpoint not found: {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return ExecutionCheckpoint.model_validate(data)
-
-
-def _upsert_task_result(
-    task_results: list[TaskExecutionResult],
-    result: TaskExecutionResult,
-) -> list[TaskExecutionResult]:
-    remaining = [item for item in task_results if item.task_id != result.task_id]
-    remaining.append(result)
-    return remaining
+_topological_sort = topological_sort
+_build_task_context = build_task_context
+_checkpoint_path = checkpoint_path
+_save_checkpoint = save_checkpoint
+_load_checkpoint = load_checkpoint
+_upsert_task_result = upsert_task_result
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +130,7 @@ def run_dialectic_execution(
     print(f"\n{'='*60}")
     print(f"Executing plan — {plan.user_story_id} {plan.user_story_title}")
     print(f"Tasks: {len(ordered_tasks)} | Retries/task: {max_retries_per_task}")
-    print(f"Flow: dialectic → verify(A+B) → reimplement(C) → post-verify(PRD)")
+    print("Flow: dialectic → verify(A+B) → reimplement(C) → post-verify(PRD)")
     if resume_run_id:
         print(f"Resuming run id: {resume_run_id}")
     print(f"{'='*60}\n")
@@ -349,7 +272,7 @@ def run_dialectic_execution(
 
     if completed_task_ids:
         print(f"\n{'='*60}")
-        print(f"Post-execution verification against PRD acceptance criteria")
+        print("Post-execution verification against PRD acceptance criteria")
         print(f"Tasks to verify: {len(completed_task_ids)}")
         print(f"{'='*60}")
 

@@ -207,6 +207,8 @@ Status: completed on 2026-03-11 via `src/dialectic/prd_guardrails.py`; `src/dial
 2. Extract `checkpoint.py`, `topological_sort.py`, `context_builder.py` from `dialectic_execution.py`
 3. Run tests ✓
 
+Status: completed on 2026-03-11. `src/main/cli.py` now focuses on CLI gating and dispatch while `src/main/cli_commands.py` owns the command handlers, with a thin local wrapper kept for the PRD resume lookup seam used by tests. `src/execution/dialectic_execution.py` now imports `src/execution/checkpoint.py`, `src/execution/topological_sort.py`, and `src/execution/context_builder.py` for its helper logic. Focused CLI and execution regressions passed after the split.
+
 ### Phase 8 — Split `verify.py` (419L → 2 files) + `task_flow.py` guardrails
 
 1. Extract `status.py` from `verify.py`
