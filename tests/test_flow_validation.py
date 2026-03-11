@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from schemas import PRDSchema, UserStoryExecutionPlan, ImplementationTask
-from dialectic.export import prd_to_markdown, execution_plan_to_markdown
+from dialectic.markdown_renderers import prd_to_markdown, execution_plan_to_markdown
 
 
 def test_load_prd_and_export_md():

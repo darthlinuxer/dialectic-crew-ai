@@ -190,6 +190,8 @@ Status: completed on 2026-03-11 via `src/dialectic/token_tracker.py`; hook-focus
 3. Extract `export_validation.py` (`validate_consistency` + `_parse_frontmatter`)
 4. Run tests ✓
 
+Status: completed on 2026-03-11 via `src/dialectic/prd_exporter.py`, `src/dialectic/markdown_renderers.py`, and `src/dialectic/export_validation.py`; focused exporter and PRD-flow regressions passed after the split while `src/dialectic/export.py` remained as a compatibility re-export.
+
 ### Phase 6 — Split `prd_flow.py` (473L → 2 files)
 
 1. Extract `prd_guardrails.py` (`_prd_guardrail`, `_extract_prd_from_result`, `_guardrail_success_output`, `_build_retry_feedback_context`, `_materialize_plain_data`)

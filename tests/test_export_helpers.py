@@ -1,6 +1,7 @@
-"""Tests for _slugify() and _parse_frontmatter() in dialectic.export."""
+"""Tests for exporter helper functions."""
 
-from dialectic.export import _slugify, _parse_frontmatter
+from dialectic.export_validation import _parse_frontmatter
+from dialectic.prd_exporter import _slugify
 
 
 class TestSlugify:

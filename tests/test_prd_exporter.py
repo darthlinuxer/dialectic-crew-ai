@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from dialectic.export import PRDExporter, ExportException
 from dialectic.config import ExportConfig
+from dialectic.prd_exporter import PRDExporter, ExportException
 from schemas import PRDSchema, MacroImpact, UserStory, AntiDriftQuestion
 
 

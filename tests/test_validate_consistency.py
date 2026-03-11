@@ -4,8 +4,9 @@ import hashlib
 
 import pytest
 
-from dialectic.export import render_markdown, validate_consistency
 from dialectic.config import ExportConfig
+from dialectic.export_validation import validate_consistency
+from dialectic.markdown_renderers import render_markdown
 from dialectic.vision import VisionContext
 from schemas import PRDSchema, MacroImpact, UserStory, AntiDriftQuestion
 
