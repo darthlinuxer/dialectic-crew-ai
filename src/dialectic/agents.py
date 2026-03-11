@@ -14,6 +14,7 @@ from dialectic.llm import (
     llm_reasoning,
     llm_simple,
 )
+from dialectic.knowledge import crew_memory_store, vision_knowledge_source, vision_label
 from dialectic.mcp_config import MCP_BUNDLES, mcp_brave_search, mcp_context7, mcp_sequential_thinking, mcp_skills
 from dialectic.tool_bundles import TOOL_BUNDLES
 from dialectic.vision import (
@@ -54,14 +55,17 @@ def vision_knowledge(
       - PROJECT (default): ``knowledge/VISION.md`` (user's project)
       - SELF: ``internal/SELF_VISION.md`` (app's own evolution)
     """
-    prepare_vision_runtime(context)
-    vision_path = get_vision_path(context)
-    return TextFileKnowledgeSource(file_paths=[vision_path])
+    return vision_knowledge_source(
+        context,
+        prepare_vision_runtime_fn=prepare_vision_runtime,
+        get_vision_path_fn=get_vision_path,
+        knowledge_source_cls=TextFileKnowledgeSource,
+    )
 
 
 def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
     """Return the human-readable vision document name for prompts."""
-    return _VISION_PATHS[context].name
+    return vision_label(_VISION_PATHS, context)
 
 
 def crew_memory(
@@ -75,16 +79,12 @@ def crew_memory(
     keeps CrewAI's persistent memory isolated while preserving memory benefits
     within each context.
     """
-    safe_namespace = namespace.strip("/") or "shared"
-    storage_dir = (
-        resolve_project_root()
-        / ".crewai"
-        / "memory"
-        / context.value
-        / safe_namespace
+    return crew_memory_store(
+        context,
+        namespace,
+        resolve_project_root_fn=resolve_project_root,
+        memory_cls=Memory,
     )
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    return Memory(storage=str(storage_dir))
 
 
 def _get_agent_config(

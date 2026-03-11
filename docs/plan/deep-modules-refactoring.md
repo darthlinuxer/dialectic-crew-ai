@@ -173,7 +173,7 @@ Status: steps 1-5 completed on 2026-03-11 via `src/main/git_helpers.py`, `src/ma
 5. Slim `agents.py` to agent factories only
 6. Run tests ✓
 
-Status: steps 1-3 completed on 2026-03-11 via `src/dialectic/llm.py`, `src/dialectic/mcp_config.py`, and `src/dialectic/tool_bundles.py`; focused agent/runtime regressions passed after each extraction.
+Status: steps 1-4 completed on 2026-03-11 via `src/dialectic/llm.py`, `src/dialectic/mcp_config.py`, `src/dialectic/tool_bundles.py`, and `src/dialectic/knowledge.py`; focused agent/runtime regressions passed after each extraction.
 
 ### Phase 4 — Split `hooks.py` (516L → 2 files)
 
