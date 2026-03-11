@@ -5,10 +5,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from crewai import Agent, LLM, Memory
+from crewai import Agent, Memory
 from crewai.mcp import MCPServerStdio, MCPServerHTTP
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
+from dialectic.llm import (
+    LLM_BY_TIER,
+    llm_complex,
+    llm_planning,
+    llm_reasoning,
+    llm_simple,
+)
 from dialectic.tools import (
     file_read_tool,
     file_write_tool,
@@ -54,31 +61,6 @@ def _make_mcp(constructor, *, required_env: str | None = None,
         logger.warning("MCP server failed to initialize: %s", exc)
         return None
 
-
-# ---------------------------------------------------------------------------
-# LLM instances (stateless connectors — safe as module-level singletons)
-# ---------------------------------------------------------------------------
-
-LLM_TIMEOUT = int(os.getenv("LLM_REQUEST_TIMEOUT", "900"))
-
-LLM_MODEL_SIMPLE = os.getenv("LLM_MODEL_SIMPLE", "gpt-4o-mini")
-LLM_MODEL_COMPLEX = os.getenv("LLM_MODEL_COMPLEX", "gpt-4o")
-LLM_MODEL_REASONING = os.getenv("LLM_MODEL_REASONING", "o3-mini")
-LLM_MODEL_PLANNING = os.getenv("LLM_MODEL_PLANNING", LLM_MODEL_REASONING)
-
-_common: dict = {"timeout": LLM_TIMEOUT}
-
-llm_simple = LLM(model=LLM_MODEL_SIMPLE, **_common)
-llm_complex = LLM(model=LLM_MODEL_COMPLEX, **_common)
-llm_reasoning = LLM(model=LLM_MODEL_REASONING, **_common)
-llm_planning = LLM(model=LLM_MODEL_PLANNING, **_common)
-
-_LLM_BY_TIER = {
-    "simple": llm_simple,
-    "complex": llm_complex,
-    "reasoning": llm_reasoning,
-    "planning": llm_planning,
-}
 
 # ---------------------------------------------------------------------------
 # MCP server configurations (optional; agents degrade gracefully if unavailable)
@@ -206,7 +188,7 @@ def build_agent_from_config(config: dict[str, Any]) -> Agent:
     mcp_bundle = config.pop("mcp_bundle", "none")
 
     try:
-        llm = _LLM_BY_TIER[llm_tier]
+        llm = LLM_BY_TIER[llm_tier]
     except KeyError as exc:
         raise KeyError(f"Unknown llm tier: {llm_tier}") from exc
 

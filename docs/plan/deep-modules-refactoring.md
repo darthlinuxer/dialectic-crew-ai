@@ -173,6 +173,8 @@ Status: steps 1-5 completed on 2026-03-11 via `src/main/git_helpers.py`, `src/ma
 5. Slim `agents.py` to agent factories only
 6. Run tests ✓
 
+Status: step 1 completed on 2026-03-11 via `src/dialectic/llm.py`; focused agent/runtime regressions passed.
+
 ### Phase 4 — Split `hooks.py` (516L → 2 files)
 
 1. Extract `token_tracker.py` (`TokenBudgetTracker` + `count_tokens` + `count_messages_tokens`)
