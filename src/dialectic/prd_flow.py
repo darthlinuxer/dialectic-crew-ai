@@ -153,14 +153,6 @@ def _guardrail_success_output(result, validated_model: PRDSchema) -> str:
     directly in ``TaskOutput.raw``. Prefer normalized JSON strings here so
     CrewAI can reconstruct ``pydantic`` / ``json_dict`` safely.
     """
-    raw_text = getattr(result, "raw", None)
-    if isinstance(raw_text, str) and raw_text.strip():
-        return raw_text
-
-    json_dict = getattr(result, "json_dict", None)
-    if isinstance(json_dict, dict):
-        return json.dumps(json_dict)
-
     return validated_model.model_dump_json()
 
 def _prd_guardrail(result) -> tuple[bool, Any]:

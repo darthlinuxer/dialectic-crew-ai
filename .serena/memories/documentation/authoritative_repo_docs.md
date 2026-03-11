@@ -1,0 +1,3 @@
+- Fact: The repository maintains a detailed docs set under `docs/` that should be consulted before changing behavior or documentation: `architecture.md`, `flows.md`, `cli.md`, `agents.md`, `configuration.md`, `export.md`, `schemas.md`, `getting-started.md`, and `mcp_skills.md`.
+- Citations: `docs/README.md` documentation index and "Key shipped capabilities" section; `docs/architecture.md` module responsibilities and self-improve architecture; `docs/cli.md` command map and resume/spec-only/self-improve behavior; `docs/flows.md` persisted flow/checkpoint behavior.
+- Reason: Future coding and documentation tasks can use these repo-native references as the first source of truth instead of rediscovering current behavior from scattered code paths.

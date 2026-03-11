@@ -22,6 +22,7 @@ from pathlib import Path
 
 from dialectic.hooks import HookScope
 from dialectic.introspect import run_introspection
+from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.metrics import MetricRecord, MetricsStore, emit, get_metrics_store
 from dialectic.prioritize import dialectic_prioritize
 from dialectic.vision import VisionContext, resolve_project_root
@@ -43,7 +44,7 @@ SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
 
 def _configure_crewai_runtime() -> None:
     """Apply runtime defaults that keep self-improve runs deterministic."""
-    os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
+    configure_crewai_runtime()
 
 
 def _command_available(command: str) -> bool:

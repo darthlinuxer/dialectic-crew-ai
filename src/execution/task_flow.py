@@ -97,14 +97,6 @@ class TaskFlowState(BaseModel):
 
 def _guardrail_success_output(result, validated_model: BaseModel) -> str:
     """Return a CrewAI-compatible guardrail payload for structured outputs."""
-    raw_text = getattr(result, "raw", None)
-    if isinstance(raw_text, str) and raw_text.strip():
-        return raw_text
-
-    json_dict = getattr(result, "json_dict", None)
-    if isinstance(json_dict, dict):
-        return json.dumps(json_dict)
-
     return validated_model.model_dump_json()
 
 def _quality_guardrail(result) -> tuple[bool, Any]:

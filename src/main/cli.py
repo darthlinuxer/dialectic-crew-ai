@@ -24,6 +24,7 @@ from planning.flow import run_user_story_planning
 from execution.runner import run_execution
 from execution.dialectic_execution import run_dialectic_execution
 from execution.verify import show_status, mark_task, verify_task, verify_user_story
+from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.vision import ensure_vision_path, VisionContext
 
 
@@ -358,7 +359,7 @@ def cmd_help():
 
 
 def main():
-    os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
+    configure_crewai_runtime()
     args = sys.argv[1:]
     if not args:
         print(BANNER)

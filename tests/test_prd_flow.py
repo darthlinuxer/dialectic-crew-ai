@@ -185,6 +185,21 @@ def test_prd_guardrail_serializes_pydantic_without_raw():
     assert 'feature_name' in payload
 
 
+def test_prd_guardrail_ignores_unrelated_raw_json_fragments():
+    prd = _make_prd()
+
+    class Result:
+        pydantic = prd
+        raw = '{"file_path": "internal/SELF_VISION.md", "line_count": 200}'
+
+    ok, payload = prd_flow._prd_guardrail(Result())
+
+    assert ok is True
+    assert isinstance(payload, str)
+    assert 'internal/SELF_VISION.md' not in payload
+    assert 'feature_name' in payload
+
+
 def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
     source = inspect.getsource(prd_flow.DialecticFlow)
 

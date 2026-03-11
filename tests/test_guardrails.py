@@ -25,6 +25,18 @@ class TestPrdGuardrail:
         assert ok is True
         assert isinstance(result, str)
 
+    def test_valid_prd_returns_canonical_model_json_even_with_noisy_raw(self):
+        prd = make_prd()
+
+        class NoisyResult(_FakeResult):
+            raw = '{"file_path": "internal/SELF_VISION.md", "line_count": 200}'
+
+        ok, result = _prd_guardrail(NoisyResult(prd))
+
+        assert ok is True
+        assert 'file_path' not in result
+        assert 'feature_name' in result
+
     def test_no_user_stories(self):
         prd = make_prd()
         prd.__dict__["user_stories"] = []

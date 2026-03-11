@@ -4,6 +4,8 @@
 
 A CrewAI-powered dialectic engine that generates PRDs, plans user stories, executes tasks with independent verification, and runs guarded self-improvement cycles. The dialectic loop is: **Thesis → Antithesis → Synthesis → Validation**.
 
+The current product surface is still **CLI-first**, but it already includes persisted PRD flows, resumable execution runs, resumable self-improve cycles, vision-aware agent memory, local MCP-backed skills discovery, and guarded self-evolution workflows. The long-term target remains the vision in `internal/SELF_VISION.md`: API-first architecture, project-aware vision management, structured traceable logging, and a web experience built on CrewAI-native capabilities whenever possible.
+
 ## Architecture (key paths)
 
 | Layer | Path | Purpose |
@@ -11,11 +13,15 @@ A CrewAI-powered dialectic engine that generates PRDs, plans user stories, execu
 | CLI | `src/main/cli.py` | Manual `sys.argv` dispatch (no Click/Typer). Entry point: `dialectic-crew` |
 | Agents | `src/dialectic/agents.py` | 5 agent factories (`create_visionario`, `create_critico_socratico`, `create_sintetizador`, `create_validador_macro`, `create_implementer`) |
 | PRD flow | `src/dialectic/prd_flow.py` | `DialecticFlow(Flow[DialecticState])` — CrewAI Flow with `@start`/`@listen`/`@router` decorators |
-| Planning | `src/planning/flow.py` | User-story planning dialectic |
-| Execution | `src/execution/` | `dialectic_execution.py` orchestrates; `task_flow.py` runs per-task dialectic→verify→reimplement |
+| Planning | `src/planning/flow.py` | User-story planning dialectic crew with retry/validation/export helpers |
+| Execution | `src/execution/` | `dialectic_execution.py` orchestrates story execution and checkpoints; `task_flow.py` runs per-task dialectic→verify→reimplement |
 | Schemas | `src/schemas.py` | All Pydantic models (PRDSchema, UserStory, ImplementationTask, etc.) — the single source of truth |
 | Self-improve | `src/main/self_improve.py` | Orchestrator (not a Flow): introspect → prioritize → PRD → plan → execute → test → PR |
 | MCP skills | `src/mcp/skills_mcp.py` | FastMCP server for local `SKILL.md` discovery |
+| Runtime | `src/dialectic/crewai_runtime.py` | CrewAI runtime defaults, telemetry suppression, and tracing prompt controls |
+| Persistence | `src/dialectic/flow_persistence.py` | Shared SQLite persistence helpers for CrewAI flows and resume support |
+| Vision | `src/dialectic/vision.py` | Vision resolution, project-root selection, and runtime CWD preparation |
+| Hooks | `src/dialectic/hooks.py` | HookScope guardrails for token budgets, iteration limits, protected paths, and tool-call accounting |
 | Metrics | `src/dialectic/metrics.py` | SQLite store at `.dialectic/metrics.db` (override: `DIALECTIC_METRICS_DB`) |
 
 ## Dual vision system
@@ -26,10 +32,14 @@ Two vision files drive agent alignment — never mix them:
 
 Vision is resolved by `src/dialectic/vision.py`. `prepare_vision_runtime()` **changes CWD** to the project root — this is intentional for CrewAI's relative-path knowledge sources.
 
+Agents, crews, exported artifacts, and memory namespaces must stay aligned with the active vision context. Self-improve work is always anchored to `VisionContext.SELF`; project work is anchored to `VisionContext.PROJECT`. If a change weakens that separation, it is a bug, not a feature.
+
 ## Critical conventions
 
 ### Agent factories always create fresh instances
 LLM connectors are module-level singletons, but agents are re-created per run to avoid memory contamination. Every agent backstory embeds `{vision_label}` (filename of the active vision) for traceability.
+
+Agents also rely on CrewAI-native building blocks already present in the codebase: `TextFileKnowledgeSource` for vision ingestion, memory namespacing by vision context, and configured planning/reasoning tiers. Prefer strengthening those patterns over inventing parallel abstractions.
 
 ### LLM tiers via env vars
 - `LLM_MODEL_SIMPLE` (default `gpt-4o-mini`) — validator
@@ -45,6 +55,30 @@ LLM connectors are module-level singletons, but agents are re-created per run to
 
 ### Metrics never raise
 `emit()` is fire-and-forget; all exceptions are swallowed at DEBUG level. Metrics are passive telemetry and must never break the main flow.
+
+### Resume and persistence are first-class features
+PRD generation, execution, and self-improve all support persistence/resume behavior. Preserve flow IDs, checkpoints, lineage metadata, and resumable snapshots when changing these surfaces.
+
+### Runtime defaults are intentional
+CrewAI telemetry is disabled by default and tracing prompts are suppressed unless explicitly enabled. Do not re-enable noisy runtime behavior casually.
+
+## Current capabilities to preserve
+
+- CLI commands already support core workflows: `prd`, `plan`, `execute`, `status`, `mark`, `verify`, `verify-story`, `self-improve`, and `help`.
+- `prd` and `execute` support resume flows, and `self-improve` supports resumable cycles and resumable-cycle listing.
+- `--self` routes supported workflows to `VisionContext.SELF` and `internal/SELF_VISION.md`.
+- PRD generation persists structured outputs to JSON and Markdown and uses CrewAI Flow persistence.
+- Execution uses checkpointed task runs and post-verification against PRD acceptance criteria.
+- Self-improve is a guarded orchestrator with git safety checks, prioritization, execution, validation, and recovery paths.
+- Local skills are exposed through the FastMCP server in `src/mcp/skills_mcp.py`, and optional MCP integrations must fail soft.
+
+## Vision alignment rules
+
+`internal/SELF_VISION.md` is the product direction for this repository. Keep the instructions and implementation aligned with its framework-first priorities:
+
+- Prefer CrewAI native capabilities before custom infrastructure: Memory, Knowledge, Flows, planning, reasoning, hooks, event listeners, human feedback, training, testing, and MCP integrations.
+- Treat API, web UI, active external project management, structured logging, and broader observability as **target architecture** unless and until the codebase actually ships them.
+- When documenting or implementing roadmap work, clearly distinguish **implemented behavior** from **planned direction**. No speculative docs, no imaginary features, no “coming soon” disguised as present tense.
 
 ## Developer workflows
 
@@ -77,6 +111,8 @@ Tests marked `@pytest.mark.llm` are auto-skipped when no API key is present (see
 
 This project is built on **CrewAI**. Before implementing new features, fixing bugs, or modifying agent/flow/crew behavior, **always** fetch the latest CrewAI documentation using Context7:
 
+**Strong rule:** new code and refactored code should first try to solve the problem with documented CrewAI patterns already supported by the framework. Do **not** reinvent the wheel with custom orchestration, memory, knowledge, routing, or observability layers unless CrewAI clearly cannot support the requirement. If you are about to invent infrastructure, stop and re-check the docs first.
+
 | Topic | Context7 library ID | When to consult |
 |-------|---------------------|-----------------|
 | Flows, Agents, Crews, Tasks, Memory, Knowledge, Guardrails | `/crewaiinc/crewai` | Any change to `src/dialectic/`, `src/planning/`, `src/execution/` |
@@ -89,6 +125,7 @@ Key CrewAI patterns used in this codebase:
 - `TextFileKnowledgeSource` for vision file injection into crews
 - `SQLiteFlowPersistence` for state checkpointing
 - Guardrail functions returning `(bool, result_or_error)` tuples
+- Hook-based runtime guardrails for token/cost/protected-path enforcement
 - MCP server adapters via `crewai_tools` — see `_make_mcp()` in `agents.py`
 
 ## Skills-first workflow (using-superpowers)
@@ -117,8 +154,15 @@ The skills library lives at `src/mcp/skills/` (also discoverable at `~/.agents/s
 1. **Schemas go in `src/schemas.py`** — all Pydantic models live there, nowhere else.
 2. **New agents** must follow the `create_<name>(vision_context: VisionContext) -> Agent` factory pattern in `agents.py`.
 3. **New CLI commands** are added as `cmd_<name>(args)` functions in `cli.py` and wired into the `sys.argv` dispatch in `main()`. Update `_command_requires_api()` and `_command_requires_vision()` if the command has special gate requirements.
-4. **Test files** go in `tests/` and follow `test_<module>.py` naming. No global LLM mocking — mock per-test as needed.
-5. **Metrics**: use `emit(metric_type, value, **context)` from `dialectic.metrics`. Never catch or suppress metric errors at the call site.
-6. **Protected paths in self-improve**: if adding safety-critical files, add them to the `frozenset` in `self_improve.py`.
-7. **Git conventions**: conventional commits (`feat(scope): subject`), imperative mood, max 50 chars subject.
-8. **CrewAI telemetry** is disabled by default (`CREWAI_DISABLE_TELEMETRY=true` set in `cli.py:main()`).
+4. **Follow Python best practices** — use type hints, small focused functions, clear names, cohesive modules, and tests that verify behavior rather than implementation trivia.
+5. **Apply SOLID and established design patterns** where they simplify the design. Prefer composition, explicit interfaces/protocols, and narrow responsibilities over large multipurpose classes.
+6. **Keep classes small and cohesive** — aim to keep classes under roughly 400 lines when practical. If a class starts turning into a novella, split responsibilities before it becomes literature.
+7. **Prefer one class per file** unless colocating multiple tiny, tightly coupled classes is clearly the cleaner design.
+8. **Use CrewAI-native solutions first** — before adding custom abstractions, confirm that Flows, Crews, Tasks, Knowledge, Memory, Hooks, MCP adapters, or Event Listeners do not already solve the problem.
+9. **Test files** go in `tests/` and follow `test_<module>.py` naming. No global LLM mocking — mock per-test as needed.
+10. **Metrics**: use `emit(metric_type, value, **context)` from `dialectic.metrics`. Never catch or suppress metric errors at the call site.
+11. **Protected paths in self-improve**: if adding safety-critical files, add them to the `frozenset` in `self_improve.py`.
+12. **Preserve persistence semantics** — when changing PRD, execution, or self-improve flows, keep resume/checkpoint metadata compatible unless a deliberate migration is part of the task.
+13. **Git conventions**: conventional commits (`feat(scope): subject`), imperative mood, max 50 chars subject.
+14. **CrewAI telemetry** is disabled by default (`CREWAI_DISABLE_TELEMETRY=true` set in `cli.py:main()`).
+15. **Structured logging, API, active-project support, and UI work are roadmap areas** aligned with `internal/SELF_VISION.md`; document and implement them carefully as future-facing features until the code exists.
