@@ -15,13 +15,7 @@ from dialectic.llm import (
     llm_simple,
 )
 from dialectic.mcp_config import MCP_BUNDLES, mcp_brave_search, mcp_context7, mcp_sequential_thinking, mcp_skills
-from dialectic.tools import (
-    file_read_tool,
-    file_write_tool,
-    json_search_tool,
-    directory_read_tool,
-    code_docs_tool,
-)
+from dialectic.tool_bundles import TOOL_BUNDLES
 from dialectic.vision import (
     VisionContext,
     _VISION_PATHS,
@@ -40,12 +34,7 @@ def _python_command() -> str:
     """Return a reliable Python executable for local stdio MCP servers."""
     return sys.executable or shutil.which("python3") or "python3"
 
-_TOOL_BUNDLES = {
-    "none": [],
-    "read_only": [file_read_tool, code_docs_tool],
-    "validator_read": [file_read_tool, directory_read_tool, json_search_tool],
-    "implementer_io": [file_read_tool, file_write_tool, directory_read_tool],
-}
+_TOOL_BUNDLES = TOOL_BUNDLES
 
 _MCP_BUNDLES = MCP_BUNDLES
 
