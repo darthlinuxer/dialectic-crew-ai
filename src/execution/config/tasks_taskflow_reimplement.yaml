@@ -11,6 +11,9 @@ reimplement_task_fix:
     VERIFICATION NOTES:
     {verification_notes}
 
+    PRIOR DIALECTIC CONTEXT:
+    {dialectic_context}
+
     Fix ONLY the identified gaps. Use the file reading and writing tools.
   expected_output: Description of what was fixed
 

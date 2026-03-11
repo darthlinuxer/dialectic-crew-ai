@@ -28,6 +28,7 @@ def build_task_flow_reimplementation_crew(
     task_description: str,
     failed_checks: list[str],
     verification_notes: str,
+    dialectic_context: str,
     min_score: float,
     vision_context: VisionContext,
 ) -> Crew:
@@ -38,6 +39,7 @@ def build_task_flow_reimplementation_crew(
         "task_description": task_description,
         "failed_checks": _render_failed_checks(failed_checks),
         "verification_notes": verification_notes[:2000],
+        "dialectic_context": dialectic_context[:2000] or "N/A",
         "min_score": min_score,
         "vision_label": _vision_label(vision_context),
     }

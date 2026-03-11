@@ -1,11 +1,8 @@
 """Tests for guardrail functions across all flow modules."""
 
-import pytest
-
 from dialectic.prd_guardrails import _prd_guardrail
-from execution.task_flow import _quality_guardrail, _verification_guardrail
+from execution.task_guardrails import _quality_guardrail, _verification_guardrail
 from schemas import (
-    PRDSchema,
     ValidationOutput,
     VerificationResult,
 )
@@ -50,7 +47,7 @@ class TestPrdGuardrail:
         assert "PRDSchema" in msg
 
     def test_wrong_type(self):
-        ok, msg = _prd_guardrail(_FakeResult({"not": "a prd"}))
+        ok, _ = _prd_guardrail(_FakeResult({"not": "a prd"}))
         assert ok is False
 
 
@@ -66,7 +63,7 @@ class TestQualityGuardrail:
         object.__setattr__(vo, "quality_score", 15.0)
         object.__setattr__(vo, "consensus_reached", False)
         object.__setattr__(vo, "final_validation_notes", "")
-        ok, msg = _quality_guardrail(_FakeResult(vo))
+        ok, _ = _quality_guardrail(_FakeResult(vo))
         assert ok is False
 
     def test_non_pydantic(self):
@@ -103,5 +100,5 @@ class TestVerificationGuardrail:
         assert "VerificationResult" in msg
 
     def test_wrong_type(self):
-        ok, msg = _verification_guardrail(_FakeResult("not a result"))
+        ok, _ = _verification_guardrail(_FakeResult("not a result"))
         assert ok is False

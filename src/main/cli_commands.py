@@ -9,7 +9,8 @@ from dialectic.prd_flow import get_prd_resume_state
 from dialectic.vision import VisionContext, ensure_vision_path, resolve_project_root
 from execution.dialectic_execution import run_dialectic_execution
 from execution.runner import run_execution
-from execution.verify import mark_task, show_status, verify_task, verify_user_story
+from execution.status import mark_task, show_status
+from execution.verify import verify_task, verify_user_story
 from main.self_improve import _list_resumable_cycles, run_self_improve
 from planning.flow import run_user_story_planning
 from dialectic import run_dialectic_flow
@@ -19,7 +20,7 @@ def _check_vision_exists(context: VisionContext = VisionContext.PROJECT) -> None
     try:
         ensure_vision_path(context)
     except FileNotFoundError as exc:
-        print(f"  Vision document not found!")
+        print("  Vision document not found!")
         print(f"  {exc}")
         sys.exit(1)
 

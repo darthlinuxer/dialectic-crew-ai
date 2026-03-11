@@ -1,20 +1,19 @@
-"""Tests for execution/verify.py — plan I/O, task status, and acceptance criteria."""
-
-import json
+"""Tests for execution verify/status helpers and acceptance criteria."""
 
 import pytest
 
-from schemas import UserStoryExecutionPlan
-from execution.verify import (
+from execution.status import (
     load_plan,
     save_plan,
-    _find_task,
+    find_task,
     mark_task,
-    _load_prd_for_plan,
-    _run_verification,
     update_task_status,
     update_user_story_status,
     show_status,
+)
+from execution.verify import (
+    _load_prd_for_plan,
+    _run_verification,
     _extract_acceptance_criteria,
 )
 from conftest import make_plan, make_task, make_prd
@@ -36,16 +35,16 @@ class TestLoadSavePlan:
 
 class TestFindTask:
     def test_found(self, sample_plan):
-        t = _find_task(sample_plan, "T-001")
+        t = find_task(sample_plan, "T-001")
         assert t.id == "T-001"
 
     def test_case_insensitive(self, sample_plan):
-        t = _find_task(sample_plan, "t-001")
+        t = find_task(sample_plan, "t-001")
         assert t.id == "T-001"
 
     def test_not_found(self, sample_plan):
         with pytest.raises(ValueError, match="not found"):
-            _find_task(sample_plan, "T-999")
+            find_task(sample_plan, "T-999")
 
 
 class TestMarkTask:
@@ -53,7 +52,7 @@ class TestMarkTask:
         result = mark_task("T-001", "completed", plan_path=plan_file, notes="done")
         assert result["status"] == "completed"
         loaded, _ = load_plan(plan_file)
-        task = _find_task(loaded, "T-001")
+        task = find_task(loaded, "T-001")
         assert task.status == "completed"
         assert task.completed_at is not None
         assert task.verification_notes == "done"
@@ -62,7 +61,7 @@ class TestMarkTask:
         mark_task("T-001", "completed", plan_path=plan_file)
         mark_task("T-001", "pending", plan_path=plan_file)
         loaded, _ = load_plan(plan_file)
-        task = _find_task(loaded, "T-001")
+        task = find_task(loaded, "T-001")
         assert task.status == "pending"
         assert task.completed_at is None
 
@@ -71,7 +70,7 @@ class TestUpdateTaskStatus:
     def test_programmatic_update(self, plan_file):
         update_task_status(plan_file, "T-001", "in_progress", notes="started")
         loaded, _ = load_plan(plan_file)
-        task = _find_task(loaded, "T-001")
+        task = find_task(loaded, "T-001")
         assert task.status == "in_progress"
         assert task.verification_notes == "started"
 

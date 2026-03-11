@@ -216,6 +216,8 @@ Status: completed on 2026-03-11. `src/main/cli.py` now focuses on CLI gating and
 3. **Address DC-3**: In `task_flow.py` `independent_reimplement`, pass condensed dialectic context (`dialectic_notes` + truncated `impl_output`) into the reimplementation crew so design insights from the original dialectic survive verification failure
 4. Run tests ✓
 
+Status: completed on 2026-03-11 via `src/execution/status.py` and `src/execution/task_guardrails.py`. `src/execution/verify.py` now focuses on verification-only behavior, guardrails resolve through `src/execution/task_guardrails.py`, and task reimplementation now receives condensed dialectic context through the YAML-backed runtime builder. Focused Phase 8 regressions passed: `tests/test_verify_ops.py tests/test_guardrails.py tests/test_task_reimplement_runtime.py tests/test_task_verify_runtime.py tests/test_task_flow_state.py tests/test_execution_runtime.py tests/test_flow_wiring.py tests/test_dialectic_execution_resume.py tests/test_cli_runtime.py` (`63 passed`).
+
 ### Phase 9 — Fix function call gaps + dialectic cohesion
 
 1. Address all 11 gaps from the table above (original 8 + DC-1 through DC-3)

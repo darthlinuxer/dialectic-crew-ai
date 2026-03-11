@@ -17,7 +17,8 @@ Flow structure:
 """
 
 import os
-from typing import Any, Literal
+from functools import lru_cache
+from typing import Literal
 from uuid import uuid4
 
 from crewai.flow.flow import Flow, start, listen, router
@@ -78,46 +79,9 @@ class TaskFlowState(BaseModel):
     current_phase: Literal["start", "dialectic", "verify", "reimplement", "completed", "failed"] = "start"
 
 
-# ---------------------------------------------------------------------------
-# Guardrails
-# ---------------------------------------------------------------------------
-
-
-def _guardrail_success_output(result, validated_model: BaseModel) -> str:
-    """Return a CrewAI-compatible guardrail payload for structured outputs."""
-    return validated_model.model_dump_json()
-
-def _quality_guardrail(result) -> tuple[bool, Any]:
-    pydantic_obj = getattr(result, "pydantic", None)
-    if pydantic_obj and isinstance(pydantic_obj, ValidationOutput):
-        if 0.0 <= pydantic_obj.quality_score <= 10.0:
-            return (True, _guardrail_success_output(result, pydantic_obj))
-        emit_metric("guardrail_reject", 1.0, guardrail="quality", reason="score_out_of_range")
-        return (False, "quality_score must be between 0.0 and 10.0")
-    emit_metric("guardrail_reject", 1.0, guardrail="quality", reason="invalid_schema")
-    return (False, "Output must be valid JSON: quality_score, consensus_reached, final_validation_notes")
-
-
-def _verification_guardrail(result) -> tuple[bool, Any]:
-    pydantic_obj = getattr(result, "pydantic", None)
-    if pydantic_obj and isinstance(pydantic_obj, VerificationResult):
-        return (True, _guardrail_success_output(result, pydantic_obj))
-    emit_metric("guardrail_reject", 1.0, guardrail="verification", reason="invalid_schema")
-    return (False, "Output must be VerificationResult JSON: verified, checks_passed, checks_failed, notes")
-
-
-# ---------------------------------------------------------------------------
-# TaskExecutionFlow
-# ---------------------------------------------------------------------------
-
-_task_persistence: SQLiteFlowPersistence | None = None
-
-
+@lru_cache(maxsize=1)
 def _get_task_persistence() -> SQLiteFlowPersistence:
-    global _task_persistence
-    if _task_persistence is None:
-        _task_persistence = build_sqlite_flow_persistence()
-    return _task_persistence
+    return build_sqlite_flow_persistence()
 
 
 @persist()
@@ -275,7 +239,7 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     # not method references.
     @listen("reimplement")
     def independent_reimplement(self):
-        """Phase C: Fresh re-implementation by independent agent (no dialectic context)."""
+        """Phase C: Focused re-implementation using failed checks plus condensed context."""
         self.state.current_phase = "reimplement"
         if not self.state.phases_executed or self.state.phases_executed[-1] != "reimplement":
             self.state.phases_executed.append("reimplement")
@@ -289,6 +253,10 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
             task_description=self.state.task_description,
             failed_checks=failed_checks,
             verification_notes=self.state.verification.notes,
+            dialectic_context=_build_dialectic_context(
+                self.state.dialectic_notes,
+                self.state.impl_output,
+            ),
             min_score=self.state.min_score,
             vision_context=vision_context,
         )
@@ -412,3 +380,15 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
             verification=self.state.verification if self.state.verified or self.state.verification.notes else None,
             execution_phases=self.state.phases_executed,
         )
+
+
+def _build_dialectic_context(dialectic_notes: str, impl_output: str) -> str:
+    """Condense the prior dialectic reasoning for reimplementation context."""
+    notes = (dialectic_notes or "").strip()
+    implementation_excerpt = (impl_output or "").strip()[:1500]
+    parts: list[str] = []
+    if notes:
+        parts.append("DIALECTIC NOTES:\n" + notes[:1200])
+    if implementation_excerpt:
+        parts.append("IMPLEMENTATION EXCERPT:\n" + implementation_excerpt)
+    return "\n\n".join(parts)

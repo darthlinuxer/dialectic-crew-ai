@@ -29,6 +29,7 @@ def test_build_task_flow_reimplementation_crew_uses_yaml_templates(monkeypatch):
         task_description="Fix the task",
         failed_checks=["missing file", "bad config"],
         verification_notes="Verifier found gaps",
+        dialectic_context="Critic said the config path was inconsistent.",
         min_score=8.0,
         vision_context=VisionContext.SELF,
     )
@@ -36,6 +37,8 @@ def test_build_task_flow_reimplementation_crew_uses_yaml_templates(monkeypatch):
     assert len(captured_tasks) == 2
     assert "FAILED CHECKS" in captured_tasks[0]["description"]
     assert "- missing file" in captured_tasks[0]["description"]
+    assert "PRIOR DIALECTIC CONTEXT" in captured_tasks[0]["description"]
+    assert "config path was inconsistent" in captured_tasks[0]["description"]
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
     assert captured_tasks[1]["output_pydantic"].__name__ == "ValidationOutput"
     assert captured_tasks[1]["guardrail"].__name__ == "_quality_guardrail"
@@ -70,6 +73,7 @@ def test_build_task_flow_reimplementation_crew_uses_na_for_empty_failed_checks(m
         task_description="Fix the task",
         failed_checks=[],
         verification_notes="Verifier found gaps",
+        dialectic_context="",
         min_score=8.0,
         vision_context=VisionContext.PROJECT,
     )

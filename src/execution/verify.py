@@ -1,14 +1,4 @@
-"""
-Task verification and status tracking for execution plans.
-
-Provides:
-- show_status(): display task/story completion table
-- mark_task(): manually set task status
-- verify_task(): use LLM agent to verify a single task's acceptance criteria
-- verify_user_story(): verify all completed tasks and update story-level status
-- update_task_status(): programmatic task status update with persistence
-- update_user_story_status(): programmatic story status update with persistence
-"""
+"""Task verification logic for execution plans."""
 
 import json
 import os
@@ -19,168 +9,30 @@ from typing import Literal
 from schemas import UserStoryExecutionPlan, PRDSchema, ImplementationTask
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
-from execution.plan_loader import find_latest_plan, load_plan as load_plan_file
+from execution.status import (
+    STATUS_ICONS,
+    find_task,
+    load_plan,
+    mark_task,
+    save_plan,
+    show_status,
+    update_task_status,
+    update_user_story_status,
+)
 from execution.verify_runtime import build_verification_crew
 
-_STORY_STATUS = Literal[
-    "pending", "in_progress", "completed", "partially_completed", "failed"
+
+__all__ = [
+    "show_status",
+    "mark_task",
+    "verify_task",
+    "verify_user_story",
+    "update_task_status",
+    "update_user_story_status",
 ]
+
+
 DEFAULT_VERIFICATION_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
-
-
-# ---------------------------------------------------------------------------
-# Plan I/O
-# ---------------------------------------------------------------------------
-
-def _find_latest_plan() -> Path:
-    return find_latest_plan(PRD_OUTPUT_DIR)
-
-
-def load_plan(plan_path: str | None) -> tuple[UserStoryExecutionPlan, str]:
-    """Load plan from file. Returns (plan, resolved_path)."""
-    if plan_path is None or plan_path == "--latest":
-        path = str(_find_latest_plan())
-    else:
-        path = plan_path
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Plan not found: {path}")
-    return load_plan_file(path), path
-
-
-def save_plan(plan: UserStoryExecutionPlan, path: str) -> None:
-    """Persist plan back to JSON file."""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(plan.model_dump(), f, indent=2, ensure_ascii=False)
-
-
-def _find_task(plan: UserStoryExecutionPlan, task_id: str) -> ImplementationTask:
-    norm = task_id.strip().upper()
-    for t in plan.tasks:
-        if t.id.upper() == norm:
-            return t
-    available = [t.id for t in plan.tasks]
-    raise ValueError(f"Task '{task_id}' not found. Available: {available}")
-
-
-# ---------------------------------------------------------------------------
-# Status display
-# ---------------------------------------------------------------------------
-
-_STATUS_ICONS = {
-    "pending": "[ ]",
-    "in_progress": "[~]",
-    "completed": "[x]",
-    "failed": "[!]",
-    "partially_completed": "[/]",
-}
-
-
-def show_status(plan_path: str | None = None) -> dict:
-    """Display task and user story status table. Returns summary dict."""
-    plan, resolved = load_plan(plan_path)
-
-    story_icon = _STATUS_ICONS.get(plan.status, "[ ]")
-    story_completed = f"  ({plan.completed_at})" if plan.completed_at else ""
-
-    print(f"\n{'='*65}")
-    print(f"  {story_icon} {plan.user_story_id} — {plan.user_story_title}")
-    print(f"  Story status: {plan.status}{story_completed}")
-    print(f"  Score: {plan.quality_score}/10.0  |  Plan: {resolved}")
-    print(f"{'='*65}")
-
-    counts = {"pending": 0, "in_progress": 0, "completed": 0, "failed": 0}
-    for t in sorted(plan.tasks, key=lambda x: (x.order, x.id)):
-        icon = _STATUS_ICONS.get(t.status, "[ ]")
-        deps = f"  (deps: {', '.join(t.dependencies)})" if t.dependencies else ""
-        notes = f"  -- {t.verification_notes}" if t.verification_notes else ""
-        completed = f"  ({t.completed_at})" if t.completed_at else ""
-        print(f"  {icon} {t.id} — {t.title}{deps}{completed}{notes}")
-        counts[t.status] = counts.get(t.status, 0) + 1
-
-    total = len(plan.tasks)
-    done = counts["completed"]
-    print(f"\n  Progress: {done}/{total} completed", end="")
-    if counts["failed"]:
-        print(f", {counts['failed']} failed", end="")
-    if counts["in_progress"]:
-        print(f", {counts['in_progress']} in progress", end="")
-    print(f"\n{'='*65}\n")
-
-    return {
-        "plan_path": resolved,
-        "total": total,
-        "story_status": plan.status,
-        **counts,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Mark task
-# ---------------------------------------------------------------------------
-
-def mark_task(
-    task_id: str,
-    status: Literal["pending", "in_progress", "completed", "failed"],
-    plan_path: str | None = None,
-    notes: str = "",
-) -> dict:
-    """Manually set task status and persist."""
-    plan, resolved = load_plan(plan_path)
-    task = _find_task(plan, task_id)
-
-    task.status = status
-    if notes:
-        task.verification_notes = notes
-    if status == "completed":
-        task.completed_at = datetime.now().isoformat(timespec="seconds")
-    elif status == "pending":
-        task.completed_at = None
-
-    save_plan(plan, resolved)
-    icon = _STATUS_ICONS.get(status, "[ ]")
-    print(f"  {icon} {task.id} — {task.title} -> {status}")
-    if notes:
-        print(f"      Notes: {notes}")
-    return {"task_id": task.id, "status": status, "plan_path": resolved}
-
-
-# ---------------------------------------------------------------------------
-# Update task status (programmatic, used by dialectic_execution)
-# ---------------------------------------------------------------------------
-
-def update_task_status(
-    plan_path: str,
-    task_id: str,
-    status: Literal["pending", "in_progress", "completed", "failed"],
-    notes: str = "",
-) -> None:
-    """Update task status in-place and save. Used by execution engine."""
-    plan, resolved = load_plan(plan_path)
-    task = _find_task(plan, task_id)
-    task.status = status
-    if notes:
-        task.verification_notes = notes
-    if status == "completed":
-        task.completed_at = datetime.now().isoformat(timespec="seconds")
-    save_plan(plan, resolved)
-
-
-# ---------------------------------------------------------------------------
-# Update user story status (programmatic)
-# ---------------------------------------------------------------------------
-
-def update_user_story_status(
-    plan_path: str,
-    status: _STORY_STATUS,
-) -> None:
-    """Update user story-level status in the plan and save."""
-    plan, resolved = load_plan(plan_path)
-    plan.status = status
-    if status == "completed":
-        plan.completed_at = datetime.now().isoformat(timespec="seconds")
-    elif status in ("pending", "in_progress"):
-        plan.completed_at = None
-    save_plan(plan, resolved)
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +144,7 @@ def verify_task(
     Updates plan status based on verification result.
     """
     plan, resolved = load_plan(plan_path)
-    task = _find_task(plan, task_id)
+    task = find_task(plan, task_id)
 
     prd = _load_prd_for_plan(plan, prd_path)
     acceptance_criteria = _extract_acceptance_criteria(plan, prd)
@@ -308,7 +160,7 @@ def verify_task(
 
     save_plan(plan, resolved)
 
-    icon = _STATUS_ICONS.get(new_status, "[ ]")
+    icon = STATUS_ICONS.get(new_status, "[ ]")
     print(f"\n  {icon} {task.id} — score: {vr['score']}/10")
     print(f"      Status: {new_status}")
     print(f"      Notes: {vr['notes'][:300]}")
@@ -371,12 +223,12 @@ def verify_user_story(
         if vr["verified"]:
             verified_ids.append(task.id)
             task.verification_notes = f"[auto-verified] {vr['notes']}"
-            icon = _STATUS_ICONS["completed"]
+            icon = STATUS_ICONS["completed"]
         else:
             failed_verification_ids.append(task.id)
             task.status = "failed"
             task.verification_notes = f"[post-verify failed] {vr['notes']}"
-            icon = _STATUS_ICONS["failed"]
+            icon = STATUS_ICONS["failed"]
 
         print(f"  {icon} {task.id} — score: {vr['score']}/10")
 
@@ -396,7 +248,7 @@ def verify_user_story(
 
     save_plan(plan, resolved)
 
-    icon = _STATUS_ICONS.get(plan.status, "[ ]")
+    icon = STATUS_ICONS.get(plan.status, "[ ]")
     print(f"\n  {icon} Story {plan.user_story_id}: {plan.status}")
     print(f"      Verified: {verified_ids}")
     if all_failed:

@@ -63,7 +63,7 @@ def get_output_schema_registry() -> dict[str, Any]:
 def get_guardrail_registry() -> dict[str, Any]:
     from dialectic.prd_flow import _prd_guardrail
     from dialectic.prioritize import _prioritization_guardrail
-    from execution.task_flow import _quality_guardrail, _verification_guardrail
+    from execution.task_guardrails import _quality_guardrail, _verification_guardrail
     from planning.flow import _plan_guardrail
 
     return {
