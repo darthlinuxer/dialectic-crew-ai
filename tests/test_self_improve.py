@@ -8,6 +8,7 @@ import pytest
 from dialectic.introspect import run_introspection
 from dialectic.metrics import MetricRecord, MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
+from main.pr_builder import create_pr
 from main.self_improve import (
     PROTECTED_PATHS,
     _create_pr,
@@ -809,6 +810,61 @@ class TestCreatePr:
             lambda name: None if name == "gh" else "/usr/bin/git",
         )
         assert _create_pr("branch", "title", "body", tmp_path) is None
+
+    def test_pushes_branch_before_creating_pr(self, tmp_path):
+        commands = []
+
+        def fake_run(cmd, cwd=None, timeout=120):
+            commands.append(cmd)
+            if cmd[:3] == ["git", "push", "-u"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="pushed\n", stderr="")
+            if cmd[:3] == ["gh", "pr", "create"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="https://example/pr/123\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="unexpected command")
+
+        pr_url = create_pr(
+            "self-improve/test-cycle",
+            "title",
+            "body",
+            tmp_path,
+            command_available_fn=lambda command: True,
+            run_cmd_fn=fake_run,
+            logger=type("Logger", (), {"warning": lambda self, msg, *args: None})(),
+        )
+
+        assert pr_url == "https://example/pr/123"
+        assert commands == [
+            ["git", "push", "-u", "origin", "self-improve/test-cycle"],
+            ["gh", "pr", "create", "--title", "title", "--body", "body", "--head", "self-improve/test-cycle"],
+        ]
+
+    def test_returns_none_when_push_fails(self, tmp_path):
+        commands = []
+        warnings = []
+
+        class Logger:
+            def warning(self, msg, *args):
+                warnings.append(msg % args if args else msg)
+
+        def fake_run(cmd, cwd=None, timeout=120):
+            commands.append(cmd)
+            if cmd[:3] == ["git", "push", "-u"]:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="push rejected")
+            return subprocess.CompletedProcess(cmd, 0, stdout="https://example/pr/123\n", stderr="")
+
+        pr_url = create_pr(
+            "self-improve/test-cycle",
+            "title",
+            "body",
+            tmp_path,
+            command_available_fn=lambda command: True,
+            run_cmd_fn=fake_run,
+            logger=Logger(),
+        )
+
+        assert pr_url is None
+        assert commands == [["git", "push", "-u", "origin", "self-improve/test-cycle"]]
+        assert warnings == ["PR branch push failed: push rejected"]
 
 
 class TestTokenBudgetIntegration:

@@ -26,6 +26,15 @@ def create_pr(
         logger.warning("PR creation skipped: GitHub CLI (gh) not found")
         return None
 
+    push_result = run_cmd_fn(
+        ["git", "push", "-u", "origin", branch],
+        cwd=cwd,
+        timeout=60,
+    )
+    if push_result.returncode != 0:
+        logger.warning("PR branch push failed: %s", push_result.stderr)
+        return None
+
     result = run_cmd_fn(
         ["gh", "pr", "create", "--title", title, "--body", body, "--head", branch],
         cwd=cwd,
