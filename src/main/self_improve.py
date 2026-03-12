@@ -8,9 +8,11 @@ Usage:
     dialectic-crew self-improve [--dry-run] [--max N]
 """
 
+# pylint: disable=too-many-locals,too-many-return-statements,too-many-branches
+# pylint: disable=too-many-statements,too-many-nested-blocks
+
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
@@ -22,11 +24,10 @@ from pathlib import Path
 from dialectic.hooks import HookScope
 from dialectic.introspect import run_introspection
 from dialectic.crewai_runtime import configure_crewai_runtime
-from dialectic.metrics import MetricRecord, MetricsStore, emit, get_metrics_store
+from dialectic.metrics import MetricsStore, emit, get_metrics_store
 from dialectic.prioritize import dialectic_prioritize
 from dialectic.vision import VisionContext, resolve_project_root
 from main.git_helpers import (
-    command_available,
     dirty_worktree_guidance,
     git_branch_create,
     git_branch_create_from_head,
@@ -82,7 +83,7 @@ def _configure_crewai_runtime() -> None:
 
 
 def _command_available(command: str) -> bool:
-    return command_available(command)
+    return shutil.which(command) is not None
 
 
 def _run_cmd(
@@ -235,7 +236,9 @@ def _load_self_improve_record(project_root: Path, cycle_id: str) -> SelfImprovem
     )
 
 
-def _resolve_resume_context(record: SelfImprovementRecord) -> tuple[list[ImprovementOpportunity], dict]:
+def _resolve_resume_context(
+    record: SelfImprovementRecord,
+) -> tuple[list[ImprovementOpportunity], dict]:
     return resolve_resume_context(record)
 
 
@@ -275,6 +278,7 @@ def run_self_improve(
     store = get_metrics_store()
     is_resume = resume_cycle_id is not None
     if is_resume:
+        assert resume_cycle_id is not None
         record = _load_self_improve_record(project_root, resume_cycle_id)
         cycle_id = record.cycle_id
         resume_summary = _summarize_resume_state(record, record.failure_reason)
@@ -316,7 +320,10 @@ def run_self_improve(
     if not dry_run and not is_resume:
         print("[1b/6] Checking git preflight...")
         if not _command_available("git"):
-            record.failure_reason = "Git is required for self-improve branch isolation but was not found on PATH"
+            record.failure_reason = (
+                "Git is required for self-improve branch isolation "
+                "but was not found on PATH"
+            )
             print(f"  ABORT: {record.failure_reason}")
             _persist_record(store, record)
             return record
@@ -383,7 +390,7 @@ def run_self_improve(
                 vision_context=VisionContext.SELF,
                 max_to_debate=min(len(report.opportunities), 5),
             )
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Dialectic prioritization failed: %s; using impact sort", e)
             print(f"  Prioritization failed ({e}); falling back to impact sort.")
             prioritized = sorted(
@@ -420,11 +427,15 @@ def run_self_improve(
                 switched, switch_reason = _git_checkout_branch(branch_name, project_root)
                 if not switched:
                     if current_branch.startswith("self-improve/"):
-                        recreated, recreate_reason = _git_branch_create_from_head(branch_name, project_root)
+                        recreated, recreate_reason = _git_branch_create_from_head(
+                            branch_name,
+                            project_root,
+                        )
                         if not recreated:
                             record.failure_reason = (
                                 f"Failed to resume on branch '{branch_name}': {switch_reason}; "
-                                f"also failed to recreate it from {current_branch}: {recreate_reason}"
+                                "also failed to recreate it from "
+                                f"{current_branch}: {recreate_reason}"
                             )
                             print(f"  ABORT: {record.failure_reason}")
                             _persist_record(store, record)
@@ -468,7 +479,10 @@ def run_self_improve(
                         )
                         raise _CycleAbort(record.failure_reason)
 
-                    from dialectic.prd_flow import DialecticFlow, _get_persistence
+                    from dialectic.prd_flow import (  # pylint: disable=import-outside-toplevel
+                        DialecticFlow,
+                        _get_persistence,
+                    )
 
                     flow = DialecticFlow(persistence=_get_persistence())
                     record.prd_flow_id = record.prd_flow_id or flow.flow_id
@@ -484,7 +498,9 @@ def run_self_improve(
                     _save_self_improve_record(project_root, record)
 
                     if flow.state.quality_score < 9.0 and not flow.state.consensus_reached:
-                        record.failure_reason = f"PRD quality too low: {flow.state.quality_score}"
+                        record.failure_reason = (
+                            f"PRD quality too low: {flow.state.quality_score}"
+                        )
                         print(f"  PRD did not reach threshold: {flow.state.quality_score}/10")
                         raise _CycleAbort(record.failure_reason)
                     prd_path = _require_artifact(
@@ -508,7 +524,9 @@ def run_self_improve(
 
                 if not record.plan_generated:
                     print("[5/7] Planning user story execution...")
-                    from planning.flow import run_user_story_planning
+                    from planning.flow import (  # pylint: disable=import-outside-toplevel
+                        run_user_story_planning,
+                    )
 
                     plan_result = run_user_story_planning(
                         prd_path=prd_path,
@@ -518,7 +536,9 @@ def run_self_improve(
                     plan_path = _record_plan_artifacts(record, plan_result)
                     _save_self_improve_record(project_root, record)
                     if plan_result["quality_score"] < 7.5:
-                        record.failure_reason = f"Plan quality too low: {plan_result['quality_score']}"
+                        record.failure_reason = (
+                            f"Plan quality too low: {plan_result['quality_score']}"
+                        )
                         raise _CycleAbort(record.failure_reason)
                     plan_path = _require_artifact(
                         plan_path,
@@ -546,7 +566,9 @@ def run_self_improve(
                 )
                 if needs_execution:
                     print("[6/7] Executing plan...")
-                    from execution.dialectic_execution import run_dialectic_execution
+                    from execution.dialectic_execution import (  # pylint: disable=import-outside-toplevel
+                        run_dialectic_execution,
+                    )
 
                     exec_result = run_dialectic_execution(
                         plan_path=plan_path,
@@ -571,7 +593,10 @@ def run_self_improve(
                         "Execution report did not produce an exported artifact",
                     )
                 else:
-                    print(f"[resume] Reusing execution artifacts from run: {record.execution_run_id}")
+                    print(
+                        "[resume] Reusing execution artifacts from run: "
+                        f"{record.execution_run_id}"
+                    )
 
         except _CycleAbort as e:
             print(f"\n  Cycle aborted: {e}")
@@ -583,7 +608,7 @@ def run_self_improve(
             _persist_record(store, record)
             _save_self_improve_record(project_root, record)
             return record
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             record.failure_reason = f"Unexpected error: {e}"
             print(f"\n  Unexpected error: {e}")
             record.total_tokens = tracker.total_tokens
@@ -664,7 +689,7 @@ class _CycleAbort(Exception):
     pass
 
 
-def _persist_record(store: MetricsStore, record: SelfImprovementRecord) -> None:
+def _persist_record(_store: MetricsStore, record: SelfImprovementRecord) -> None:
     emit(
         "self_improve_cycle",
         1.0 if record.pr_created else 0.0,

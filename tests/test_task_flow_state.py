@@ -1,5 +1,7 @@
 """Tests for TaskFlowState defaults and mutation."""
 
+# pylint: disable=missing-function-docstring,no-member,duplicate-code
+
 from execution.task_flow import TaskFlowState
 from schemas import VerificationResult
 

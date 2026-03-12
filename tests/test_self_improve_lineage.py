@@ -1,5 +1,9 @@
 """Focused tests for self-improve artifact lineage and stage validation."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=redefined-outer-name,unused-argument,too-few-public-methods
+# pylint: disable=line-too-long,duplicate-code
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -172,7 +176,7 @@ class TestSelfImproveLineage:
 
         monkeypatch.setattr(
             "main.self_improve._command_available",
-            lambda command: False if command == "git" else True,
+            lambda command: command != "git",
         )
         monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
 

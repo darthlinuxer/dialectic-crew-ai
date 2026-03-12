@@ -1,11 +1,14 @@
 """Tests for main.self_improve -- self-improvement orchestrator."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=redefined-outer-name,import-outside-toplevel,unused-argument
+# pylint: disable=too-few-public-methods,line-too-long,too-many-lines,duplicate-code
+
 import subprocess
 import sys
 
 import pytest
 
-from dialectic.introspect import run_introspection
 from dialectic.metrics import MetricRecord, MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
 from main.pr_builder import create_pr
@@ -466,7 +469,7 @@ class TestRunSelfImprove:
 
         pr_attempted = {"value": False}
 
-        def fake_create_pr(*args, **kwargs):
+        def fake_create_pr(*_args, **_kwargs):
             pr_attempted["value"] = True
             return "https://example/pr/1"
 

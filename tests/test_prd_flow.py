@@ -1,5 +1,10 @@
 """Focused tests for PRD flow retry feedback handling."""
 
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=protected-access,too-few-public-methods,import-outside-toplevel
+# pylint: disable=consider-using-with,unnecessary-lambda,line-too-long
+# pylint: disable=use-implicit-booleaness-not-comparison,consider-using-from-import
+
 import inspect
 import json
 from types import SimpleNamespace
@@ -249,6 +254,7 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
 
     class FakeCrew:
         def kickoff(self, **kwargs):
+            del kwargs
             return SimpleNamespace(pydantic=prd)
 
     monkeypatch.setattr(prd_flow, "build_prd_crew", lambda **kwargs: FakeCrew())

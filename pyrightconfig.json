@@ -1,0 +1,22 @@
+{
+    "include": [
+        "src",
+        "tests"
+    ],
+    "exclude": [
+        ".venv",
+        "**/__pycache__",
+        "main.py"
+    ],
+    "executionEnvironments": [
+        {
+            "root": "src"
+        },
+        {
+            "root": "tests",
+            "extraPaths": [
+                "src"
+            ]
+        }
+    ]
+}

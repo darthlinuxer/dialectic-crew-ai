@@ -1,7 +1,13 @@
 """Tests for dialectic.hooks -- CrewAI execution hooks infrastructure."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=import-outside-toplevel,assignment-from-none,use-dict-literal
+# pylint: disable=too-few-public-methods
+
+import logging
 import time
-from unittest.mock import MagicMock, patch
+from typing import Any, cast
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -44,17 +50,25 @@ def _clean_hooks():
 
 
 def _make_llm_context(**kwargs) -> LLMCallHookContext:
-    defaults = dict(
-        executor=None,
-        response=None,
-        messages=[{"role": "user", "content": "test"}],
-        llm=None,
-        agent=None,
-        task=None,
-        crew=None,
-    )
+    defaults: dict[str, Any] = {
+        "executor": None,
+        "response": None,
+        "messages": [{"role": "user", "content": "test"}],
+        "llm": None,
+        "agent": None,
+        "task": None,
+        "crew": None,
+    }
     defaults.update(kwargs)
-    return LLMCallHookContext(**defaults)
+    return LLMCallHookContext(
+        executor=cast(Any, defaults["executor"]),
+        response=cast(str | None, defaults["response"]),
+        messages=cast(Any, defaults["messages"]),
+        llm=cast(Any, defaults["llm"]),
+        agent=cast(Any, defaults["agent"]),
+        task=cast(Any, defaults["task"]),
+        crew=cast(Any, defaults["crew"]),
+    )
 
 
 class TestBeforeLLMCallHook:
@@ -111,7 +125,6 @@ class TestBeforeLLMCallHook:
         agent_mock = MagicMock()
         agent_mock.role = "Visionary"
         ctx = _make_llm_context(agent=agent_mock)
-        import logging
         with caplog.at_level(logging.DEBUG, logger="dialectic.hooks"):
             _before_llm_call_hook(ctx)
         assert any("LLM call" in r.message for r in caplog.records)
@@ -156,9 +169,7 @@ class TestAfterLLMCallHook:
         result = _after_llm_call_hook(ctx)
         assert result is None
 
-    def test_emits_metric(self, monkeypatch, tmp_path):
-        from dialectic.metrics import MetricsStore
-        store = MetricsStore(db_path=tmp_path / "hook_test.db")
+    def test_emits_metric(self, monkeypatch):
         monkeypatch.setattr("dialectic.hooks.emit_metric", lambda *a, **kw: None)
         scope = HookScope(label="test")
         _active_scope.current = scope
@@ -177,17 +188,25 @@ class TestAfterLLMCallHook:
 
 
 def _make_tool_context(**kwargs) -> ToolCallHookContext:
-    defaults = dict(
-        tool_name="search_a_files_content",
-        tool_input={"query": "test"},
-        tool=MagicMock(),
-        agent=None,
-        task=None,
-        crew=None,
-        tool_result=None,
-    )
+    defaults: dict[str, Any] = {
+        "tool_name": "search_a_files_content",
+        "tool_input": {"query": "test"},
+        "tool": MagicMock(),
+        "agent": None,
+        "task": None,
+        "crew": None,
+        "tool_result": None,
+    }
     defaults.update(kwargs)
-    return ToolCallHookContext(**defaults)
+    return ToolCallHookContext(
+        tool_name=cast(str, defaults["tool_name"]),
+        tool_input=cast(dict[str, Any], defaults["tool_input"]),
+        tool=cast(Any, defaults["tool"]),
+        agent=cast(Any, defaults["agent"]),
+        task=cast(Any, defaults["task"]),
+        crew=cast(Any, defaults["crew"]),
+        tool_result=cast(str | None, defaults["tool_result"]),
+    )
 
 
 class TestBeforeToolCallHook:

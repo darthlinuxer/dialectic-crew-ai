@@ -1,5 +1,10 @@
 """Focused tests for self-improve git safety helpers and preflight."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=redefined-outer-name,unused-argument,too-few-public-methods
+# pylint: disable=line-too-long,too-many-arguments,too-many-positional-arguments
+# pylint: disable=duplicate-code
+
 import os
 import subprocess
 from pathlib import Path
@@ -263,6 +268,7 @@ class TestSelfImproveWorktreePreflight:
         )
 
         def fail_if_called(*args, **kwargs):
+            del args, kwargs
             nonlocal introspection_called
             introspection_called = True
             raise AssertionError("introspection should not run when git preflight fails")

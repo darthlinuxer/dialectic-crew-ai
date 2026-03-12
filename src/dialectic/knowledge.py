@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from crewai import Memory
+from crewai import Memory  # pylint: disable=no-name-in-module
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
 from dialectic.vision import (
