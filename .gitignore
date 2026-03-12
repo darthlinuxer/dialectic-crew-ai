@@ -22,6 +22,13 @@ ENV/
 
 # Logs
 *.log
+.coverage
+htmlcov/
+
+# Python tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # OS
 .DS_Store
@@ -32,6 +39,7 @@ prd_output/
 exec_output/
 .dialectic/
 .crewai/
+.tmp-*/
 
 # Build / egg-info
 *.egg-info/
