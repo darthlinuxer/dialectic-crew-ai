@@ -17,6 +17,7 @@ Flow structure:
 """
 
 import os
+import logging
 from functools import lru_cache
 from typing import Literal
 from uuid import uuid4
@@ -25,6 +26,7 @@ from crewai.flow.flow import Flow, start, listen, router
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from pydantic import BaseModel, Field
 
+from dialectic.app_logging import log_context
 from dialectic.vision import VisionContext
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
@@ -44,6 +46,7 @@ DEFAULT_MAX_RETRIES = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
 REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD = float(
     os.getenv("REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD", "9.0")
 )
+logger = logging.getLogger(__name__)
 
 
 class TaskFlowState(BaseModel):
@@ -121,6 +124,7 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
 
     @start()
     def dispatch(self):
+        logger.debug("Dispatching task flow")
         return self.state.current_phase
 
     @router(dispatch)
@@ -141,68 +145,80 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     @listen("start_dialectic")
     def run_dialectic(self):
         """Phase 0: Full dialectic cycle with retries."""
-        self.state.current_phase = "dialectic"
-        if not self.state.phases_executed or self.state.phases_executed[-1] != "dialectic":
-            self.state.phases_executed.append("dialectic")
-        synthesis_for_retry: str | None = None
-        vision_context = VisionContext(self.state.vision_context)
+        with log_context(
+            flow_id=self.flow_id,
+            task_id=self.state.task_id,
+            phase="dialectic",
+            vision_context=self.state.vision_context,
+        ):
+            self.state.current_phase = "dialectic"
+            if not self.state.phases_executed or self.state.phases_executed[-1] != "dialectic":
+                self.state.phases_executed.append("dialectic")
+            synthesis_for_retry: str | None = None
+            vision_context = VisionContext(self.state.vision_context)
+            score = 0.0
+            notes = "No structured output"
 
-        for retry in range(self.state.max_retries + 1):
-            crew = build_task_dialectic_crew(
-                task_id=self.state.task_id,
-                task_title=self.state.task_title,
-                task_description=self.state.task_description,
-                context_str=self.state.context_str,
-                min_score=self.state.min_score,
-                vision_context=vision_context,
-                synthesis_for_retry=synthesis_for_retry,
-                retry=retry,
-                max_retries=self.state.max_retries,
-            )
+            for retry in range(self.state.max_retries + 1):
+                logger.info("Task dialectic iteration", extra={"retry": retry})
+                crew = build_task_dialectic_crew(
+                    task_id=self.state.task_id,
+                    task_title=self.state.task_title,
+                    task_description=self.state.task_description,
+                    context_str=self.state.context_str,
+                    min_score=self.state.min_score,
+                    vision_context=vision_context,
+                    synthesis_for_retry=synthesis_for_retry,
+                    retry=retry,
+                    max_retries=self.state.max_retries,
+                )
 
-            with HookScope(
-                token_budget=0,
-                label=f"task/{self.state.task_id}",
-            ):
-                result = crew.kickoff()
+                with HookScope(
+                    token_budget=0,
+                    label=f"task/{self.state.task_id}",
+                ):
+                    result = crew.kickoff()
 
-            validation: ValidationOutput | None = None
-            tasks_out = getattr(result, "tasks_output", None) or []
-            if tasks_out:
-                last_p = getattr(tasks_out[-1], "pydantic", None)
-                if isinstance(last_p, ValidationOutput):
-                    validation = last_p
+                validation: ValidationOutput | None = None
+                tasks_out = getattr(result, "tasks_output", None) or []
+                if tasks_out:
+                    last_p = getattr(tasks_out[-1], "pydantic", None)
+                    if isinstance(last_p, ValidationOutput):
+                        validation = last_p
 
-            score = validation.quality_score if validation else 5.0
-            notes = validation.final_validation_notes if validation else "No structured output"
+                score = validation.quality_score if validation else 5.0
+                notes = validation.final_validation_notes if validation else "No structured output"
 
-            impl_raw = ""
-            if tasks_out and len(tasks_out) >= 1:
-                impl_raw = getattr(tasks_out[0], "raw", "") or ""
+                impl_raw = ""
+                if tasks_out and len(tasks_out) >= 1:
+                    impl_raw = getattr(tasks_out[0], "raw", "") or ""
 
-            if score >= self.state.min_score:
-                self.state.dialectic_score = score
-                self.state.dialectic_notes = notes
-                self.state.dialectic_success = True
-                self.state.dialectic_retries = retry
-                self.state.impl_output = impl_raw
-                print(f"   {self.state.task_id} dialectic approved (score {score}/10)")
-                return "passed"
+                if score >= self.state.min_score:
+                    self.state.dialectic_score = score
+                    self.state.dialectic_notes = notes
+                    self.state.dialectic_success = True
+                    self.state.dialectic_retries = retry
+                    self.state.impl_output = impl_raw
+                    print(f"   {self.state.task_id} dialectic approved (score {score}/10)")
+                    logger.info("Task dialectic approved")
+                    return "passed"
 
-            if tasks_out and len(tasks_out) >= 3:
-                synthesis_for_retry = getattr(tasks_out[2], "raw", "") or ""
-            else:
-                synthesis_for_retry = notes
+                if tasks_out and len(tasks_out) >= 3:
+                    synthesis_for_retry = getattr(tasks_out[2], "raw", "") or ""
+                else:
+                    synthesis_for_retry = notes
 
-            if retry < self.state.max_retries:
-                print(f"   {self.state.task_id} rejected (score {score}/10), retry {retry + 1}")
+                if retry < self.state.max_retries:
+                    print(f"   {self.state.task_id} rejected (score {score}/10), retry {retry + 1}")
+                    logger.warning("Task dialectic rejected")
 
-        self.state.dialectic_score = score
-        self.state.dialectic_notes = notes
-        self.state.dialectic_success = False
-        self.state.dialectic_retries = self.state.max_retries
-        print(f"   {self.state.task_id} dialectic failed ({score}/10)")
-        return "failed"
+            self.state.dialectic_score = score
+            self.state.dialectic_notes = notes
+            self.state.dialectic_success = False
+            self.state.dialectic_retries = self.state.max_retries
+            print(f"   {self.state.task_id} dialectic failed ({score}/10)")
+            logger.error("Task dialectic failed")
+            return "failed"
 
     @router(run_dialectic)
     def evaluate_dialectic(self):
@@ -217,19 +233,21 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     @listen("verify")
     def verify_implementation(self):
         """Phase A: Verify artifacts + Phase B: Check acceptance criteria."""
-        self.state.current_phase = "verify"
-        if not self.state.phases_executed or self.state.phases_executed[-1] != "verify":
-            self.state.phases_executed.append("verify")
+        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="verify"):
+            self.state.current_phase = "verify"
+            if not self.state.phases_executed or self.state.phases_executed[-1] != "verify":
+                self.state.phases_executed.append("verify")
 
-        vr = self._run_independent_verifier()
-        self.state.verified = vr.verified
-        self.state.verification = vr
+            vr = self._run_independent_verifier()
+            self.state.verified = vr.verified
+            self.state.verification = vr
 
-        status = "PASSED" if self.state.verified else "FAILED"
-        print(f"   {self.state.task_id} verification: {status}")
-        if self.state.verification.checks_failed:
-            print(f"      Failed checks: {self.state.verification.checks_failed}")
-        return "done"
+            status = "PASSED" if self.state.verified else "FAILED"
+            logger.info("Task verification finished")
+            print(f"   {self.state.task_id} verification: {status}")
+            if self.state.verification.checks_failed:
+                print(f"      Failed checks: {self.state.verification.checks_failed}")
+            return "done"
 
     @router(verify_implementation)
     def evaluate_verification(self):
@@ -244,71 +262,75 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     @listen("reimplement")
     def independent_reimplement(self):
         """Phase C: Focused re-implementation using failed checks plus condensed context."""
-        self.state.current_phase = "reimplement"
-        if not self.state.phases_executed or self.state.phases_executed[-1] != "reimplement":
-            self.state.phases_executed.append("reimplement")
-        print(f"   {self.state.task_id} starting independent re-implementation (Phase C)...")
-        vision_context = VisionContext(self.state.vision_context)
+        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="reimplement"):
+            self.state.current_phase = "reimplement"
+            if not self.state.phases_executed or self.state.phases_executed[-1] != "reimplement":
+                self.state.phases_executed.append("reimplement")
+            print(f"   {self.state.task_id} starting independent re-implementation (Phase C)...")
+            logger.info("Starting task reimplementation")
+            vision_context = VisionContext(self.state.vision_context)
 
-        failed_checks = self.state.verification.checks_failed
-        crew = build_task_flow_reimplementation_crew(
-            task_id=self.state.task_id,
-            task_title=self.state.task_title,
-            task_description=self.state.task_description,
-            failed_checks=failed_checks,
-            verification_notes=self.state.verification.notes,
-            dialectic_context=_build_dialectic_context(
-                self.state.dialectic_notes,
-                self.state.impl_output,
-            ),
-            min_score=self.state.min_score,
-            vision_context=vision_context,
-        )
+            failed_checks = self.state.verification.checks_failed
+            crew = build_task_flow_reimplementation_crew(
+                task_id=self.state.task_id,
+                task_title=self.state.task_title,
+                task_description=self.state.task_description,
+                failed_checks=failed_checks,
+                verification_notes=self.state.verification.notes,
+                dialectic_context=_build_dialectic_context(
+                    self.state.dialectic_notes,
+                    self.state.impl_output,
+                ),
+                min_score=self.state.min_score,
+                vision_context=vision_context,
+            )
 
-        result = crew.kickoff()
+            result = crew.kickoff()
 
-        validation: ValidationOutput | None = None
-        tasks_out = getattr(result, "tasks_output", None) or []
-        if tasks_out:
-            last_p = getattr(tasks_out[-1], "pydantic", None)
-            if isinstance(last_p, ValidationOutput):
-                validation = last_p
+            validation: ValidationOutput | None = None
+            tasks_out = getattr(result, "tasks_output", None) or []
+            if tasks_out:
+                last_p = getattr(tasks_out[-1], "pydantic", None)
+                if isinstance(last_p, ValidationOutput):
+                    validation = last_p
 
-        if validation and validation.quality_score >= self.state.min_score:
-            self.state.reimplement_score = validation.quality_score
-            impl_raw = getattr(tasks_out[0], "raw", "") if tasks_out else ""
-            self.state.reimplement_output = impl_raw
-            if validation.quality_score < REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD:
-                if not self.state.phases_executed or self.state.phases_executed[-1] != "reverify":
-                    self.state.phases_executed.append("reverify")
-                rerun = self._run_independent_verifier(failed_checks or self.state.acceptance_checks)
-                self.state.verification = rerun
-                self.state.verified = rerun.verified
-                self.state.reimplement_success = rerun.verified
-                status = "approved after re-verification" if rerun.verified else "failed re-verification"
-                print(
-                    f"   {self.state.task_id} re-implementation {status} "
-                    f"({validation.quality_score}/10)"
-                )
+            if validation and validation.quality_score >= self.state.min_score:
+                self.state.reimplement_score = validation.quality_score
+                impl_raw = getattr(tasks_out[0], "raw", "") if tasks_out else ""
+                self.state.reimplement_output = impl_raw
+                if validation.quality_score < REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD:
+                    if not self.state.phases_executed or self.state.phases_executed[-1] != "reverify":
+                        self.state.phases_executed.append("reverify")
+                    rerun = self._run_independent_verifier(failed_checks or self.state.acceptance_checks)
+                    self.state.verification = rerun
+                    self.state.verified = rerun.verified
+                    self.state.reimplement_success = rerun.verified
+                    status = "approved after re-verification" if rerun.verified else "failed re-verification"
+                    print(
+                        f"   {self.state.task_id} re-implementation {status} "
+                        f"({validation.quality_score}/10)"
+                    )
+                else:
+                    self.state.verified = True
+                    self.state.verification = VerificationResult(
+                        verified=True,
+                        checks_passed=failed_checks or self.state.acceptance_checks,
+                        checks_failed=[],
+                        notes=(
+                            "High-confidence re-implementation accepted without secondary "
+                            "verification pass."
+                        ),
+                    )
+                    self.state.reimplement_success = True
+                    print(f"   {self.state.task_id} re-implementation approved ({validation.quality_score}/10)")
+                logger.info("Task reimplementation finished")
             else:
-                self.state.verified = True
-                self.state.verification = VerificationResult(
-                    verified=True,
-                    checks_passed=failed_checks or self.state.acceptance_checks,
-                    checks_failed=[],
-                    notes=(
-                        "High-confidence re-implementation accepted without secondary "
-                        "verification pass."
-                    ),
-                )
-                self.state.reimplement_success = True
-                print(f"   {self.state.task_id} re-implementation approved ({validation.quality_score}/10)")
-        else:
-            score = validation.quality_score if validation else 0.0
-            self.state.reimplement_score = score
-            self.state.reimplement_success = False
-            print(f"   {self.state.task_id} re-implementation failed ({score}/10)")
-        return "done"
+                score = validation.quality_score if validation else 0.0
+                self.state.reimplement_score = score
+                self.state.reimplement_success = False
+                print(f"   {self.state.task_id} re-implementation failed ({score}/10)")
+                logger.error("Task reimplementation failed")
+            return "done"
 
     @router(independent_reimplement)
     def evaluate_reimplement(self):
@@ -322,45 +344,49 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     # not method references.
     @listen("mark_completed")
     def on_completed(self):
-        self.state.current_phase = "completed"
-        phases = " → ".join(self.state.phases_executed)
-        print(f"   {self.state.task_id} COMPLETED (phases: {phases})")
-        emit_metric(
-            "task_score",
-            max(self.state.dialectic_score, self.state.reimplement_score),
-            task_id=self.state.task_id,
-            success=True,
-            vision_context=self.state.vision_context,
-        )
-        emit_metric(
-            "task_retry_count",
-            float(self.state.dialectic_retries),
-            task_id=self.state.task_id,
-            vision_context=self.state.vision_context,
-        )
-        return self._build_result(success=True)
+        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="completed"):
+            self.state.current_phase = "completed"
+            phases = " → ".join(self.state.phases_executed)
+            logger.info("Task flow completed")
+            print(f"   {self.state.task_id} COMPLETED (phases: {phases})")
+            emit_metric(
+                "task_score",
+                max(self.state.dialectic_score, self.state.reimplement_score),
+                task_id=self.state.task_id,
+                success=True,
+                vision_context=self.state.vision_context,
+            )
+            emit_metric(
+                "task_retry_count",
+                float(self.state.dialectic_retries),
+                task_id=self.state.task_id,
+                vision_context=self.state.vision_context,
+            )
+            return self._build_result(success=True)
 
     # Router outputs remain string labels because CrewAI emits route names here,
     # not method references.
     @listen("mark_failed")
     def on_failed(self):
-        self.state.current_phase = "failed"
-        phases = " → ".join(self.state.phases_executed)
-        print(f"   {self.state.task_id} FAILED (phases: {phases})")
-        emit_metric(
-            "task_score",
-            max(self.state.dialectic_score, self.state.reimplement_score),
-            task_id=self.state.task_id,
-            success=False,
-            vision_context=self.state.vision_context,
-        )
-        emit_metric(
-            "task_retry_count",
-            float(self.state.dialectic_retries),
-            task_id=self.state.task_id,
-            vision_context=self.state.vision_context,
-        )
-        return self._build_result(success=False)
+        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="failed"):
+            self.state.current_phase = "failed"
+            phases = " → ".join(self.state.phases_executed)
+            logger.error("Task flow failed")
+            print(f"   {self.state.task_id} FAILED (phases: {phases})")
+            emit_metric(
+                "task_score",
+                max(self.state.dialectic_score, self.state.reimplement_score),
+                task_id=self.state.task_id,
+                success=False,
+                vision_context=self.state.vision_context,
+            )
+            emit_metric(
+                "task_retry_count",
+                float(self.state.dialectic_retries),
+                task_id=self.state.task_id,
+                vision_context=self.state.vision_context,
+            )
+            return self._build_result(success=False)
 
     def _build_result(self, success: bool) -> TaskExecutionResult:
         best_score = max(

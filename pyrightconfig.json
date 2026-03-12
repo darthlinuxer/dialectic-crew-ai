@@ -3,6 +3,8 @@
         "src",
         "tests"
     ],
+    "venvPath": ".",
+    "venv": ".venv",
     "exclude": [
         ".venv",
         "**/__pycache__",
@@ -10,7 +12,10 @@
     ],
     "executionEnvironments": [
         {
-            "root": "src"
+            "root": "src",
+            "extraPaths": [
+                "src"
+            ]
         },
         {
             "root": "tests",

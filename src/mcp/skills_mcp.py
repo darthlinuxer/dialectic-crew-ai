@@ -1,29 +1,67 @@
+# pylint: disable=trailing-newlines
+"""MCP server exposing local skill discovery and retrieval tools."""
+
 from __future__ import annotations
 
 from dataclasses import asdict
 from enum import Enum
+import json
+import os
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 from pydantic import BaseModel, Field, ConfigDict
 
 try:
     from mcp.server.fastmcp import FastMCP
-except ModuleNotFoundError:
-    class FastMCP:  # type: ignore[no-redef]
-        def __init__(self, name: str):
-            self.name = name
+    from mcp.types import ToolAnnotations
 
-        def tool(self, *args, **kwargs):
-            def decorator(func):
+    def _make_tool_annotations(**kwargs: Any) -> Any:
+        return ToolAnnotations(**kwargs)
+except ModuleNotFoundError:
+    def _make_tool_annotations(**kwargs: Any) -> Any:
+        return kwargs
+
+    class FastMCP:  # type: ignore[no-redef]
+        """Fallback FastMCP stub used when the MCP dependency is unavailable."""
+
+        def __init__(self, name: str, **_: Any):
+            self.name = name
+            self.settings = type("Settings", (), {"port": 8000})()
+            self.last_transport = "stdio"
+
+        def tool(self, *_args: Any, **_kwargs: Any):
+            """Return a no-op decorator for tool registration."""
+
+            def decorator(func: Any) -> Any:
                 return func
 
             return decorator
 
-from .skills_index import SkillIndex, SkillSource, SkillMetadata
+        def resource(self, *_args: Any, **_kwargs: Any):
+            """Return a no-op decorator for resource registration."""
+
+            def decorator(func: Any) -> Any:
+                return func
+
+            return decorator
+
+        def run(
+            self,
+            transport: str = "stdio",
+            mount_path: str | None = None,
+        ) -> None:
+            """Record the requested transport in fallback mode."""
+
+            _ = mount_path
+            self.last_transport = transport
+
+from src.mcp.skills_index import SkillIndex, SkillMetadata, SkillSource  # pylint: disable=import-error
 
 
 class ResponseFormat(str, Enum):
+    """Supported output formats for MCP tool responses."""
+
     MARKDOWN = "markdown"
     JSON = "json"
 
@@ -39,7 +77,10 @@ class ListSkillsInput(BaseModel):
 
     query: Optional[str] = Field(
         default=None,
-        description="Optional case-insensitive substring filter applied to skill id, display name, and description.",
+        description=(
+            "Optional case-insensitive substring filter applied to skill id, "
+            "display name, and description."
+        ),
         min_length=1,
         max_length=200,
     )
@@ -60,7 +101,10 @@ class ListSkillsInput(BaseModel):
     )
     response_format: ResponseFormat = Field(
         default=ResponseFormat.JSON,
-        description="Output format: 'json' for structured data, 'markdown' for human-readable summary.",
+        description=(
+            "Output format: 'json' for structured data, 'markdown' for "
+            "human-readable summary."
+        ),
     )
 
 
@@ -81,11 +125,17 @@ class GetSkillInput(BaseModel):
     )
     include_metadata: bool = Field(
         default=True,
-        description="Whether to include metadata (source, description, path) in the JSON response.",
+        description=(
+            "Whether to include metadata (source, description, path) in the "
+            "JSON response."
+        ),
     )
     response_format: ResponseFormat = Field(
         default=ResponseFormat.JSON,
-        description="Output format: 'json' for structured data, 'markdown' for human-readable content.",
+        description=(
+            "Output format: 'json' for structured data, 'markdown' for "
+            "human-readable content."
+        ),
     )
 
 
@@ -112,7 +162,10 @@ class SearchSkillsInput(BaseModel):
     )
     response_format: ResponseFormat = Field(
         default=ResponseFormat.JSON,
-        description="Output format: 'json' for structured data, 'markdown' for human-readable summary.",
+        description=(
+            "Output format: 'json' for structured data, 'markdown' for "
+            "human-readable summary."
+        ),
     )
 
 
@@ -122,12 +175,43 @@ ROOTS: List[Path] = [
     Path.home() / ".cursor" / "skills-cursor",
 ]
 
+TransportName = Literal["stdio", "sse", "streamable-http"]
+HTTP_TRANSPORT: Literal["streamable-http"] = "streamable-http"
+HTTP_FLAGS = frozenset({"--http", "--streamable-http"})
+DEFAULT_HTTP_PORT = 8001
+
+READ_ONLY_ANNOTATIONS = _make_tool_annotations(
+    title="List available skills",
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
+GET_SKILL_ANNOTATIONS = _make_tool_annotations(
+    title="Get a single skill",
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
+SEARCH_SKILL_ANNOTATIONS = _make_tool_annotations(
+    title="Search within skill contents",
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
 _INDEX = SkillIndex(roots=ROOTS)
 
 mcp = FastMCP("skills_mcp")
 
 
 def _skill_to_dict(skill: SkillMetadata) -> Dict[str, Any]:
+    """Convert a skill metadata object into a JSON-serializable dictionary."""
+
     data = asdict(skill)
     data["path"] = str(skill.path)
     data["source"] = skill.source.value
@@ -136,13 +220,7 @@ def _skill_to_dict(skill: SkillMetadata) -> Dict[str, Any]:
 
 @mcp.tool(
     name="skills_list_skills",
-    annotations={
-        "title": "List available skills",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    },
+    annotations=READ_ONLY_ANNOTATIONS,
 )
 async def skills_list_skills(params: ListSkillsInput) -> str:
     """List available skills discovered from configured skill directories.
@@ -177,8 +255,6 @@ async def skills_list_skills(params: ListSkillsInput) -> str:
     }
 
     if params.response_format == ResponseFormat.JSON:
-        import json
-
         return json.dumps(payload, indent=2, sort_keys=True)
 
     lines: List[str] = [
@@ -198,13 +274,7 @@ async def skills_list_skills(params: ListSkillsInput) -> str:
 
 @mcp.tool(
     name="skills_get_skill",
-    annotations={
-        "title": "Get a single skill",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    },
+    annotations=GET_SKILL_ANNOTATIONS,
 )
 async def skills_get_skill(params: GetSkillInput) -> str:
     """Fetch a single skill's metadata and SKILL.md content.
@@ -249,20 +319,12 @@ async def skills_get_skill(params: GetSkillInput) -> str:
             }
         )
 
-    import json
-
     return json.dumps(data, indent=2, sort_keys=True)
 
 
 @mcp.tool(
     name="skills_search_skills",
-    annotations={
-        "title": "Search within skill contents",
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    },
+    annotations=SEARCH_SKILL_ANNOTATIONS,
 )
 async def skills_search_skills(params: SearchSkillsInput) -> str:
     """Search within SKILL.md contents for a query string.
@@ -305,8 +367,6 @@ async def skills_search_skills(params: SearchSkillsInput) -> str:
     payload = {"query": params.query, "count": len(matches), "matches": matches}
 
     if params.response_format == ResponseFormat.JSON:
-        import json
-
         return json.dumps(payload, indent=2, sort_keys=True)
 
     if not matches:
@@ -350,27 +410,54 @@ async def skills_resource(skill_id: str) -> str:
         return f"Error: Failed to read SKILL file for '{skill_id}': {exc}"
 
 
+def _resolve_transport(argv: Sequence[str], environ: Mapping[str, str]) -> TransportName:
+    """Resolve the requested MCP transport from environment and CLI flags."""
+
+    transport = environ.get("SKILLS_MCP_TRANSPORT", "stdio").strip().lower()
+    transport = transport.replace("_", "-")
+
+    argv_flags = {arg for arg in argv if arg.startswith("--")}
+    if HTTP_FLAGS & argv_flags:
+        return HTTP_TRANSPORT
+    if transport == "sse":
+        return "sse"
+    if transport == HTTP_TRANSPORT:
+        return HTTP_TRANSPORT
+    return "stdio"
+
+
+def _resolve_http_port(environ: Mapping[str, str]) -> int:
+    """Read the configured HTTP port, falling back to the default on parse errors."""
+
+    port_str = environ.get("SKILLS_MCP_PORT", str(DEFAULT_HTTP_PORT))
+    try:
+        return int(port_str)
+    except ValueError:
+        return DEFAULT_HTTP_PORT
+
+
+def run_server(
+    argv: Sequence[str] | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> None:
+    """Run the skills MCP server using the resolved transport settings."""
+
+    runtime_argv = list(argv) if argv is not None else []
+    runtime_environ = environ if environ is not None else os.environ
+
+    transport = _resolve_transport(runtime_argv, runtime_environ)
+    if transport == HTTP_TRANSPORT:
+        mcp.settings.port = _resolve_http_port(runtime_environ)
+        mcp.run(transport=HTTP_TRANSPORT)
+        return
+
+    mcp.run(transport=transport)
+
+
 if __name__ == "__main__":
-    import os
     import sys
 
-    transport = os.getenv("SKILLS_MCP_TRANSPORT", "stdio").lower()
+    run_server(argv=sys.argv[1:], environ=os.environ)
 
-    # Command-line override: --http or --streamable-http imply HTTP transport.
-    http_flags = {"--http", "--streamable-http"}
-    argv_flags = {arg for arg in sys.argv[1:] if arg.startswith("--")}
-    if http_flags & argv_flags:
-        transport = "streamable_http"
-
-    if transport == "streamable_http":
-        port_str = os.getenv("SKILLS_MCP_PORT", "8001")
-        try:
-            port = int(port_str)
-        except ValueError:
-            port = 8001
-        mcp.run(transport="streamable_http", port=port)
-    else:
-        # Default: stdio transport for local MCPServerStdio integration.
-        mcp.run()
 
 

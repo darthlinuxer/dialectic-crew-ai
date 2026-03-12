@@ -11,12 +11,17 @@ Commands:
   python main.py verify <id>                   — manual single-task re-check
 """
 
-import sys
 import os
+import logging
+import sys
 from dotenv import load_dotenv
 
-load_dotenv()
-
+from dialectic.app_logging import (
+    configure_application_logging,
+    log_context,
+    new_correlation_id,
+)
+from dialectic.crewai_event_logger import register_crewai_event_logger
 from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.prd_flow import get_prd_resume_state
 from dialectic.vision import ensure_vision_path, VisionContext
@@ -30,6 +35,10 @@ from main.cli_commands import (
     cmd_verify,
     cmd_verify_story,
 )
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 BANNER = """
@@ -221,158 +230,167 @@ def cmd_help():
 
 
 def main():
-    configure_crewai_runtime()
+    configure_application_logging()
+    register_crewai_event_logger()
     args = sys.argv[1:]
-    if not args:
+    sub = args[0].lower() if args else "startup"
+    with log_context(command=sub, phase="bootstrap", correlation_id=new_correlation_id()):
+        configure_crewai_runtime()
+        logger.debug("CLI bootstrap initialized")
+        if not args:
+            print(BANNER)
+            print("Usage: python main.py <command> [arguments...]")
+            print("       python main.py help   to see all commands.\n")
+            logger.warning("CLI invoked without arguments")
+            sys.exit(1)
+
+        if sub in ("help", "-h", "--help"):
+            print(BANNER)
+            cmd_help()
+            logger.info("CLI help rendered")
+            sys.exit(0)
+
         print(BANNER)
-        print("Usage: python main.py <command> [arguments...]")
-        print("       python main.py help   to see all commands.\n")
-        sys.exit(1)
-
-    sub = args[0].lower()
-    if sub in ("help", "-h", "--help"):
-        print(BANNER)
-        cmd_help()
-        sys.exit(0)
-
-    print(BANNER)
-    if _command_requires_api(sub, args) and not _check_api_key():
-        sys.exit(1)
-    _, vision_ctx = _extract_self_flag(args)
-    if _command_requires_vision(sub, args):
-        _check_vision_exists(vision_ctx)
-
-    if sub == "prd":
-        rest = args[1:]
-        rest, vision_context = _extract_self_flag(rest)
-        resume_id = None
-        if "--resume" in rest:
-            idx = rest.index("--resume")
-            if idx + 1 >= len(rest):
-                print("Provide a flow ID after --resume")
-                sys.exit(1)
-            resume_id = rest[idx + 1]
-            rest = rest[:idx] + rest[idx + 2:]
-        if len(rest) < 1 and not resume_id:
-            print("Provide the feature: python main.py prd 'your feature here'")
+        if _command_requires_api(sub, args) and not _check_api_key():
+            logger.error("CLI command requires API key", extra={"phase": "preflight"})
             sys.exit(1)
-        file_paths: list[str] = []
-        if "--files" in rest:
-            idx = rest.index("--files")
-            feature_parts = rest[:idx]
-            file_paths = [f for f in rest[idx + 1:] if not f.startswith("-")]
-            invalid = [f for f in file_paths if not os.path.exists(f)]
-            if invalid:
-                print(f"  File(s) not found: {', '.join(invalid)}")
-                sys.exit(1)
-        else:
-            feature_parts = rest
-        feature_request = " ".join(feature_parts).strip() or None
-        cmd_prd(
-            feature_request,
-            file_paths=file_paths or None,
-            vision_context=vision_context,
-            resume_id=resume_id,
-        )
-        return
-    if sub == "plan":
-        remaining = args[1:]
-        remaining, vision_context = _extract_self_flag(remaining)
-        prd_path = remaining[0] if len(remaining) > 0 else None
-        us_ref = remaining[1] if len(remaining) > 1 else None
-        cmd_plan(prd_path, us_ref, vision_context=vision_context)
-        return
-    if sub == "execute":
-        remaining_all = args[1:]
-        remaining_all, vision_context = _extract_self_flag(remaining_all)
-        resume_run_id = None
-        if "--resume-run" in remaining_all:
-            idx = remaining_all.index("--resume-run")
-            if idx + 1 >= len(remaining_all):
-                print("Provide a run ID after --resume-run")
-                sys.exit(1)
-            resume_run_id = remaining_all[idx + 1]
-            remaining_all = remaining_all[:idx] + remaining_all[idx + 2:]
-        remaining = [a for a in remaining_all if not a.startswith("-")]
-        spec_only = "--spec-only" in remaining_all
-        plan_path = remaining[0] if remaining else "--latest"
-        cmd_execute(
-            plan_path,
-            spec_only=spec_only,
-            vision_context=vision_context,
-            resume_run_id=resume_run_id,
-        )
-        return
-    if sub == "status":
-        plan_path = args[1] if len(args) > 1 else None
-        cmd_status(plan_path)
-        return
-    if sub == "verify-story":
-        remaining = [a for a in args[1:] if not a.startswith("-")]
-        plan_path = remaining[0] if remaining else None
-        prd_path = None
-        if "--prd" in args:
-            prd_idx = args.index("--prd")
-            if prd_idx + 1 < len(args):
-                prd_path = args[prd_idx + 1]
-        cmd_verify_story(plan_path, prd_path)
-        return
-    if sub == "mark":
-        if len(args) < 3:
-            print("Usage: python main.py mark <task_id> <status> [plan.json]")
-            print("  Valid statuses: pending, in_progress, completed, failed")
-            sys.exit(1)
-        task_id = args[1]
-        status = args[2]
-        plan_path = args[3] if len(args) > 3 else None
-        cmd_mark(task_id, status, plan_path)
-        return
-    if sub == "verify":
-        if len(args) < 2:
-            print("Usage: python main.py verify <task_id> [plan.json] [--prd prd.json]")
-            sys.exit(1)
-        task_id = args[1]
-        remaining = [a for a in args[2:] if not a.startswith("-")]
-        plan_path = remaining[0] if remaining else None
-        prd_path = None
-        if "--prd" in args:
-            prd_idx = args.index("--prd")
-            if prd_idx + 1 < len(args):
-                prd_path = args[prd_idx + 1]
-        cmd_verify(task_id, plan_path, prd_path)
-        return
-    if sub == "self-improve":
-        remaining = args[1:]
-        dry_run = "--dry-run" in remaining
-        stash_dirty = "--stash-dirty" in remaining
-        list_resumable = "--list-resumable" in remaining
-        resume_cycle_id = None
-        max_n = 1
-        if "--resume" in remaining:
-            idx = remaining.index("--resume")
-            if idx + 1 >= len(remaining):
-                print("Provide a cycle ID after --resume")
-                sys.exit(1)
-            resume_cycle_id = remaining[idx + 1]
-        if "--max" in remaining:
-            idx = remaining.index("--max")
-            if idx + 1 < len(remaining):
-                try:
-                    max_n = int(remaining[idx + 1])
-                except ValueError:
-                    print("--max requires an integer argument")
+        _, vision_ctx = _extract_self_flag(args)
+        if _command_requires_vision(sub, args):
+            _check_vision_exists(vision_ctx)
+
+        with log_context(phase="command_dispatch"):
+            if sub == "prd":
+                rest = args[1:]
+                rest, vision_context = _extract_self_flag(rest)
+                resume_id = None
+                if "--resume" in rest:
+                    idx = rest.index("--resume")
+                    if idx + 1 >= len(rest):
+                        print("Provide a flow ID after --resume")
+                        sys.exit(1)
+                    resume_id = rest[idx + 1]
+                    rest = rest[:idx] + rest[idx + 2:]
+                if len(rest) < 1 and not resume_id:
+                    print("Provide the feature: python main.py prd 'your feature here'")
                     sys.exit(1)
-        cmd_self_improve(
-            dry_run=dry_run,
-            max_improvements=max_n,
-            stash_dirty=stash_dirty,
-            resume_cycle_id=resume_cycle_id,
-            list_resumable=list_resumable,
-        )
-        return
+                file_paths: list[str] = []
+                if "--files" in rest:
+                    idx = rest.index("--files")
+                    feature_parts = rest[:idx]
+                    file_paths = [f for f in rest[idx + 1:] if not f.startswith("-")]
+                    invalid = [f for f in file_paths if not os.path.exists(f)]
+                    if invalid:
+                        print(f"  File(s) not found: {', '.join(invalid)}")
+                        sys.exit(1)
+                else:
+                    feature_parts = rest
+                feature_request = " ".join(feature_parts).strip() or None
+                cmd_prd(
+                    feature_request,
+                    file_paths=file_paths or None,
+                    vision_context=vision_context,
+                    resume_id=resume_id,
+                )
+                return
+            if sub == "plan":
+                remaining = args[1:]
+                remaining, vision_context = _extract_self_flag(remaining)
+                prd_path = remaining[0] if len(remaining) > 0 else None
+                us_ref = remaining[1] if len(remaining) > 1 else None
+                cmd_plan(prd_path, us_ref, vision_context=vision_context)
+                return
+            if sub == "execute":
+                remaining_all = args[1:]
+                remaining_all, vision_context = _extract_self_flag(remaining_all)
+                resume_run_id = None
+                if "--resume-run" in remaining_all:
+                    idx = remaining_all.index("--resume-run")
+                    if idx + 1 >= len(remaining_all):
+                        print("Provide a run ID after --resume-run")
+                        sys.exit(1)
+                    resume_run_id = remaining_all[idx + 1]
+                    remaining_all = remaining_all[:idx] + remaining_all[idx + 2:]
+                remaining = [a for a in remaining_all if not a.startswith("-")]
+                spec_only = "--spec-only" in remaining_all
+                plan_path = remaining[0] if remaining else "--latest"
+                cmd_execute(
+                    plan_path,
+                    spec_only=spec_only,
+                    vision_context=vision_context,
+                    resume_run_id=resume_run_id,
+                )
+                return
+            if sub == "status":
+                plan_path = args[1] if len(args) > 1 else None
+                cmd_status(plan_path)
+                return
+            if sub == "verify-story":
+                remaining = [a for a in args[1:] if not a.startswith("-")]
+                plan_path = remaining[0] if remaining else None
+                prd_path = None
+                if "--prd" in args:
+                    prd_idx = args.index("--prd")
+                    if prd_idx + 1 < len(args):
+                        prd_path = args[prd_idx + 1]
+                cmd_verify_story(plan_path, prd_path)
+                return
+            if sub == "mark":
+                if len(args) < 3:
+                    print("Usage: python main.py mark <task_id> <status> [plan.json]")
+                    print("  Valid statuses: pending, in_progress, completed, failed")
+                    sys.exit(1)
+                task_id = args[1]
+                status = args[2]
+                plan_path = args[3] if len(args) > 3 else None
+                cmd_mark(task_id, status, plan_path)
+                return
+            if sub == "verify":
+                if len(args) < 2:
+                    print("Usage: python main.py verify <task_id> [plan.json] [--prd prd.json]")
+                    sys.exit(1)
+                task_id = args[1]
+                remaining = [a for a in args[2:] if not a.startswith("-")]
+                plan_path = remaining[0] if remaining else None
+                prd_path = None
+                if "--prd" in args:
+                    prd_idx = args.index("--prd")
+                    if prd_idx + 1 < len(args):
+                        prd_path = args[prd_idx + 1]
+                cmd_verify(task_id, plan_path, prd_path)
+                return
+            if sub == "self-improve":
+                remaining = args[1:]
+                dry_run = "--dry-run" in remaining
+                stash_dirty = "--stash-dirty" in remaining
+                list_resumable = "--list-resumable" in remaining
+                resume_cycle_id = None
+                max_n = 1
+                if "--resume" in remaining:
+                    idx = remaining.index("--resume")
+                    if idx + 1 >= len(remaining):
+                        print("Provide a cycle ID after --resume")
+                        sys.exit(1)
+                    resume_cycle_id = remaining[idx + 1]
+                if "--max" in remaining:
+                    idx = remaining.index("--max")
+                    if idx + 1 < len(remaining):
+                        try:
+                            max_n = int(remaining[idx + 1])
+                        except ValueError:
+                            print("--max requires an integer argument")
+                            sys.exit(1)
+                cmd_self_improve(
+                    dry_run=dry_run,
+                    max_improvements=max_n,
+                    stash_dirty=stash_dirty,
+                    resume_cycle_id=resume_cycle_id,
+                    list_resumable=list_resumable,
+                )
+                return
 
-    print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | self-improve | help")
-    sys.exit(1)
+            print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | self-improve | help")
+            logger.error("Unknown CLI command")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

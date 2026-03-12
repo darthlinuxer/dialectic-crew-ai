@@ -1,4 +1,4 @@
-"""Tests for CLI runtime gating and VISION resolution helpers."""
+"""Tests for CLI runtime gating, logging bootstrap, and VISION helpers."""
 
 from pathlib import Path
 
@@ -52,6 +52,19 @@ class TestCliRequirementRouting:
 
         assert cli.os.environ["CREWAI_DISABLE_TELEMETRY"] == "false"
 
+    def test_main_bootstraps_application_logging(self, monkeypatch):
+        calls: list[str] = []
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "status"])
+        monkeypatch.setattr(cli, "configure_application_logging", lambda: calls.append("logging"))
+        monkeypatch.setattr(cli, "register_crewai_event_logger", lambda: calls.append("events"))
+        monkeypatch.setattr(cli, "new_correlation_id", lambda: "corr-123")
+        monkeypatch.setattr(cli, "cmd_status", lambda plan_path: calls.append("status"))
+
+        cli.main()
+
+        assert calls[:2] == ["logging", "events"]
+        assert calls[-1] == "status"
+
     def test_prd_resume_requires_existing_persisted_flow(self, monkeypatch):
         monkeypatch.setattr(cli, "_check_api_key", lambda: True)
         monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
@@ -73,6 +86,7 @@ class TestCliRequirementRouting:
         monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
 
         def fake_cmd_execute(plan_path, spec_only=False, vision_context=VisionContext.PROJECT, resume_run_id=None):
+            del spec_only, vision_context
             captured["plan_path"] = plan_path
             captured["resume_run_id"] = resume_run_id
 
@@ -131,6 +145,7 @@ class TestCliRequirementRouting:
             resume_cycle_id=None,
             list_resumable=False,
         ):
+            del dry_run, max_improvements, stash_dirty
             captured["list_resumable"] = list_resumable
             captured["resume_cycle_id"] = resume_cycle_id
 

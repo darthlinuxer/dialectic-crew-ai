@@ -19,16 +19,16 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
-logger = logging.getLogger(__name__)
-
+from dialectic.app_logging import log_context
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from dialectic.vision import VisionContext, get_vision_hash
 from schemas import (
-    TaskExecutionResult,
-    ExecutionReport,
     ExecutionCheckpoint,
+    ExecutionReport,
+    TaskExecutionResult,
 )
-from execution.runner import _artifact_markdown
 from execution.checkpoint import (
     checkpoint_path,
     load_checkpoint,
@@ -37,16 +37,18 @@ from execution.checkpoint import (
 )
 from execution.context_builder import build_task_context
 from execution.plan_loader import find_latest_plan, load_plan as load_plan_file
+from execution.runner import _artifact_markdown
+from execution.task_flow import TaskExecutionFlow, _get_task_persistence
 from execution.topological_sort import topological_sort
 from execution.verify import (
+    _extract_acceptance_criteria,
+    _load_prd_for_plan,
+    _run_verification,
     update_task_status,
     update_user_story_status,
-    _run_verification,
-    _load_prd_for_plan,
-    _extract_acceptance_criteria,
 )
-from execution.task_flow import TaskExecutionFlow, _get_task_persistence
-from dialectic.vision import VisionContext, get_vision_hash
+
+logger = logging.getLogger(__name__)
 
 EXEC_OUTPUT_DIR = "exec_output"
 DEFAULT_MAX_RETRIES_PER_TASK = int(os.getenv("MAX_RETRIES_PER_TASK", "3"))
@@ -89,6 +91,8 @@ def run_dialectic_execution(
         run_dir = out_dir / run_id
         checkpoint = _load_checkpoint(run_dir)
         path = plan_path if plan_path not in {None, "--latest"} else checkpoint.plan_path
+        if path is None:
+            raise FileNotFoundError("Execution checkpoint does not contain a plan path")
         if Path(path).resolve() != Path(checkpoint.plan_path).resolve():
             raise ValueError(
                 "Resume run plan path does not match the persisted execution checkpoint"
@@ -103,10 +107,15 @@ def run_dialectic_execution(
         if path is None or path == "--latest":
             path = str(find_latest_plan(PRD_OUTPUT_DIR))
 
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Plan not found: {path}")
+    if path is None:
+        raise FileNotFoundError("Execution plan path could not be resolved")
 
-    plan = load_plan_file(path)
+    resolved_plan_path = path
+
+    if not os.path.exists(resolved_plan_path):
+        raise FileNotFoundError(f"Plan not found: {resolved_plan_path}")
+
+    plan = load_plan_file(resolved_plan_path)
     ordered_tasks = _topological_sort(plan.tasks)
 
     if checkpoint is None:
@@ -114,7 +123,7 @@ def run_dialectic_execution(
             plan_id=plan.user_story_id,
             plan_title=plan.user_story_title,
             run_id=run_id,
-            plan_path=str(Path(path).resolve()),
+            plan_path=str(Path(resolved_plan_path).resolve()),
             vision_context=vision_context.value,
             resumed_from_run_id=resumed_from_run_id,
         )
@@ -122,8 +131,17 @@ def run_dialectic_execution(
 
     existing_results = {result.task_id: result for result in checkpoint.task_results}
 
+    with log_context(
+        command="execute",
+        phase="execution",
+        run_id=run_id,
+        story_id=plan.user_story_id,
+        vision_context=vision_context.value,
+    ):
+        logger.info("Execution run started")
+
     try:
-        update_user_story_status(path, "in_progress")
+        update_user_story_status(resolved_plan_path, "in_progress")
     except Exception as exc:
         logger.warning("Failed to set story status to in_progress: %s", exc)
 
@@ -140,97 +158,109 @@ def run_dialectic_execution(
     failed_task_ids: set[str] = set(checkpoint.failed_task_ids)
 
     for task in ordered_tasks:
-        previous_result = existing_results.get(task.id)
-        if previous_result is not None:
-            status = "completed" if previous_result.success else "failed"
-            print(f"\n>>> Reusing {status} task {task.id} — {task.title} from checkpoint")
-            if previous_result.success and previous_result.output_summary:
-                completed_outputs[task.id] = previous_result.output_summary
-            if not previous_result.success:
+        with log_context(phase="task", task_id=task.id):
+            previous_result = existing_results.get(task.id)
+            if previous_result is not None:
+                status = "completed" if previous_result.success else "failed"
+                logger.info("Reusing task result from checkpoint")
+                print(f"\n>>> Reusing {status} task {task.id} — {task.title} from checkpoint")
+                previous_summary = previous_result.output_summary
+                if previous_result.success and previous_summary:
+                    completed_outputs[task.id] = previous_summary
+                if not previous_result.success:
+                    failed_task_ids.add(task.id)
+                continue
+
+            unmet_deps = [d for d in task.dependencies if d in failed_task_ids]
+            if unmet_deps:
+                logger.warning("Skipping task because dependencies failed")
+                print(f"\n>>> SKIPPING task {task.id} — {task.title} (failed deps: {', '.join(unmet_deps)})")
+                skip_result = TaskExecutionResult(
+                    task_id=task.id,
+                    title=task.title,
+                    success=False,
+                    score=0.0,
+                    retry_count=0,
+                    validation_notes=f"Skipped: dependencies failed: {unmet_deps}",
+                )
+                task_results = _upsert_task_result(task_results, skip_result)
                 failed_task_ids.add(task.id)
-            continue
+                checkpoint.task_results = task_results
+                checkpoint.failed_task_ids = sorted(failed_task_ids)
+                _save_checkpoint(run_dir, checkpoint)
+                try:
+                    update_task_status(
+                        resolved_plan_path,
+                        task.id,
+                        "failed",
+                        notes=f"Skipped: dependencies failed: {unmet_deps}",
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to update status for skipped %s: %s", task.id, exc)
+                continue
 
-        unmet_deps = [d for d in task.dependencies if d in failed_task_ids]
-        if unmet_deps:
-            print(f"\n>>> SKIPPING task {task.id} — {task.title} (failed deps: {', '.join(unmet_deps)})")
-            skip_result = TaskExecutionResult(
-                task_id=task.id,
-                title=task.title,
-                success=False,
-                score=0.0,
-                retry_count=0,
-                validation_notes=f"Skipped: dependencies failed: {unmet_deps}",
-            )
-            task_results = _upsert_task_result(task_results, skip_result)
-            failed_task_ids.add(task.id)
-            checkpoint.task_results = task_results
-            checkpoint.failed_task_ids = sorted(failed_task_ids)
-            _save_checkpoint(run_dir, checkpoint)
+            task_output_dir = run_dir / f"{task.id}_output"
+            task_output_dir.mkdir(exist_ok=True)
+            logger.info("Executing task")
+            print(f"\n>>> Executing task {task.id} — {task.title}")
+
             try:
-                update_task_status(path, task.id, "failed", notes=f"Skipped: dependencies failed: {unmet_deps}")
+                update_task_status(resolved_plan_path, task.id, "in_progress")
             except Exception as exc:
-                logger.warning("Failed to update status for skipped %s: %s", task.id, exc)
-            continue
+                logger.warning("Failed to set %s to in_progress: %s", task.id, exc)
 
-        task_output_dir = run_dir / f"{task.id}_output"
-        task_output_dir.mkdir(exist_ok=True)
-        print(f"\n>>> Executing task {task.id} — {task.title}")
+            context_str = _build_task_context(plan, completed_outputs, task)
 
-        try:
-            update_task_status(path, task.id, "in_progress")
-        except Exception as exc:
-            logger.warning("Failed to set %s to in_progress: %s", task.id, exc)
+            try:
+                flow = TaskExecutionFlow(persistence=_get_task_persistence())
+                flow_id = checkpoint.task_flow_ids.get(task.id, flow.flow_id)
+                checkpoint.task_flow_ids[task.id] = flow_id
+                _save_checkpoint(run_dir, checkpoint)
 
-        context_str = _build_task_context(plan, completed_outputs, task)
+                with log_context(flow_id=flow_id):
+                    flow_result = flow.kickoff(
+                        inputs={
+                            "id": flow_id,
+                            "task_id": task.id,
+                            "task_title": task.title,
+                            "task_description": task.description,
+                            "context_str": context_str,
+                            "output_dir": str(task_output_dir),
+                            "acceptance_checks": task.acceptance_checks,
+                            "min_score": DEFAULT_MIN_SCORE,
+                            "max_retries": max_retries_per_task,
+                            "vision_context": vision_context.value,
+                        }
+                    )
 
-        try:
-            flow = TaskExecutionFlow(persistence=_get_task_persistence())
-            flow_id = checkpoint.task_flow_ids.get(task.id, flow.flow_id)
-            checkpoint.task_flow_ids[task.id] = flow_id
-            _save_checkpoint(run_dir, checkpoint)
+                if isinstance(flow_result, TaskExecutionResult):
+                    result = flow_result
+                else:
+                    result = TaskExecutionResult(
+                        task_id=task.id,
+                        title=task.title,
+                        success=flow.state.dialectic_success,
+                        score=flow.state.dialectic_score,
+                        retry_count=flow.state.dialectic_retries,
+                        output_paths=[str(task_output_dir)] if task_output_dir.exists() else [],
+                        validation_notes=flow.state.dialectic_notes,
+                        output_summary=flow.state.impl_output[:5000],
+                        execution_phases=flow.state.phases_executed,
+                    )
 
-            flow_result = flow.kickoff(
-                inputs={
-                    "id": flow_id,
-                    "task_id": task.id,
-                    "task_title": task.title,
-                    "task_description": task.description,
-                    "context_str": context_str,
-                    "output_dir": str(task_output_dir),
-                    "acceptance_checks": task.acceptance_checks,
-                    "min_score": DEFAULT_MIN_SCORE,
-                    "max_retries": max_retries_per_task,
-                    "vision_context": vision_context.value,
-                }
-            )
-
-            if isinstance(flow_result, TaskExecutionResult):
-                result = flow_result
-            else:
+            except Exception as exc:
+                logger.exception("Task execution raised an exception")
+                print(f"   {task.id} failed with exception: {exc}")
                 result = TaskExecutionResult(
                     task_id=task.id,
                     title=task.title,
-                    success=flow.state.dialectic_success,
-                    score=flow.state.dialectic_score,
-                    retry_count=flow.state.dialectic_retries,
-                    output_paths=[str(task_output_dir)] if task_output_dir.exists() else [],
-                    validation_notes=flow.state.dialectic_notes,
-                    output_summary=flow.state.impl_output[:5000],
-                    execution_phases=flow.state.phases_executed,
+                    success=False,
+                    score=0.0,
+                    retry_count=max_retries_per_task,
+                    output_paths=[],
+                    validation_notes=f"Exception: {exc}",
+                    output_summary="",
                 )
-
-        except Exception as exc:
-            print(f"   {task.id} failed with exception: {exc}")
-            result = TaskExecutionResult(
-                task_id=task.id,
-                title=task.title,
-                success=False,
-                score=0.0,
-                retry_count=max_retries_per_task,
-                output_paths=[],
-                validation_notes=f"Exception: {exc}",
-                output_summary="",
-            )
 
         task_results = _upsert_task_result(task_results, result)
 
@@ -240,7 +270,9 @@ def run_dialectic_execution(
             completed_outputs[task.id] = result.output_summary or f"Task completed. Score: {result.score}"
             try:
                 update_task_status(
-                    path, task.id, "completed",
+                    resolved_plan_path,
+                    task.id,
+                    "completed",
                     notes=f"Score: {result.score}/10 [{phases}]. {result.validation_notes[:200]}",
                 )
             except Exception as exc:
@@ -251,7 +283,9 @@ def run_dialectic_execution(
             failed_task_ids.add(task.id)
             try:
                 update_task_status(
-                    path, task.id, "failed",
+                    resolved_plan_path,
+                    task.id,
+                    "failed",
                     notes=f"Score: {result.score}/10 [{phases}]. {result.validation_notes[:200]}",
                 )
             except Exception as exc:
@@ -265,7 +299,7 @@ def run_dialectic_execution(
     # ------------------------------------------------------------------
     # Post-execution: verify completed tasks against PRD acceptance criteria
     # ------------------------------------------------------------------
-    plan = load_plan_file(path)  # reload to pick up status changes
+    plan = load_plan_file(resolved_plan_path)  # reload to pick up status changes
     completed_task_ids = [r.task_id for r in task_results if r.success]
     verified_ids: list[str] = []
     failed_verification_ids: list[str] = []
@@ -280,35 +314,51 @@ def run_dialectic_execution(
         acceptance_criteria = _extract_acceptance_criteria(plan, prd)
 
         for task_id in completed_task_ids:
-            task = next((t for t in plan.tasks if t.id == task_id), None)
-            if task is None:
-                continue
-            print(f"\n  Post-verifying {task.id} — {task.title}...")
-            try:
-                vr = _run_verification(task, acceptance_criteria, vision_context)
-                if vr["verified"]:
-                    verified_ids.append(task.id)
-                    print(f"   {task.id} VERIFIED (score: {vr['score']}/10)")
-                    try:
-                        update_task_status(
-                            path, task.id, "completed",
-                            notes=f"[post-verified] score: {vr['score']}/10. {vr['notes'][:200]}",
-                        )
-                    except Exception as exc:
-                        logger.warning("Failed to update post-verified status for %s: %s", task.id, exc)
-                else:
-                    failed_verification_ids.append(task.id)
-                    print(f"   {task.id} VERIFICATION FAILED (score: {vr['score']}/10)")
-                    try:
-                        update_task_status(
-                            path, task.id, "failed",
-                            notes=f"[post-verify failed] score: {vr['score']}/10. {vr['notes'][:200]}",
-                        )
-                    except Exception as exc:
-                        logger.warning("Failed to update post-verify-failed status for %s: %s", task.id, exc)
-            except Exception as exc:
-                failed_verification_ids.append(task_id)
-                print(f"   {task_id} verification error: {exc}")
+            with log_context(phase="post_verify", task_id=task_id):
+                matched_task = next((candidate for candidate in plan.tasks if candidate.id == task_id), None)
+                if matched_task is None:
+                    continue
+                print(f"\n  Post-verifying {matched_task.id} — {matched_task.title}...")
+                try:
+                    vr = _run_verification(matched_task, acceptance_criteria, vision_context)
+                    if vr["verified"]:
+                        verified_ids.append(matched_task.id)
+                        logger.info("Post-verification passed")
+                        print(f"   {matched_task.id} VERIFIED (score: {vr['score']}/10)")
+                        try:
+                            update_task_status(
+                                resolved_plan_path,
+                                matched_task.id,
+                                "completed",
+                                notes=f"[post-verified] score: {vr['score']}/10. {vr['notes'][:200]}",
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to update post-verified status for %s: %s",
+                                matched_task.id,
+                                exc,
+                            )
+                    else:
+                        failed_verification_ids.append(matched_task.id)
+                        logger.warning("Post-verification failed")
+                        print(f"   {matched_task.id} VERIFICATION FAILED (score: {vr['score']}/10)")
+                        try:
+                            update_task_status(
+                                resolved_plan_path,
+                                matched_task.id,
+                                "failed",
+                                notes=f"[post-verify failed] score: {vr['score']}/10. {vr['notes'][:200]}",
+                            )
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to update post-verify-failed status for %s: %s",
+                                matched_task.id,
+                                exc,
+                            )
+                except Exception as exc:
+                    failed_verification_ids.append(task_id)
+                    logger.exception("Post-verification raised an exception")
+                    print(f"   {task_id} verification error: {exc}")
 
     # ------------------------------------------------------------------
     # Compute and persist user story-level status
@@ -318,6 +368,7 @@ def run_dialectic_execution(
     all_failed = already_failed + failed_verification_ids
     total_verified = len(verified_ids)
 
+    story_status: Literal["completed", "partially_completed", "failed"]
     if total_verified == total_tasks:
         story_status = "completed"
     elif total_verified > 0:
@@ -326,7 +377,7 @@ def run_dialectic_execution(
         story_status = "failed"
 
     try:
-        update_user_story_status(path, story_status)
+        update_user_story_status(resolved_plan_path, story_status)
     except Exception as exc:
         logger.warning("Failed to update story status to %s: %s", story_status, exc)
 
@@ -335,7 +386,7 @@ def run_dialectic_execution(
         plan_id=plan.user_story_id,
         plan_title=plan.user_story_title,
         run_id=run_id,
-        plan_path=str(Path(path).resolve()),
+        plan_path=str(Path(resolved_plan_path).resolve()),
         vision_hash=plan.vision_hash or get_vision_hash(vision_context),
         task_results=task_results,
         overall_success=overall_success,

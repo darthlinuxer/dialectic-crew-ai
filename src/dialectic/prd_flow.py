@@ -11,51 +11,59 @@ Uses native CrewAI features:
 
 import json
 import os
-from datetime import datetime
 import logging
+from datetime import datetime
+from importlib import import_module
 from typing import Any
 
-from crewai.flow import Flow, start, listen, router, or_
+from crewai.flow import Flow, listen, or_, router, start
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
-from crewai import Process
 
-from dialectic.knowledge import _vision_label
-from dialectic.state import DialecticState, MAX_RETRIES
-from dialectic.vision import VisionContext
-from dialectic.export import prd_to_markdown, PRDExporter
+from dialectic.app_logging import bind_log_context, log_context
 from dialectic.config import get_export_config
+from dialectic.export import PRDExporter, prd_to_markdown
+from dialectic.flow_persistence import build_sqlite_flow_persistence
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
-from dialectic.flow_persistence import build_sqlite_flow_persistence
 from dialectic.prd_guardrails import (
-    RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD,
     _build_retry_feedback_context,
     _extract_prd_from_result,
-    _guardrail_success_output,
     _materialize_plain_data,
     _prd_guardrail,
 )
 from dialectic.prd_runtime import build_prd_crew
+from dialectic.state import DialecticState, MAX_RETRIES
+from dialectic.vision import VisionContext
 from schemas import PRDSchema
 
 try:
-    from crewai_files import File
+    CrewAIFile = getattr(import_module("crewai_files"), "File")
+
     _HAS_FILES = True
-except ImportError:
+except (ImportError, AttributeError):
+    CrewAIFile = None
     _HAS_FILES = False
 
 logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = "prd_output"
+
+
 @persist()
 class DialecticFlow(Flow[DialecticState]):
     """Dialectic flow with automatic retry and state persistence"""
 
     @start()
     def iniciar_dialetica(self):
+        bind_log_context(
+            flow_id=self.flow_id,
+            phase="start",
+            vision_context=self.state.vision_context,
+        )
+        logger.info("PRD dialectic flow started")
         phase = self.state.current_phase
         print(f"\n{'='*60}")
-        print(f"STARTING DIALECTIC FLOW")
+        print("STARTING DIALECTIC FLOW")
         print(f"{'='*60}")
         print(f"Flow ID: {self.flow_id}")
         print(f"Feature: {self.state.feature_objective}")
@@ -79,45 +87,51 @@ class DialecticFlow(Flow[DialecticState]):
 
     @listen(or_(iniciar_dialetica, fazer_retry))
     def rodar_rodada_dialetica(self):
-        self.state.current_phase = "dialectic"
-        print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
-
-        vision_context = VisionContext(self.state.vision_context)
-        vision_label = _vision_label(vision_context)
-        retry_feedback = (self.state.final_validation_notes or "").strip()
-        retry_feedback_block, retry_feedback_sources = _build_retry_feedback_context(
-            retry_feedback,
-            self.state.retry_count,
-        )
-
-        crew = build_prd_crew(
-            feature_objective=self.state.feature_objective,
-            vision_context=vision_context,
-            retry_feedback_block=retry_feedback_block,
-            retry_feedback_sources=retry_feedback_sources,
-        )
-
-        kickoff_kwargs: dict[str, Any] = {
-            "inputs": {
-                "feature_objective": self.state.feature_objective,
-            },
-        }
-
-        if _HAS_FILES and self.state.file_paths:
-            input_files = {}
-            for i, path in enumerate(self.state.file_paths):
-                if os.path.exists(path):
-                    key = os.path.splitext(os.path.basename(path))[0] or f"file_{i}"
-                    input_files[key] = File(source=path)
-            if input_files:
-                kickoff_kwargs["input_files"] = input_files
-
-        feature_label = self.state.feature_objective[:60].replace(" ", "_")
-        with HookScope(
-            token_budget=0,
-            label=f"prd/{feature_label}",
+        with log_context(
+            flow_id=self.flow_id,
+            phase="dialectic",
+            vision_context=self.state.vision_context,
         ):
-            resultado = crew.kickoff(**kickoff_kwargs)
+            self.state.current_phase = "dialectic"
+            print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
+            logger.info("Running PRD dialectic round", extra={"retry": self.state.retry_count})
+
+            vision_context = VisionContext(self.state.vision_context)
+            retry_feedback = (self.state.final_validation_notes or "").strip()
+            retry_feedback_block, retry_feedback_sources = _build_retry_feedback_context(
+                retry_feedback,
+                self.state.retry_count,
+            )
+
+            crew = build_prd_crew(
+                feature_objective=self.state.feature_objective,
+                vision_context=vision_context,
+                retry_feedback_block=retry_feedback_block,
+                retry_feedback_sources=retry_feedback_sources,
+            )
+
+            kickoff_kwargs: dict[str, Any] = {
+                "inputs": {
+                    "feature_objective": self.state.feature_objective,
+                },
+            }
+
+            if _HAS_FILES and self.state.file_paths:
+                input_files = {}
+                for i, path in enumerate(self.state.file_paths):
+                    if os.path.exists(path):
+                        key = os.path.splitext(os.path.basename(path))[0] or f"file_{i}"
+                        if CrewAIFile is not None:
+                            input_files[key] = CrewAIFile(source=path)
+                if input_files:
+                    kickoff_kwargs["input_files"] = input_files
+
+            feature_label = self.state.feature_objective[:60].replace(" ", "_")
+            with HookScope(
+                token_budget=0,
+                label=f"prd/{feature_label}",
+            ):
+                resultado = crew.kickoff(**kickoff_kwargs)
 
         # Extract PRD using the same helper used by the guardrail so the flow
         # stores the exact validated representation rather than reparsing a
@@ -184,6 +198,8 @@ class DialecticFlow(Flow[DialecticState]):
 
     @router(rodar_rodada_dialetica)
     def avaliar(self):
+        bind_log_context(flow_id=self.flow_id, phase="evaluate")
+        logger.info("Evaluating PRD dialectic round", extra={"retry": self.state.retry_count})
         if self.state.quality_score >= 9.0:
             self.state.current_phase = "save"
             print(f"APPROVED! Quality score: {self.state.quality_score}")
@@ -205,6 +221,7 @@ class DialecticFlow(Flow[DialecticState]):
     # not method references.
     @listen("aprovar")
     def salvar_prd_final(self):
+        bind_log_context(flow_id=self.flow_id, phase="save")
         if self.state.current_phase == "completed" and (self.state.prd_path_json or self.state.prd_path_md):
             print(f"\nPRD already exported for flow {self.flow_id}.")
             if self.state.prd_path_json:
@@ -239,7 +256,7 @@ class DialecticFlow(Flow[DialecticState]):
         if data.get("_parse_failed"):
             self.state.prd_path_json = ""
             self.state.prd_path_md = ""
-            print(f"\nPRD generation FAILED: could not extract structured output.")
+            print("\nPRD generation FAILED: could not extract structured output.")
             print(f"Score: {self.state.quality_score}/10.0")
             print("No PRD artifact saved. Check debug files in prd_output/.")
             return None
@@ -254,7 +271,7 @@ class DialecticFlow(Flow[DialecticState]):
                 data.keys(),
                 exc,
             )
-            print(f"\nPRD generation FAILED: state data is not a valid PRDSchema.")
+            print("\nPRD generation FAILED: state data is not a valid PRDSchema.")
             print(f"Score: {self.state.quality_score}/10.0")
             return None
 
@@ -349,3 +366,12 @@ def run_dialectic_flow(
         "consensus_reached": s.consensus_reached,
         "validation": s.final_validation_notes,
     }
+
+
+__all__ = [
+    "DialecticFlow",
+    "OUTPUT_DIR",
+    "_prd_guardrail",
+    "get_prd_resume_state",
+    "run_dialectic_flow",
+]
