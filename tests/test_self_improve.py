@@ -324,7 +324,14 @@ class TestRunSelfImprove:
             "quality_score": 9.0,
             "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
         }
-        mock_exec = {"overall_success": True, "story_status": "completed"}
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-commit-test",
+            "task_flow_ids": {"T-001": "task-flow-commit-test"},
+            "output_path": str(tmp_path / "exec_output" / "run-commit-test"),
+            "report_path": str(tmp_path / "exec_output" / "run-commit-test" / "report.json"),
+        }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
@@ -369,6 +376,130 @@ class TestRunSelfImprove:
                 record = run_self_improve(max_improvements=1)
 
         assert "did not produce an exported JSON artifact" in record.failure_reason
+
+    def test_creates_commit_before_pr(self, tmp_path, monkeypatch, store):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Improve PR handoff\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        commit_calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (commit_calls.append((str(cwd), message)) or True, "created commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: "https://example/pr/1")
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-no-commit-test",
+            "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
+            "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
+            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.pr_created is True
+        assert commit_calls
+        assert commit_calls[0][0] == str(tmp_path)
+        assert commit_calls[0][1].startswith("chore(self-improve): apply cycle ")
+
+    def test_skips_pr_when_no_commits_ahead(self, tmp_path, monkeypatch, store):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Improve no-op PR handling\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+
+        pr_attempted = {"value": False}
+
+        def fake_create_pr(*args, **kwargs):
+            pr_attempted["value"] = True
+            return "https://example/pr/1"
+
+        monkeypatch.setattr("main.self_improve._create_pr", fake_create_pr)
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-no-commit-test",
+            "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
+            "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
+            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.pr_created is False
+        assert "No committable source changes" in record.failure_reason
+        assert pr_attempted["value"] is False
 
     def test_resume_prints_last_failure_next_stage_and_reused_artifacts(
         self,

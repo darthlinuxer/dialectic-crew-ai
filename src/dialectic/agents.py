@@ -4,7 +4,7 @@ from typing import Any
 from crewai import Agent
 
 from dialectic.llm import LLM_BY_TIER
-from dialectic.knowledge import _vision_label
+from dialectic.knowledge import _vision_label, _vision_path
 from dialectic.mcp_config import MCP_BUNDLES
 from dialectic.tool_bundles import TOOL_BUNDLES
 from dialectic.vision import VisionContext
@@ -59,7 +59,10 @@ def _build_agent(
 ) -> Agent:
     config = render_yaml_config(
         _get_agent_config(name),
-        {"vision_label": _vision_label(vision_context)},
+        {
+            "vision_label": _vision_label(vision_context),
+            "vision_path": _vision_path(vision_context),
+        },
     )
     return build_agent_from_config(config)
 

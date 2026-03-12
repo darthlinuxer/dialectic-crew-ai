@@ -211,7 +211,7 @@ def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
 def test_dialectic_flow_validator_uses_full_dialectic_context():
     import dialectic.prd_runtime as prd_runtime
 
-    source = inspect.getsource(prd_runtime.build_prd_crew)
+    source = inspect.getsource(prd_runtime._build_prd_tasks)
 
     assert 'context=[task_vision, task_critica, task_sintese]' in source
 

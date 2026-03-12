@@ -31,6 +31,7 @@ Thumbs.db
 prd_output/
 exec_output/
 .dialectic/
+.crewai/
 
 # Build / egg-info
 *.egg-info/

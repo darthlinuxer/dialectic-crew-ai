@@ -29,8 +29,10 @@ from main.git_helpers import (
     command_available,
     dirty_worktree_guidance,
     git_branch_create,
+    git_commit_all,
     git_current_branch,
     git_discard_branch,
+    git_has_commits_ahead,
     git_stash_worktree,
     git_worktree_clean,
     recover_stale_self_improve_worktree,
@@ -165,6 +167,14 @@ def _dirty_worktree_guidance(cwd: Path, worktree_reason: str) -> str:
 
 def _git_worktree_clean(cwd: Path) -> tuple[bool, str]:
     return git_worktree_clean(cwd, run_cmd_fn=_run_cmd)
+
+
+def _git_commit_all(cwd: Path, message: str) -> tuple[bool, str]:
+    return git_commit_all(cwd, message, run_cmd_fn=_run_cmd)
+
+
+def _git_has_commits_ahead(cwd: Path, base_branch: str = "main") -> tuple[bool, str]:
+    return git_has_commits_ahead(cwd, base_branch=base_branch, run_cmd_fn=_run_cmd)
 
 
 def _create_pr(branch: str, title: str, body: str, cwd: Path) -> str | None:
@@ -569,6 +579,26 @@ def run_self_improve(
         record.failure_reason = f"Metrics regressed: {reason}"
         print(f"  FAIL: {record.failure_reason}")
         _git_discard_branch(branch_name, project_root)
+        _persist_record(store, record)
+        _save_self_improve_record(project_root, record)
+        return record
+
+    commit_message = f"chore(self-improve): apply cycle {cycle_id}"
+    committed, commit_reason = _git_commit_all(project_root, commit_message)
+    if committed:
+        print(f"  Created commit for PR: {commit_reason}")
+    elif commit_reason != "nothing to commit":
+        record.failure_reason = f"Failed to create PR commit: {commit_reason}"
+        print(f"  FAIL: {record.failure_reason}")
+        _persist_record(store, record)
+        _save_self_improve_record(project_root, record)
+        return record
+
+    ahead, ahead_reason = _git_has_commits_ahead(project_root)
+    if not ahead:
+        record.failure_reason = "No committable source changes were produced after validation"
+        print(f"  PR skipped: {record.failure_reason}")
+        print(f"  Details: {ahead_reason}")
         _persist_record(store, record)
         _save_self_improve_record(project_root, record)
         return record

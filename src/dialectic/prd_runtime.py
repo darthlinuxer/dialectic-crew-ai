@@ -1,3 +1,5 @@
+"""Crew construction helpers for the PRD dialectic flow."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,8 +14,7 @@ from dialectic.agents import (
     create_validador_macro,
     create_visionario,
 )
-from dialectic.knowledge import _vision_label, crew_memory, vision_knowledge
-from dialectic.llm import llm_planning
+from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
     load_yaml_config,
@@ -33,23 +34,52 @@ def build_prd_crew(
     retry_feedback_block: str,
     retry_feedback_sources: list[StringKnowledgeSource],
 ) -> Crew:
+    """Build the PRD dialectic crew for a single feature objective."""
+
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
     placeholders = {
         "feature_objective": feature_objective,
         "vision_label": _vision_label(vision_context),
+        "vision_path": _vision_path(vision_context),
         "retry_feedback_block": retry_feedback_block,
     }
 
-    vis = create_visionario(vision_context)
-    crit = create_critico_socratico(vision_context)
-    sint = create_sintetizador(vision_context)
-    val = create_validador_macro(vision_context)
-    agents = {
-        "visionario": vis,
-        "critico_socratico": crit,
-        "sintetizador": sint,
-        "validador_macro": val,
+    agents = _build_agents(vision_context)
+    tasks = _build_prd_tasks(task_templates, placeholders, agents)
+    knowledge_sources = [vision_knowledge(vision_context), *retry_feedback_sources]
+    return Crew(
+        agents=[
+            agents["visionario"],
+            agents["critico_socratico"],
+            agents["sintetizador"],
+            agents["validador_macro"],
+        ],
+        tasks=tasks,
+        process=Process.sequential,
+        verbose=True,
+        memory=crew_memory(vision_context, "prd"),
+        planning=False,
+        knowledge_sources=knowledge_sources,
+    )
+
+
+def _build_agents(vision_context: VisionContext) -> dict[str, Any]:
+    """Create fresh PRD agents for the requested vision context."""
+
+    return {
+        "visionario": create_visionario(vision_context),
+        "critico_socratico": create_critico_socratico(vision_context),
+        "sintetizador": create_sintetizador(vision_context),
+        "validador_macro": create_validador_macro(vision_context),
     }
+
+
+def _build_prd_tasks(
+    task_templates: dict[str, dict[str, Any]],
+    placeholders: dict[str, Any],
+    agents: Mapping[str, Any],
+) -> list[Task]:
+    """Build the ordered PRD thesis-to-validation task chain."""
 
     task_vision = _build_task(task_templates["prd_thesis"], placeholders, agents)
     task_critica = _build_task(
@@ -70,19 +100,7 @@ def build_prd_crew(
         agents,
         context=[task_vision, task_critica, task_sintese],
     )
-
-    tasks = [task_vision, task_critica, task_sintese, task_validacao]
-    knowledge_sources = [vision_knowledge(vision_context), *retry_feedback_sources]
-    return Crew(
-        agents=[vis, crit, sint, val],
-        tasks=tasks,
-        process=Process.sequential,
-        verbose=True,
-        memory=crew_memory(vision_context, "prd"),
-        planning=True,
-        planning_llm=llm_planning,
-        knowledge_sources=knowledge_sources,
-    )
+    return [task_vision, task_critica, task_sintese, task_validacao]
 
 
 def _build_task(
