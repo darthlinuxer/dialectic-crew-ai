@@ -36,6 +36,14 @@ def configured_env(tmp_path, monkeypatch, store, vision_file):
     monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
     monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
     monkeypatch.setattr(
+        "main.self_improve._git_commit_all",
+        lambda cwd, message: (False, "nothing to commit"),
+    )
+    monkeypatch.setattr(
+        "main.self_improve._git_has_commits_ahead",
+        lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+    )
+    monkeypatch.setattr(
         "main.self_improve._snapshot_tests",
         lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
     )

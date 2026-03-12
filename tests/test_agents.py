@@ -67,6 +67,18 @@ def test_visionario_does_not_expose_directory_listing_tool():
     assert "list_directory" not in tool_names
 
 
+def test_validador_macro_does_not_expose_file_tools():
+    """Keep structured-output validation agents away from file tools."""
+
+    validador = agents.create_validador_macro(VisionContext.SELF)
+
+    tool_names = {getattr(tool, "name", "") for tool in validador.tools}
+
+    assert "search_a_files_content" not in tool_names
+    assert "list_directory" not in tool_names
+    assert "search_a_json_content" not in tool_names
+
+
 def test_crew_memory_uses_context_isolated_storage(monkeypatch, tmp_path):
     captured: list[dict] = []
 

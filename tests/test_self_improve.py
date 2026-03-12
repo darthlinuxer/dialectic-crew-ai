@@ -8,6 +8,7 @@ import pytest
 from dialectic.introspect import run_introspection
 from dialectic.metrics import MetricRecord, MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
+from main.pr_builder import create_pr
 from main.self_improve import (
     PROTECTED_PATHS,
     _create_pr,
@@ -324,7 +325,14 @@ class TestRunSelfImprove:
             "quality_score": 9.0,
             "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
         }
-        mock_exec = {"overall_success": True, "story_status": "completed"}
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-commit-test",
+            "task_flow_ids": {"T-001": "task-flow-commit-test"},
+            "output_path": str(tmp_path / "exec_output" / "run-commit-test"),
+            "report_path": str(tmp_path / "exec_output" / "run-commit-test" / "report.json"),
+        }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
@@ -369,6 +377,130 @@ class TestRunSelfImprove:
                 record = run_self_improve(max_improvements=1)
 
         assert "did not produce an exported JSON artifact" in record.failure_reason
+
+    def test_creates_commit_before_pr(self, tmp_path, monkeypatch, store):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Improve PR handoff\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        commit_calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (commit_calls.append((str(cwd), message)) or True, "created commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: "https://example/pr/1")
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-no-commit-test",
+            "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
+            "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
+            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.pr_created is True
+        assert commit_calls
+        assert commit_calls[0][0] == str(tmp_path)
+        assert commit_calls[0][1].startswith("chore(self-improve): apply cycle ")
+
+    def test_skips_pr_when_no_commits_ahead(self, tmp_path, monkeypatch, store):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Improve no-op PR handling\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+
+        pr_attempted = {"value": False}
+
+        def fake_create_pr(*args, **kwargs):
+            pr_attempted["value"] = True
+            return "https://example/pr/1"
+
+        monkeypatch.setattr("main.self_improve._create_pr", fake_create_pr)
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-no-commit-test",
+            "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
+            "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
+            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.pr_created is False
+        assert "No committable source changes" in record.failure_reason
+        assert pr_attempted["value"] is False
 
     def test_resume_prints_last_failure_next_stage_and_reused_artifacts(
         self,
@@ -433,6 +565,154 @@ class TestRunSelfImprove:
         assert "[resume] Next stage: execution" in out
         assert f"PRD: {tmp_path / 'prd_output' / 'PRD_test.json'}" in out
         assert "Execution run: run-123" in out
+
+    def test_resume_switches_to_recorded_branch_when_current_branch_drifted(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from main.self_improve import _save_self_improve_record
+        from schemas import ImprovementOpportunity
+
+        git_dir = tmp_path / ".git"
+        git_dir.write_text("gitdir: /fake/worktree\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+
+        switched = []
+        monkeypatch.setattr(
+            "main.self_improve._git_current_branch",
+            lambda cwd: "self-improve/other-cycle",
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_checkout_branch",
+            lambda branch, cwd: (switched.append((branch, str(cwd))) or True, f"switched to {branch}"),
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-switch",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-1",
+                    category="code_health",
+                    title="Resume on the correct branch",
+                    description="Ensure resume reattaches to the recorded git branch.",
+                    evidence=[".dialectic/self_improve/cycle-switch.json"],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            branch_name="self-improve/cycle-switch",
+            prd_path_json=str(tmp_path / "prd_output" / "PRD_test.json"),
+            plan_path_json=str(tmp_path / "prd_output" / "exec_test.json"),
+            execution_run_id="run-123",
+            execution_output_path=str(tmp_path / "exec_output" / "run-123"),
+            execution_report_path=str(tmp_path / "exec_output" / "run-123" / "report.json"),
+            failure_reason="PR creation failed: drifted branch",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        resumed = run_self_improve(resume_cycle_id="cycle-switch")
+
+        assert resumed.failure_reason == ""
+        assert switched == [("self-improve/cycle-switch", str(tmp_path))]
+
+    def test_resume_recreates_missing_recorded_branch_from_current_self_improve_head(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from main.self_improve import _save_self_improve_record
+        from schemas import ImprovementOpportunity
+
+        git_dir = tmp_path / ".git"
+        git_dir.write_text("gitdir: /fake/worktree\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_current_branch",
+            lambda cwd: "self-improve/other-cycle",
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_checkout_branch",
+            lambda branch, cwd: (False, f"pathspec '{branch}' did not match any file(s) known to git"),
+        )
+
+        recreated = []
+        monkeypatch.setattr(
+            "main.self_improve._git_branch_create_from_head",
+            lambda branch, cwd: (recreated.append((branch, str(cwd))) or True, f"created {branch}"),
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-recreate",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-1",
+                    category="code_health",
+                    title="Recreate the missing branch",
+                    description="Resume should restore the recorded branch from the current self-improve HEAD.",
+                    evidence=[".dialectic/self_improve/cycle-recreate.json"],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            branch_name="self-improve/cycle-recreate",
+            prd_path_json=str(tmp_path / "prd_output" / "PRD_test.json"),
+            plan_path_json=str(tmp_path / "prd_output" / "exec_test.json"),
+            execution_run_id="run-123",
+            execution_output_path=str(tmp_path / "exec_output" / "run-123"),
+            execution_report_path=str(tmp_path / "exec_output" / "run-123" / "report.json"),
+            failure_reason="PR creation failed: missing branch",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        resumed = run_self_improve(resume_cycle_id="cycle-recreate")
+
+        assert resumed.failure_reason == ""
+        assert recreated == [("self-improve/cycle-recreate", str(tmp_path))]
 
 
 class TestResumeSummary:
@@ -530,6 +810,61 @@ class TestCreatePr:
             lambda name: None if name == "gh" else "/usr/bin/git",
         )
         assert _create_pr("branch", "title", "body", tmp_path) is None
+
+    def test_pushes_branch_before_creating_pr(self, tmp_path):
+        commands = []
+
+        def fake_run(cmd, cwd=None, timeout=120):
+            commands.append(cmd)
+            if cmd[:3] == ["git", "push", "-u"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="pushed\n", stderr="")
+            if cmd[:3] == ["gh", "pr", "create"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="https://example/pr/123\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="unexpected command")
+
+        pr_url = create_pr(
+            "self-improve/test-cycle",
+            "title",
+            "body",
+            tmp_path,
+            command_available_fn=lambda command: True,
+            run_cmd_fn=fake_run,
+            logger=type("Logger", (), {"warning": lambda self, msg, *args: None})(),
+        )
+
+        assert pr_url == "https://example/pr/123"
+        assert commands == [
+            ["git", "push", "-u", "origin", "self-improve/test-cycle"],
+            ["gh", "pr", "create", "--title", "title", "--body", "body", "--head", "self-improve/test-cycle"],
+        ]
+
+    def test_returns_none_when_push_fails(self, tmp_path):
+        commands = []
+        warnings = []
+
+        class Logger:
+            def warning(self, msg, *args):
+                warnings.append(msg % args if args else msg)
+
+        def fake_run(cmd, cwd=None, timeout=120):
+            commands.append(cmd)
+            if cmd[:3] == ["git", "push", "-u"]:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="push rejected")
+            return subprocess.CompletedProcess(cmd, 0, stdout="https://example/pr/123\n", stderr="")
+
+        pr_url = create_pr(
+            "self-improve/test-cycle",
+            "title",
+            "body",
+            tmp_path,
+            command_available_fn=lambda command: True,
+            run_cmd_fn=fake_run,
+            logger=Logger(),
+        )
+
+        assert pr_url is None
+        assert commands == [["git", "push", "-u", "origin", "self-improve/test-cycle"]]
+        assert warnings == ["PR branch push failed: push rejected"]
 
 
 class TestTokenBudgetIntegration:

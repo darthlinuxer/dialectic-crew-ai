@@ -37,6 +37,19 @@ def git_branch_create(
     return result.returncode == 0
 
 
+def git_branch_create_from_head(
+    branch: str,
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    result = run_cmd_fn(["git", "checkout", "-b", branch], cwd=cwd)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode == 0:
+        return True, output or f"created branch {branch} from current HEAD"
+    return False, output or f"failed to create branch {branch} from current HEAD"
+
+
 def git_discard_branch(
     branch: str,
     cwd: Path,
@@ -56,6 +69,19 @@ def git_current_branch(
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def git_checkout_branch(
+    branch: str,
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    result = run_cmd_fn(["git", "checkout", branch], cwd=cwd)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode == 0:
+        return True, output or f"checked out {branch}"
+    return False, output or f"failed to checkout {branch}"
 
 
 def recover_stale_self_improve_worktree(
@@ -125,3 +151,46 @@ def git_worktree_clean(
     preview = ", ".join(dirty_entries[:5])
     suffix = "" if len(dirty_entries) <= 5 else f", +{len(dirty_entries) - 5} more"
     return False, f"Worktree has uncommitted changes: {preview}{suffix}"
+
+
+def git_commit_all(
+    cwd: Path,
+    message: str,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    add_result = run_cmd_fn(["git", "add", "-A"], cwd=cwd)
+    if add_result.returncode != 0:
+        reason = (add_result.stderr or add_result.stdout or "failed to stage changes").strip()
+        return False, reason
+
+    commit_result = run_cmd_fn(["git", "commit", "-m", message], cwd=cwd)
+    output = (commit_result.stdout or commit_result.stderr or "").strip()
+    normalized_output = output.lower()
+    if commit_result.returncode == 0:
+        return True, output or "created commit"
+    if "nothing to commit" in normalized_output or "no changes added to commit" in normalized_output:
+        return False, "nothing to commit"
+    return False, output or "failed to create commit"
+
+
+def git_has_commits_ahead(
+    cwd: Path,
+    *,
+    base_branch: str = "main",
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    result = run_cmd_fn(["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=cwd)
+    if result.returncode != 0:
+        reason = (result.stderr or result.stdout or f"failed to compare against {base_branch}").strip()
+        return False, reason
+
+    ahead_count_text = result.stdout.strip() or "0"
+    try:
+        ahead_count = int(ahead_count_text)
+    except ValueError:
+        return False, f"invalid ahead count: {ahead_count_text}"
+
+    if ahead_count > 0:
+        return True, f"{ahead_count} commit(s) ahead of {base_branch}"
+    return False, f"no commits ahead of {base_branch}"

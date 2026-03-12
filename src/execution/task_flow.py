@@ -121,6 +121,10 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
 
     @start()
     def dispatch(self):
+        return self.state.current_phase
+
+    @router(dispatch)
+    def route_from_dispatch(self):
         phase = self.state.current_phase
         if phase == "verify":
             return "verify"

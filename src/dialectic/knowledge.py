@@ -26,6 +26,16 @@ def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
     return vision_label(_VISION_PATHS, context)
 
 
+def vision_path_label(vision_paths: dict[VisionContext, Path], context: VisionContext) -> str:
+    """Return the repo-relative vision path for prompt rendering."""
+    return vision_paths[context].as_posix()
+
+
+def _vision_path(context: VisionContext = VisionContext.PROJECT) -> str:
+    """Return the active repo-relative vision path for prompt rendering."""
+    return vision_path_label(_VISION_PATHS, context)
+
+
 def vision_knowledge_source(
     context: VisionContext,
     *,
