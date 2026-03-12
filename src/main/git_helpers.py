@@ -37,6 +37,19 @@ def git_branch_create(
     return result.returncode == 0
 
 
+def git_branch_create_from_head(
+    branch: str,
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    result = run_cmd_fn(["git", "checkout", "-b", branch], cwd=cwd)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode == 0:
+        return True, output or f"created branch {branch} from current HEAD"
+    return False, output or f"failed to create branch {branch} from current HEAD"
+
+
 def git_discard_branch(
     branch: str,
     cwd: Path,
@@ -56,6 +69,19 @@ def git_current_branch(
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def git_checkout_branch(
+    branch: str,
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    result = run_cmd_fn(["git", "checkout", branch], cwd=cwd)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode == 0:
+        return True, output or f"checked out {branch}"
+    return False, output or f"failed to checkout {branch}"
 
 
 def recover_stale_self_improve_worktree(

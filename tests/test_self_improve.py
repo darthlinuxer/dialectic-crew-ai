@@ -565,6 +565,154 @@ class TestRunSelfImprove:
         assert f"PRD: {tmp_path / 'prd_output' / 'PRD_test.json'}" in out
         assert "Execution run: run-123" in out
 
+    def test_resume_switches_to_recorded_branch_when_current_branch_drifted(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from main.self_improve import _save_self_improve_record
+        from schemas import ImprovementOpportunity
+
+        git_dir = tmp_path / ".git"
+        git_dir.write_text("gitdir: /fake/worktree\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+
+        switched = []
+        monkeypatch.setattr(
+            "main.self_improve._git_current_branch",
+            lambda cwd: "self-improve/other-cycle",
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_checkout_branch",
+            lambda branch, cwd: (switched.append((branch, str(cwd))) or True, f"switched to {branch}"),
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-switch",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-1",
+                    category="code_health",
+                    title="Resume on the correct branch",
+                    description="Ensure resume reattaches to the recorded git branch.",
+                    evidence=[".dialectic/self_improve/cycle-switch.json"],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            branch_name="self-improve/cycle-switch",
+            prd_path_json=str(tmp_path / "prd_output" / "PRD_test.json"),
+            plan_path_json=str(tmp_path / "prd_output" / "exec_test.json"),
+            execution_run_id="run-123",
+            execution_output_path=str(tmp_path / "exec_output" / "run-123"),
+            execution_report_path=str(tmp_path / "exec_output" / "run-123" / "report.json"),
+            failure_reason="PR creation failed: drifted branch",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        resumed = run_self_improve(resume_cycle_id="cycle-switch")
+
+        assert resumed.failure_reason == ""
+        assert switched == [("self-improve/cycle-switch", str(tmp_path))]
+
+    def test_resume_recreates_missing_recorded_branch_from_current_self_improve_head(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from main.self_improve import _save_self_improve_record
+        from schemas import ImprovementOpportunity
+
+        git_dir = tmp_path / ".git"
+        git_dir.write_text("gitdir: /fake/worktree\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_current_branch",
+            lambda cwd: "self-improve/other-cycle",
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_checkout_branch",
+            lambda branch, cwd: (False, f"pathspec '{branch}' did not match any file(s) known to git"),
+        )
+
+        recreated = []
+        monkeypatch.setattr(
+            "main.self_improve._git_branch_create_from_head",
+            lambda branch, cwd: (recreated.append((branch, str(cwd))) or True, f"created {branch}"),
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-recreate",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-1",
+                    category="code_health",
+                    title="Recreate the missing branch",
+                    description="Resume should restore the recorded branch from the current self-improve HEAD.",
+                    evidence=[".dialectic/self_improve/cycle-recreate.json"],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            branch_name="self-improve/cycle-recreate",
+            prd_path_json=str(tmp_path / "prd_output" / "PRD_test.json"),
+            plan_path_json=str(tmp_path / "prd_output" / "exec_test.json"),
+            execution_run_id="run-123",
+            execution_output_path=str(tmp_path / "exec_output" / "run-123"),
+            execution_report_path=str(tmp_path / "exec_output" / "run-123" / "report.json"),
+            failure_reason="PR creation failed: missing branch",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        resumed = run_self_improve(resume_cycle_id="cycle-recreate")
+
+        assert resumed.failure_reason == ""
+        assert recreated == [("self-improve/cycle-recreate", str(tmp_path))]
+
 
 class TestResumeSummary:
     def test_prefers_execution_after_failed_execution(self):

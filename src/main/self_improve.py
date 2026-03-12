@@ -29,6 +29,8 @@ from main.git_helpers import (
     command_available,
     dirty_worktree_guidance,
     git_branch_create,
+    git_branch_create_from_head,
+    git_checkout_branch,
     git_commit_all,
     git_current_branch,
     git_discard_branch,
@@ -137,12 +139,20 @@ def _git_branch_create(branch: str, cwd: Path) -> bool:
     return git_branch_create(branch, cwd, run_cmd_fn=_run_cmd)
 
 
+def _git_branch_create_from_head(branch: str, cwd: Path) -> tuple[bool, str]:
+    return git_branch_create_from_head(branch, cwd, run_cmd_fn=_run_cmd)
+
+
 def _git_discard_branch(branch: str, cwd: Path) -> None:
     git_discard_branch(branch, cwd, run_cmd_fn=_run_cmd)
 
 
 def _git_current_branch(cwd: Path) -> str:
     return git_current_branch(cwd, run_cmd_fn=_run_cmd)
+
+
+def _git_checkout_branch(branch: str, cwd: Path) -> tuple[bool, str]:
+    return git_checkout_branch(branch, cwd, run_cmd_fn=_run_cmd)
 
 
 def _recover_stale_self_improve_worktree(cwd: Path) -> tuple[bool, str]:
@@ -403,6 +413,34 @@ def run_self_improve(
             return record
     else:
         print(f"\n[resume] Continuing on branch: {branch_name}")
+        git_metadata_exists = (project_root / ".git").exists()
+        if git_metadata_exists and _command_available("git"):
+            current_branch = _git_current_branch(project_root)
+            if current_branch != branch_name:
+                switched, switch_reason = _git_checkout_branch(branch_name, project_root)
+                if not switched:
+                    if current_branch.startswith("self-improve/"):
+                        recreated, recreate_reason = _git_branch_create_from_head(branch_name, project_root)
+                        if not recreated:
+                            record.failure_reason = (
+                                f"Failed to resume on branch '{branch_name}': {switch_reason}; "
+                                f"also failed to recreate it from {current_branch}: {recreate_reason}"
+                            )
+                            print(f"  ABORT: {record.failure_reason}")
+                            _persist_record(store, record)
+                            _save_self_improve_record(project_root, record)
+                            return record
+                        print(f"  Recreated recorded branch from {current_branch}: {branch_name}")
+                    else:
+                        record.failure_reason = (
+                            f"Failed to resume on branch '{branch_name}': {switch_reason}"
+                        )
+                        print(f"  ABORT: {record.failure_reason}")
+                        _persist_record(store, record)
+                        _save_self_improve_record(project_root, record)
+                        return record
+                else:
+                    print(f"  Resumed on recorded branch: {branch_name}")
 
     with HookScope(
         token_budget=token_budget,
