@@ -180,7 +180,7 @@ Requirements:
 
 
 app = typer.Typer(
-    add_completion=True,
+    add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
     help=(
         "Modern typed CLI for Dialectic Crew AI workflows, including PRD generation, "
@@ -265,8 +265,10 @@ def cmd_prd(  # pylint: disable=too-many-arguments,too-many-positional-arguments
 
 
 def cmd_help():
-    """Print the detailed project-specific help guide."""
-    print(HELP_TEXT.strip())
+    """Print the unified modern help guide for the CLI."""
+    command = get_command(app)
+    context = click.Context(command, info_name="dialectic-crew")
+    print(command.get_help(context))
 
 
 def _normalize_legacy_args(args: Sequence[str]) -> list[str]:
@@ -684,7 +686,7 @@ def self_improve_command(
 
 @app.command("help")
 def help_command() -> None:
-    """Show the detailed legacy help text and examples."""
+    """Show the same top-level help as --help."""
     cmd_help()
 
 

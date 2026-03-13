@@ -32,6 +32,18 @@ class TestCliRequirementRouting:
         assert "plan" in result.stdout
         assert "execute" in result.stdout
         assert "self-improve" in result.stdout
+        assert "--install-completion" not in result.stdout
+        assert "--show-completion" not in result.stdout
+
+    def test_help_command_uses_modern_help_surface(self):
+        modern_help = RUNNER.invoke(cli.app, ["--help"])
+        help_command = RUNNER.invoke(cli.app, ["help"])
+
+        assert modern_help.exit_code == 0
+        assert help_command.exit_code == 0
+        assert "Modern typed CLI for Dialectic Crew AI workflows" in help_command.stdout
+        assert "Commands:" not in help_command.stdout
+        assert "prd           Generate or resume a PRD workflow" in help_command.stdout
 
     def test_prd_help_includes_examples(self):
         result = RUNNER.invoke(cli.app, ["prd", "--help"])
