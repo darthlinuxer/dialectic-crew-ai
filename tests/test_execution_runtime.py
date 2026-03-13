@@ -89,3 +89,43 @@ def test_build_task_dialectic_crew_uses_initial_template_without_retry(monkeypat
     assert "TASK TO IMPLEMENT: T-001 — Title" in captured_tasks[0]["description"]
     assert "Context block" in captured_tasks[0]["description"]
     assert "RETRY 1/3" not in captured_tasks[0]["description"]
+
+
+def test_build_task_dialectic_crew_mentions_self_antidrift_file(monkeypatch):
+    from execution import runtime
+
+    captured_tasks = []
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            captured_tasks.append(kwargs)
+            self.kwargs = kwargs
+
+    class FakeCrew:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(runtime, "Task", FakeTask)
+    monkeypatch.setattr(runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(runtime, "create_implementer", lambda ctx: "impl")
+    monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "crit")
+    monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
+    monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
+    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision")
+
+    runtime.build_task_dialectic_crew(
+        task_id="T-SELF",
+        task_title="Self task",
+        task_description="Stay aligned",
+        context_str="Self context",
+        min_score=7.5,
+        vision_context=VisionContext.SELF,
+        synthesis_for_retry=None,
+        retry=0,
+        max_retries=2,
+    )
+
+    assert "#file:SELF_VISION.md" in captured_tasks[0]["description"]
+    assert "internal/SELF_VISION.md" in captured_tasks[0]["description"]
+    assert "#file:SELF_VISION.md" in captured_tasks[1]["description"]

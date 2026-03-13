@@ -9,7 +9,8 @@ execute_task_antithesis:
   description: |
     Analyze the implementation of task {task_id} — {task_title}.
 
-    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
 
     SCOPE: Evaluate ONLY whether it meets the description: """{task_description}"""
     Do NOT critique outside the scope. Do NOT request additional features.
@@ -22,7 +23,8 @@ execute_task_synthesis:
   description: |
     Produce the SYNTHESIS for task {task_id}: incorporate ALL critiques.
 
-    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
     Ensure the synthesis is aligned with the macro vision.
     Include clear instructions for retry if necessary.
   expected_output: Refined synthesis with instructions
@@ -33,7 +35,8 @@ execute_task_validation:
   description: |
     Evaluate the implementation of task {task_id}.
 
-    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
 
     Minimum score for approval: {min_score}
     Verify alignment with the macro vision.

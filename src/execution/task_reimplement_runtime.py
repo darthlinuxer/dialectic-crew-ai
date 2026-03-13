@@ -6,7 +6,7 @@ from typing import Any
 from crewai import Agent, Crew, Process, Task
 
 from dialectic.agents import create_validador_macro
-from dialectic.knowledge import _vision_label, crew_memory, vision_knowledge
+from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.llm import llm_complex
 from dialectic.tools import directory_read_tool, file_read_tool, file_write_tool
 from dialectic.vision import VisionContext
@@ -42,6 +42,8 @@ def build_task_flow_reimplementation_crew(
         "dialectic_context": dialectic_context[:2000] or "N/A",
         "min_score": min_score,
         "vision_label": _vision_label(vision_context),
+        "vision_path": _vision_path(vision_context),
+        "vision_file_ref": f"#file:{_vision_label(vision_context)}",
     }
 
     reimpl_agent = _build_agent()

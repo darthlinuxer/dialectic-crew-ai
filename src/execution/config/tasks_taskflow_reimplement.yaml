@@ -2,6 +2,9 @@ reimplement_task_fix:
   description: |
     Task {task_id} — {task_title} was implemented but verification failed.
 
+    Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
+
     TASK DESCRIPTION:
     {task_description}
 
@@ -22,7 +25,8 @@ reimplement_task_validate:
   description: |
     Evaluate whether the fix for task {task_id} resolved the issues.
 
-    Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+    Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
 
     Minimum score: {min_score}
     Verify alignment with the macro vision.

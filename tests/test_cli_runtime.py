@@ -164,6 +164,35 @@ class TestCliRequirementRouting:
         assert captured["plan_path"] == "--latest"
         assert captured["resume_run_id"] == "run-123"
 
+    def test_execute_self_passes_self_vision_context_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_execute(
+            plan_path,
+            spec_only=False,
+            vision_context=VisionContext.PROJECT,
+            resume_run_id=None,
+        ):
+            del spec_only, resume_run_id
+            captured["plan_path"] = plan_path
+            captured["vision_context"] = vision_context
+
+        monkeypatch.setattr(cli, "cmd_execute", fake_cmd_execute)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "execute", "--latest", "--self"],
+        )
+
+        cli.main()
+
+        assert captured == {
+            "plan_path": "--latest",
+            "vision_context": VisionContext.SELF,
+        }
+
     def test_plan_latest_passes_story_id_through(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(cli, "_check_api_key", lambda: True)

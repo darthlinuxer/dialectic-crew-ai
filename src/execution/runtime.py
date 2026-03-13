@@ -11,7 +11,7 @@ from dialectic.agents import (
     create_sintetizador,
     create_validador_macro,
 )
-from dialectic.knowledge import _vision_label, crew_memory, vision_knowledge
+from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.llm import llm_planning
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
@@ -39,12 +39,15 @@ def build_task_dialectic_crew(
 ) -> Crew:
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
     vision_label = _vision_label(vision_context)
+    vision_path = _vision_path(vision_context)
+    vision_file_ref = f"#file:{vision_label}"
     tese_input = _render_tese_input(
         task_id=task_id,
         task_title=task_title,
         task_description=task_description,
         context_str=context_str,
-        vision_label=vision_label,
+        vision_path=vision_path,
+        vision_file_ref=vision_file_ref,
         synthesis_for_retry=synthesis_for_retry,
         retry=retry,
         max_retries=max_retries,
@@ -55,6 +58,8 @@ def build_task_dialectic_crew(
         "task_description": task_description,
         "context_str": context_str,
         "vision_label": vision_label,
+        "vision_path": vision_path,
+        "vision_file_ref": vision_file_ref,
         "min_score": min_score,
         "tese_input": tese_input,
     }
@@ -109,7 +114,8 @@ def _render_tese_input(
     task_title: str,
     task_description: str,
     context_str: str,
-    vision_label: str,
+    vision_path: str,
+    vision_file_ref: str,
     synthesis_for_retry: str | None,
     retry: int,
     max_retries: int,
@@ -123,7 +129,8 @@ TASK TO IMPLEMENT: {task_id} — {task_title}
 CONTEXT:
 {context_str}
 
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
+Treat the knowledge-source content for `{vision_path}` as authoritative.
 """
 
     return f"""
@@ -133,7 +140,8 @@ TASK: {task_id} — {task_title}
 
 {task_description}
 
-Consult the system's macro vision ({vision_label} is available via your knowledge sources).
+Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
+Treat the knowledge-source content for `{vision_path}` as authoritative.
 
 CRITIQUES AND REFINEMENTS:
 {synthesis_for_retry[:3000]}
