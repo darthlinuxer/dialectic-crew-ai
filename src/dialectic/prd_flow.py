@@ -32,7 +32,7 @@ from dialectic.prd_guardrails import (
     _prd_guardrail,
 )
 from dialectic.prd_runtime import build_prd_crew
-from dialectic.state import DialecticState, MAX_RETRIES
+from dialectic.state import CONSENSUS_MIN_SCORE, DialecticState, MAX_RETRIES
 from dialectic.vision import VisionContext
 from schemas import PRDSchema
 
@@ -204,18 +204,36 @@ class DialecticFlow(Flow[DialecticState]):
             self.state.current_phase = "save"
             print(f"APPROVED! Quality score: {self.state.quality_score}")
             return "aprovar"
-        elif self.state.retry_count >= self.state.max_retries:
+        consensus_min_score = self.state.consensus_min_score
+        if (
+            consensus_min_score is not None
+            and self.state.consensus_reached
+            and self.state.quality_score >= consensus_min_score
+        ):
+            self.state.current_phase = "save"
+            print(
+                "APPROVED via consensus threshold! "
+                f"Score: {self.state.quality_score} / floor: {consensus_min_score}"
+            )
+            return "aprovar"
+        if self.state.retry_count >= self.state.max_retries:
             self.state.current_phase = "save"
             print(f"Max retries reached. Finishing with score: {self.state.quality_score}")
             return "aprovar"
-        else:
-            self.state.retry_count += 1
-            self.state.current_phase = "dialectic"
-            print(f"Rejected. Retry #{self.state.retry_count}")
-            notes = self.state.final_validation_notes
-            notes_str = notes[:200] if isinstance(notes, str) else str(notes)[:200]
-            print(f"   What is missing: {notes_str}...")
-            return "retry"
+
+        self.state.retry_count += 1
+        self.state.current_phase = "dialectic"
+        if consensus_min_score is not None and self.state.consensus_reached:
+            print(
+                "Consensus reached, but score "
+                f"{self.state.quality_score} is below consensus floor {consensus_min_score}; "
+                "continuing refinement."
+            )
+        print(f"Rejected. Retry #{self.state.retry_count}")
+        notes = self.state.final_validation_notes
+        notes_str = notes[:200] if isinstance(notes, str) else str(notes)[:200]
+        print(f"   What is missing: {notes_str}...")
+        return "retry"
 
     # Router outputs remain string labels because CrewAI emits route names here,
     # not method references.
@@ -339,14 +357,26 @@ def run_dialectic_flow(
     file_paths: list[str] | None = None,
     vision_context: VisionContext = VisionContext.PROJECT,
     resume_id: str | None = None,
+    max_retries: int | None = None,
+    consensus_min_score: float | None = None,
 ) -> dict:
     if not resume_id and not feature_request:
         raise ValueError("feature_request is required when not resuming a persisted PRD flow")
 
+    effective_max_retries = max_retries if max_retries is not None else MAX_RETRIES
+    if effective_max_retries < 1:
+        raise ValueError("max_retries must be at least 1")
+    effective_consensus_min_score = (
+        consensus_min_score if consensus_min_score is not None else CONSENSUS_MIN_SCORE
+    )
+    if effective_consensus_min_score is not None and not 0.0 <= effective_consensus_min_score <= 10.0:
+        raise ValueError("consensus_min_score must be between 0.0 and 10.0")
+
     flow = DialecticFlow(persistence=_get_persistence())
     kickoff_inputs: dict[str, Any] = {
         "feature_objective": feature_request or "",
-        "max_retries": MAX_RETRIES,
+        "max_retries": effective_max_retries,
+        "consensus_min_score": effective_consensus_min_score,
         "vision_context": vision_context.value,
     }
     if file_paths:

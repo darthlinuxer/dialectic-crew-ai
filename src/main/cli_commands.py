@@ -30,6 +30,8 @@ def cmd_prd(
     file_paths: list[str] | None = None,
     vision_context: VisionContext = VisionContext.PROJECT,
     resume_id: str | None = None,
+    max_retries: int | None = None,
+    consensus_min_score: float | None = None,
     get_prd_resume_state_fn=get_prd_resume_state,
 ) -> None:
     if not resume_id and not feature_request:
@@ -45,6 +47,8 @@ def cmd_prd(
         file_paths=file_paths,
         vision_context=vision_context,
         resume_id=resume_id,
+        max_retries=max_retries,
+        consensus_min_score=consensus_min_score,
     )
     print("\n" + "=" * 60)
     print("DIALECTIC PROCESS COMPLETE!")
@@ -53,6 +57,13 @@ def cmd_prd(
     print(f"Quality Score: {result['quality_score']}/10.0")
     print(f"Total rounds: {result['iterations']}")
     print(f"Consensus: {result['consensus_reached']}")
+    if result["consensus_reached"] and result["quality_score"] < 9.0:
+        print(
+            "Hint: consensus was reached below the hard approval threshold; "
+            "rerun with '--consensus-min-score SCORE' to allow consensus-aware early stopping."
+        )
+    if not result["consensus_reached"] and result["quality_score"] < 9.0:
+        print("Hint: try a higher retry budget with '--max-retries N' to give the dialectic more rounds.")
     print("=" * 60)
 
 

@@ -15,6 +15,7 @@ def test_default_values():
     assert state.quality_score == 0.0
     assert state.retry_count == 0
     assert state.max_retries == MAX_RETRIES
+    assert state.consensus_min_score is None
     assert state.consensus_reached is False
     assert state.final_validation_notes == ""
     assert state.file_paths == []

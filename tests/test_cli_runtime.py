@@ -80,6 +80,68 @@ class TestCliRequirementRouting:
         with pytest.raises(SystemExit):
             cli.cmd_prd(None, resume_id=None)
 
+    def test_cmd_prd_passes_max_retries_override(self, monkeypatch):
+        captured = {}
+
+        def fake_run_dialectic_flow(
+            feature_request,
+            *,
+            file_paths=None,
+            vision_context=VisionContext.PROJECT,
+            resume_id=None,
+            max_retries=None,
+            consensus_min_score=None,
+        ):
+            captured["feature_request"] = feature_request
+            captured["file_paths"] = file_paths
+            captured["vision_context"] = vision_context
+            captured["resume_id"] = resume_id
+            captured["max_retries"] = max_retries
+            captured["consensus_min_score"] = consensus_min_score
+            return {
+                "flow_id": "flow-123",
+                "quality_score": 8.5,
+                "iterations": 3,
+                "consensus_reached": False,
+            }
+
+        monkeypatch.setattr("main.cli_commands.run_dialectic_flow", fake_run_dialectic_flow)
+
+        cli.cmd_prd("Ship resilient PRD validation", max_retries=6)
+
+        assert captured["max_retries"] == 6
+
+    def test_cmd_prd_passes_consensus_min_score_override(self, monkeypatch):
+        captured = {}
+
+        def fake_run_dialectic_flow(
+            feature_request,
+            *,
+            file_paths=None,
+            vision_context=VisionContext.PROJECT,
+            resume_id=None,
+            max_retries=None,
+            consensus_min_score=None,
+        ):
+            captured["feature_request"] = feature_request
+            captured["file_paths"] = file_paths
+            captured["vision_context"] = vision_context
+            captured["resume_id"] = resume_id
+            captured["max_retries"] = max_retries
+            captured["consensus_min_score"] = consensus_min_score
+            return {
+                "flow_id": "flow-123",
+                "quality_score": 8.7,
+                "iterations": 2,
+                "consensus_reached": True,
+            }
+
+        monkeypatch.setattr("main.cli_commands.run_dialectic_flow", fake_run_dialectic_flow)
+
+        cli.cmd_prd("Ship resilient PRD validation", consensus_min_score=8.5)
+
+        assert captured["consensus_min_score"] == 8.5
+
     def test_execute_resume_run_passes_id_through(self, monkeypatch):
         captured = {}
         monkeypatch.setattr(cli, "_check_api_key", lambda: True)
@@ -97,6 +159,120 @@ class TestCliRequirementRouting:
 
         assert captured["plan_path"] == "--latest"
         assert captured["resume_run_id"] == "run-123"
+
+    def test_prd_max_retries_passes_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_prd(
+            feature_request,
+            file_paths=None,
+            vision_context=VisionContext.PROJECT,
+            resume_id=None,
+            max_retries=None,
+            consensus_min_score=None,
+        ):
+            captured["feature_request"] = feature_request
+            captured["file_paths"] = file_paths
+            captured["vision_context"] = vision_context
+            captured["resume_id"] = resume_id
+            captured["max_retries"] = max_retries
+            captured["consensus_min_score"] = consensus_min_score
+
+        monkeypatch.setattr(cli, "cmd_prd", fake_cmd_prd)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            [
+                "dialectic-crew",
+                "prd",
+                "Harden memory",
+                "--max-retries",
+                "6",
+                "--self",
+            ],
+        )
+
+        cli.main()
+
+        assert captured == {
+            "feature_request": "Harden memory",
+            "file_paths": None,
+            "vision_context": VisionContext.SELF,
+            "resume_id": None,
+            "max_retries": 6,
+            "consensus_min_score": None,
+        }
+
+    def test_prd_consensus_min_score_passes_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_prd(
+            feature_request,
+            file_paths=None,
+            vision_context=VisionContext.PROJECT,
+            resume_id=None,
+            max_retries=None,
+            consensus_min_score=None,
+        ):
+            captured["feature_request"] = feature_request
+            captured["file_paths"] = file_paths
+            captured["vision_context"] = vision_context
+            captured["resume_id"] = resume_id
+            captured["max_retries"] = max_retries
+            captured["consensus_min_score"] = consensus_min_score
+
+        monkeypatch.setattr(cli, "cmd_prd", fake_cmd_prd)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            [
+                "dialectic-crew",
+                "prd",
+                "Harden memory",
+                "--consensus-min-score",
+                "8.5",
+                "--self",
+            ],
+        )
+
+        cli.main()
+
+        assert captured == {
+            "feature_request": "Harden memory",
+            "file_paths": None,
+            "vision_context": VisionContext.SELF,
+            "resume_id": None,
+            "max_retries": None,
+            "consensus_min_score": 8.5,
+        }
+
+    def test_prd_consensus_min_score_requires_float_in_range(self, monkeypatch):
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "prd", "Harden memory", "--consensus-min-score", "11"],
+        )
+
+        with pytest.raises(SystemExit):
+            cli.main()
+
+    def test_prd_max_retries_requires_positive_integer(self, monkeypatch):
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "prd", "Harden memory", "--max-retries", "0"],
+        )
+
+        with pytest.raises(SystemExit):
+            cli.main()
 
     def test_self_improve_resume_passes_cycle_id_through(self, monkeypatch):
         captured = {}

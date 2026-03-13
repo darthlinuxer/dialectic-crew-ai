@@ -276,6 +276,38 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     assert flow.state.final_validation_notes == prd.final_validation_notes
 
 
+def test_avaliar_approves_when_consensus_floor_is_met():
+    flow = prd_flow.DialecticFlow()
+    flow.state.quality_score = 8.6
+    flow.state.consensus_reached = True
+    flow.state.consensus_min_score = 8.5
+    flow.state.retry_count = 1
+    flow.state.max_retries = 5
+
+    next_step = prd_flow.DialecticFlow.avaliar(flow)
+
+    assert next_step == "aprovar"
+    assert flow.state.current_phase == "save"
+
+
+def test_avaliar_retries_when_consensus_floor_is_not_met(capsys):
+    flow = prd_flow.DialecticFlow()
+    flow.state.quality_score = 8.4
+    flow.state.consensus_reached = True
+    flow.state.consensus_min_score = 8.5
+    flow.state.retry_count = 1
+    flow.state.max_retries = 5
+    flow.state.final_validation_notes = "needs stronger acceptance criteria"
+
+    next_step = prd_flow.DialecticFlow.avaliar(flow)
+
+    captured = capsys.readouterr()
+    assert next_step == "retry"
+    assert flow.state.current_phase == "dialectic"
+    assert flow.state.retry_count == 2
+    assert "Consensus reached, but score 8.4 is below consensus floor 8.5" in captured.out
+
+
 def test_run_dialectic_flow_returns_flow_id(monkeypatch):
     mock_flow = SimpleNamespace(
         flow_id="flow-123",
@@ -306,3 +338,65 @@ def test_run_dialectic_flow_returns_flow_id(monkeypatch):
 
     assert captured["id"] == "flow-123"
     assert result["flow_id"] == "flow-123"
+
+
+def test_run_dialectic_flow_passes_max_retries_override(monkeypatch):
+    mock_flow = SimpleNamespace(
+        flow_id="flow-456",
+        state=SimpleNamespace(
+            consensus_reached=False,
+            quality_score=8.8,
+            retry_count=2,
+            prd_data={"feature_name": "Feature"},
+            prd_path_json="",
+            prd_path_md="",
+            final_validation_notes="needs one more round",
+        ),
+    )
+
+    captured = {}
+
+    def fake_kickoff(*, inputs):
+        captured.update(inputs)
+
+    mock_flow.kickoff = fake_kickoff
+    monkeypatch.setattr(prd_flow, "DialecticFlow", lambda persistence: mock_flow)
+    monkeypatch.setattr(prd_flow, "_get_persistence", lambda: object())
+
+    prd_flow.run_dialectic_flow(
+        "Ship resilient PRD validation",
+        max_retries=7,
+    )
+
+    assert captured["max_retries"] == 7
+
+
+def test_run_dialectic_flow_passes_consensus_min_score_override(monkeypatch):
+    mock_flow = SimpleNamespace(
+        flow_id="flow-789",
+        state=SimpleNamespace(
+            consensus_reached=True,
+            quality_score=8.7,
+            retry_count=1,
+            prd_data={"feature_name": "Feature"},
+            prd_path_json="",
+            prd_path_md="",
+            final_validation_notes="good consensus",
+        ),
+    )
+
+    captured = {}
+
+    def fake_kickoff(*, inputs):
+        captured.update(inputs)
+
+    mock_flow.kickoff = fake_kickoff
+    monkeypatch.setattr(prd_flow, "DialecticFlow", lambda persistence: mock_flow)
+    monkeypatch.setattr(prd_flow, "_get_persistence", lambda: object())
+
+    prd_flow.run_dialectic_flow(
+        "Ship resilient PRD validation",
+        consensus_min_score=8.5,
+    )
+
+    assert captured["consensus_min_score"] == 8.5

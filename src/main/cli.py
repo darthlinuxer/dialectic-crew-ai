@@ -42,15 +42,15 @@ logger = logging.getLogger(__name__)
 
 
 BANNER = """
-╔══════════════════════════════════════════════════════════════════╗
+╔═══════════════════════════════════════════════════════════════════╗
 ║                                                                   ║
 ║     DIALECTIC CREW AI - PRD & Planning v1.3                       ║
 ║                                                                   ║
 ║     Dialectic: Thesis → Antithesis → Synthesis → Validation       ║
 ║     Commands: prd | plan | execute | status | verify-story | help ║
-║              | self-improve                                        ║
+║              | self-improve                                       ║
 ║                                                                   ║
-╚══════════════════════════════════════════════════════════════════╝
+╚═══════════════════════════════════════════════════════════════════╝
 """
 
 HELP_TEXT = """
@@ -60,15 +60,20 @@ Usage:
 
 Commands:
 
-    prd "your feature request" [--files file1.pdf file2.png ...] [--resume FLOW_ID]
+    prd "your feature request" [--files file1.pdf file2.png ...] [--resume FLOW_ID] [--max-retries N] [--consensus-min-score SCORE]
       Generates a PRD (Product Requirement Document) using the dialectic method
       (thesis → antithesis → synthesis → validation). By default requires
       knowledge/VISION.md; use --self to run against internal/SELF_VISION.md.
       Saves to prd_output/ (JSON + Markdown).
             Use --resume FLOW_ID to continue a persisted PRD flow.
+            Use --max-retries N to allow more dialectic rounds before stopping.
+                Use --consensus-min-score SCORE to stop early when consensus is reached
+                and the quality score is at least SCORE.
       Use --files to attach reference documents (PDF, images, text) for agents to analyze.
-      Ex.: python main.py prd "Login with 2FA"
-                     python main.py prd --resume <flow-id>
+    Ex.: python main.py prd "Login with 2FA"
+               python main.py prd --resume <flow-id>
+               python main.py prd "Login with 2FA" --max-retries 8
+                    python main.py prd "Login with 2FA" --consensus-min-score 8.5
            python main.py prd "Dashboard redesign" --files wireframe.png spec.pdf
 
   plan [prd.json] [US-001|index]
@@ -215,12 +220,16 @@ def cmd_prd(
     file_paths: list[str] | None = None,
     vision_context: VisionContext = VisionContext.PROJECT,
     resume_id: str | None = None,
+    max_retries: int | None = None,
+    consensus_min_score: float | None = None,
 ):
     _cmd_prd(
         feature_request,
         file_paths=file_paths,
         vision_context=vision_context,
         resume_id=resume_id,
+        max_retries=max_retries,
+        consensus_min_score=consensus_min_score,
         get_prd_resume_state_fn=get_prd_resume_state,
     )
 
@@ -263,12 +272,42 @@ def main():
                 rest = args[1:]
                 rest, vision_context = _extract_self_flag(rest)
                 resume_id = None
+                max_retries = None
+                consensus_min_score = None
                 if "--resume" in rest:
                     idx = rest.index("--resume")
                     if idx + 1 >= len(rest):
                         print("Provide a flow ID after --resume")
                         sys.exit(1)
                     resume_id = rest[idx + 1]
+                    rest = rest[:idx] + rest[idx + 2:]
+                if "--max-retries" in rest:
+                    idx = rest.index("--max-retries")
+                    if idx + 1 >= len(rest):
+                        print("Provide an integer after --max-retries")
+                        sys.exit(1)
+                    try:
+                        max_retries = int(rest[idx + 1])
+                    except ValueError:
+                        print("--max-retries requires an integer argument")
+                        sys.exit(1)
+                    if max_retries < 1:
+                        print("--max-retries must be at least 1")
+                        sys.exit(1)
+                    rest = rest[:idx] + rest[idx + 2:]
+                if "--consensus-min-score" in rest:
+                    idx = rest.index("--consensus-min-score")
+                    if idx + 1 >= len(rest):
+                        print("Provide a float between 0 and 10 after --consensus-min-score")
+                        sys.exit(1)
+                    try:
+                        consensus_min_score = float(rest[idx + 1])
+                    except ValueError:
+                        print("--consensus-min-score requires a numeric argument")
+                        sys.exit(1)
+                    if not 0.0 <= consensus_min_score <= 10.0:
+                        print("--consensus-min-score must be between 0 and 10")
+                        sys.exit(1)
                     rest = rest[:idx] + rest[idx + 2:]
                 if len(rest) < 1 and not resume_id:
                     print("Provide the feature: python main.py prd 'your feature here'")
@@ -290,6 +329,8 @@ def main():
                     file_paths=file_paths or None,
                     vision_context=vision_context,
                     resume_id=resume_id,
+                    max_retries=max_retries,
+                    consensus_min_score=consensus_min_score,
                 )
                 return
             if sub == "plan":
