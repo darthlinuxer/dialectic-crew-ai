@@ -87,8 +87,11 @@ class TestPlanGuardrail:
             quality_score=9.0,
             final_validation_notes="ok",
         )
-        ok, _ = planning_flow._plan_guardrail(self._make_result(plan))
+        ok, payload = planning_flow._plan_guardrail(self._make_result(plan))
         assert ok is True
+        assert isinstance(payload, str)
+        assert '"user_story_id":"US-001"' in payload
+        assert '"quality_score":9.0' in payload
 
     def test_empty_tasks(self):
         plan = UserStoryExecutionPlan.__new__(UserStoryExecutionPlan)

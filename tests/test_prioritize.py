@@ -179,8 +179,11 @@ class TestPrioritizationGuardrail:
             ranked=[_ranked()],
             debate_summary="ok",
         )
-        ok, _ = _prioritization_guardrail(mock_result)
+        ok, payload = _prioritization_guardrail(mock_result)
         assert ok is True
+        assert isinstance(payload, str)
+        assert '"opportunity_id":"opp-1"' in payload
+        assert '"debate_summary":"ok"' in payload
 
     def test_rejects_empty_ranked(self):
         mock_result = MagicMock()

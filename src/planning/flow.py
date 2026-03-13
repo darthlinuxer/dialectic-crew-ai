@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Tuple
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_guardrails import _build_retry_feedback_context
@@ -32,7 +32,7 @@ def _plan_guardrail(result) -> Tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, UserStoryExecutionPlan):
         if pydantic_obj.tasks and len(pydantic_obj.tasks) >= 1:
-            return (True, result)
+            return (True, _guardrail_success_output(pydantic_obj))
         return (False, "Plan must include at least one implementation task (tasks list is empty)")
     return (
         False,
@@ -40,6 +40,11 @@ def _plan_guardrail(result) -> Tuple[bool, Any]:
         "user_story_id, user_story_title, approach_summary, tasks, quality_score, "
         "consensus_reached, final_validation_notes. Return ONLY the JSON.",
     )
+
+
+def _guardrail_success_output(validated_model: BaseModel) -> str:
+    """Serialize structured guardrail output for CrewAI TaskOutput compatibility."""
+    return validated_model.model_dump_json()
 
 
 # ---------------------------------------------------------------------------

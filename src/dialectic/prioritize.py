@@ -21,14 +21,13 @@ import json
 import logging
 from typing import Any, Tuple
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from dialectic.prioritize_runtime import build_prioritization_crew
 from dialectic.vision import VisionContext
 from schemas import (
     ImprovementOpportunity,
     PrioritizationResult,
-    PrioritizedOpportunity,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,13 +55,18 @@ def _prioritization_guardrail(result) -> Tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, PrioritizationResult):
         if pydantic_obj.ranked:
-            return (True, result)
+            return (True, _guardrail_success_output(pydantic_obj))
         return (False, "PrioritizationResult must contain at least one ranked item")
     return (
         False,
         "Output must be a valid PrioritizationResult JSON with 'ranked' "
         "(list of PrioritizedOpportunity) and 'debate_summary'.",
     )
+
+
+def _guardrail_success_output(validated_model: BaseModel) -> str:
+    """Serialize structured guardrail output for CrewAI TaskOutput compatibility."""
+    return validated_model.model_dump_json()
 
 
 def _fallback_sort(
