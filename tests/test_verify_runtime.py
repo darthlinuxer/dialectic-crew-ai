@@ -23,6 +23,7 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
     monkeypatch.setattr(verify_runtime, "Crew", FakeCrew)
     monkeypatch.setattr(verify_runtime, "create_validador_macro", lambda ctx: agent)
     monkeypatch.setattr(verify_runtime, "file_read_tool", "reader")
+    monkeypatch.setattr(verify_runtime, "stack_validation_tool", "validator")
     monkeypatch.setattr(verify_runtime, "crew_memory", lambda ctx, scope: f"memory:{ctx.value}:{scope}")
     monkeypatch.setattr(verify_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
 
@@ -32,7 +33,7 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
         vision_context=VisionContext.SELF,
     )
 
-    assert agent["tools"] == ["reader"]
+    assert agent["tools"] == ["reader", "validator"]
     assert len(captured_tasks) == 1
     assert "T-123" in captured_tasks[0]["description"]
     assert "Endpoint returns 200" in captured_tasks[0]["description"]
@@ -62,6 +63,7 @@ def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(monk
     monkeypatch.setattr(verify_runtime, "Crew", FakeCrew)
     monkeypatch.setattr(verify_runtime, "create_validador_macro", lambda ctx: {"tools": []})
     monkeypatch.setattr(verify_runtime, "file_read_tool", "reader")
+    monkeypatch.setattr(verify_runtime, "stack_validation_tool", "validator")
     monkeypatch.setattr(verify_runtime, "crew_memory", lambda ctx, scope: "memory")
     monkeypatch.setattr(verify_runtime, "vision_knowledge", lambda ctx: "vision")
 

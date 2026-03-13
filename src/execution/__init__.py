@@ -12,6 +12,7 @@ from execution.status import show_status, mark_task, update_task_status
 from execution.verify import verify_task
 from execution.task_flow import TaskExecutionFlow, TaskFlowState
 from execution import runtime
+from execution import validation_gate
 from execution import verify_runtime
 from execution import status
 
@@ -28,6 +29,7 @@ __all__ = [
     "TaskFlowState",
     "status",
     "runtime",
+    "validation_gate",
     "task_reimplement_runtime",
     "task_verify_runtime",
     "verify_runtime",

@@ -1,3 +1,7 @@
+# pyright: reportPrivateUsage=none
+
+from typing import Any, cast
+
 from dialectic.vision import VisionContext
 
 
@@ -118,3 +122,14 @@ def test_build_task_flow_reimplementation_crew_mentions_self_antidrift_file(monk
 
     assert "#file:SELF_VISION.md" in captured_tasks[1]["description"]
     assert "internal/SELF_VISION.md" in captured_tasks[1]["description"]
+
+
+def test_build_task_flow_reimplementation_agent_exposes_stack_validation_tool():
+    from execution import task_reimplement_runtime as runtime
+
+    build_agent = cast(Any, getattr(runtime, "_build_agent"))
+    agent = build_agent()
+
+    tool_names = {getattr(tool, "name", "") for tool in agent.tools}
+
+    assert "stack_aware_validation" in tool_names

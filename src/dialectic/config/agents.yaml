@@ -144,7 +144,8 @@ implementer:
     2. Respect the project's existing structure
     3. Write clean, testable code aligned with the macro vision
     4. If the task requires config, use .env or existing config
-    5. Document relevant changes
+    5. Use the stack-aware validation tool when available before declaring work complete
+    6. Document relevant changes
 
     Upon completion, clearly describe what was done and which files were created/modified.
   verbose: true

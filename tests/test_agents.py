@@ -37,8 +37,8 @@ def test_vision_knowledge_preserves_absolute_paths(monkeypatch, tmp_path):
         fake_text_file_knowledge_source,
     )
 
-    project_result = knowledge.vision_knowledge(VisionContext.PROJECT)
-    self_result = knowledge.vision_knowledge(VisionContext.SELF)
+    project_result = cast(Any, knowledge.vision_knowledge(VisionContext.PROJECT))
+    self_result = cast(Any, knowledge.vision_knowledge(VisionContext.SELF))
 
     assert project_result["file_paths"] == [project_vision]
     assert self_result["file_paths"] == [self_vision]
@@ -70,9 +70,17 @@ def test_agent_factories_reference_self_vision_label():
 def test_visionario_does_not_expose_directory_listing_tool():
     visionario = agents.create_visionario(VisionContext.SELF)
 
-    tool_names = {getattr(tool, "name", "") for tool in visionario.tools}
+    tool_names = {getattr(tool, "name", "") for tool in (visionario.tools or [])}
 
     assert "list_directory" not in tool_names
+
+
+def test_implementer_exposes_stack_validation_tool():
+    implementer = agents.create_implementer(VisionContext.SELF)
+
+    tool_names = {getattr(tool, "name", "") for tool in (implementer.tools or [])}
+
+    assert "stack_aware_validation" in tool_names
 
 
 def test_validador_macro_does_not_expose_file_tools():
@@ -80,7 +88,7 @@ def test_validador_macro_does_not_expose_file_tools():
 
     validador = agents.create_validador_macro(VisionContext.SELF)
 
-    tool_names = {getattr(tool, "name", "") for tool in validador.tools}
+    tool_names = {getattr(tool, "name", "") for tool in (validador.tools or [])}
 
     assert "search_a_files_content" not in tool_names
     assert "list_directory" not in tool_names

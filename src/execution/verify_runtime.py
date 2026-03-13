@@ -7,7 +7,7 @@ from crewai import Crew, Task
 
 from dialectic.agents import create_validador_macro
 from dialectic.knowledge import crew_memory, vision_knowledge
-from dialectic.tools import file_read_tool
+from dialectic.tools import file_read_tool, stack_validation_tool
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import load_yaml_config, render_yaml_config, resolve_output_schema
 from schemas import ImplementationTask
@@ -24,7 +24,7 @@ def build_verification_crew(
 ) -> Crew:
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
     verify_agent = create_validador_macro(vision_context)
-    _assign_tools(verify_agent, [file_read_tool])
+    _assign_tools(verify_agent, [file_read_tool, stack_validation_tool])
 
     placeholders = {
         "task_id": task.id,

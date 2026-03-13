@@ -79,6 +79,17 @@ def test_build_task_flow_verification_crew_omits_acceptance_block_when_empty(mon
     assert "obvious static-analysis breakage" in captured_tasks[0]["description"]
 
 
+def test_build_task_flow_verification_agent_exposes_stack_validation_tool():
+    from execution import task_verify_runtime as runtime
+
+    build_agent = cast(Any, getattr(runtime, "_build_agent"))
+    agent = build_agent()
+
+    tool_names = {getattr(tool, "name", "") for tool in agent.tools}
+
+    assert "stack_aware_validation" in tool_names
+
+
 def test_run_independent_verifier_uses_runtime_builder(monkeypatch):
     from execution.task_flow import TaskExecutionFlow
 

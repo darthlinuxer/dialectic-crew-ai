@@ -8,13 +8,15 @@ from enum import Enum
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, cast
 
 from pydantic import BaseModel, Field, ConfigDict
 
 try:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp import FastMCP as _RuntimeFastMCP
     from mcp.types import ToolAnnotations
+
+    FastMCP = cast(Any, _RuntimeFastMCP)
 
     def _make_tool_annotations(**kwargs: Any) -> Any:
         return ToolAnnotations(**kwargs)
@@ -56,7 +58,7 @@ except ModuleNotFoundError:
             _ = mount_path
             self.last_transport = transport
 
-from src.mcp.skills_index import SkillIndex, SkillMetadata, SkillSource  # pylint: disable=import-error
+from .skills_index import SkillIndex, SkillMetadata, SkillSource
 
 
 class ResponseFormat(str, Enum):
@@ -447,7 +449,7 @@ def run_server(
 
     transport = _resolve_transport(runtime_argv, runtime_environ)
     if transport == HTTP_TRANSPORT:
-        mcp.settings.port = _resolve_http_port(runtime_environ)
+        cast(Any, mcp.settings).port = _resolve_http_port(runtime_environ)
         mcp.run(transport=HTTP_TRANSPORT)
         return
 

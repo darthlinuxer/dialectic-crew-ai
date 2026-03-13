@@ -15,9 +15,10 @@ from execution import (
     status,
     task_reimplement_runtime,
     task_verify_runtime,
+    validation_gate,
     verify_runtime,
 )
-from src.main import cli_main, run_self_improve
+from main import cli_main, run_self_improve
 from planning import run_user_story_planning, runtime as planning_runtime
 from src.mcp import skills_mcp
 from src.mcp.skills_index import SkillIndex, SkillMetadata, SkillSource
@@ -39,6 +40,7 @@ def test_execution_exports_are_importable():
     assert status is not None
     assert task_reimplement_runtime is not None
     assert task_verify_runtime is not None
+    assert validation_gate is not None
     assert verify_runtime is not None
 
 

@@ -131,7 +131,7 @@ class TestLoadPrdForPlan:
 
 class TestRunVerification:
     def test_uses_runtime_builder_and_task_output_pydantic(self, monkeypatch):
-        from schemas import ValidationOutput
+        from schemas import ValidationOutput, VerificationResult
 
         class FakeCrew:
             def kickoff(self):
@@ -147,6 +147,14 @@ class TestRunVerification:
             return FakeCrew()
 
         monkeypatch.setattr("execution.verify.build_verification_crew", fake_build_verification_crew)
+        monkeypatch.setattr(
+            "execution.verify.run_stack_validation_gate",
+            lambda profile: VerificationResult(
+                verified=True,
+                checks_passed=["stack validation: ruff", "stack validation: mypy"],
+                notes="",
+            ),
+        )
 
         task = make_task(id="T-001", title="Ship feature", description="Implement feature")
         result = _run_verification(task, ["AC1"])
@@ -177,3 +185,39 @@ class TestRunVerification:
         assert result["verified"] is False
         assert result["score"] == 0.0
         assert "Failed to obtain structured result" in result["notes"]
+
+    def test_fails_when_stack_validation_gate_fails(self, monkeypatch):
+        from schemas import ValidationOutput, VerificationResult
+
+        class FakeCrew:
+            def kickoff(self):
+                task_output = type(
+                    "TaskOutput",
+                    (),
+                    {
+                        "pydantic": ValidationOutput(
+                            quality_score=8.9,
+                            consensus_reached=True,
+                            final_validation_notes="looks good",
+                        )
+                    },
+                )()
+                return type("CrewResult", (), {"pydantic": None, "tasks_output": [task_output]})()
+
+        monkeypatch.setattr("execution.verify.build_verification_crew", lambda **kwargs: FakeCrew())
+        monkeypatch.setattr(
+            "execution.verify.run_stack_validation_gate",
+            lambda profile: VerificationResult(
+                verified=False,
+                checks_failed=["stack validation: mypy"],
+                notes="stack validation failed: mypy",
+            ),
+        )
+
+        task = make_task(id="T-002", title="Gate", description="Run checks")
+        result = _run_verification(task, ["AC1"])
+
+        assert result["task_id"] == "T-002"
+        assert result["verified"] is False
+        assert result["score"] == 8.9
+        assert "stack validation failed" in result["notes"]

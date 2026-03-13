@@ -8,7 +8,7 @@ from crewai import Agent, Crew, Process, Task
 from dialectic.agents import create_validador_macro
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.llm import llm_complex
-from dialectic.tools import directory_read_tool, file_read_tool, file_write_tool
+from dialectic.tools import directory_read_tool, file_read_tool, file_write_tool, stack_validation_tool
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
     load_yaml_config,
@@ -84,14 +84,15 @@ def _build_agent() -> Agent:
         backstory=(
             "You are an implementer focused on fixing the root cause of specific gaps. "
             "Read existing files, identify whether the problem is in imports, references, "
-            "tests, exports, or implementation details, and fix the real source of failure."
+            "tests, exports, or implementation details, and fix the real source of failure. "
+            "Use the stack-aware validation tool before you conclude the fix is done."
         ),
         verbose=True,
         allow_delegation=False,
         reasoning=True,
         max_reasoning_attempts=2,
         llm=llm_complex,
-        tools=[file_read_tool, file_write_tool, directory_read_tool],
+        tools=[file_read_tool, file_write_tool, directory_read_tool, stack_validation_tool],
     )
 
 

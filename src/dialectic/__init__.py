@@ -17,6 +17,7 @@ from dialectic.state import DialecticState
 from dialectic.prd_flow import DialecticFlow, run_dialectic_flow, OUTPUT_DIR
 from dialectic import prd_runtime
 from dialectic import prioritize_runtime
+from dialectic import stack_validation
 from dialectic.vision import VisionContext
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "OUTPUT_DIR",
     "prd_runtime",
     "prioritize_runtime",
+    "stack_validation",
     "PRDExporter",
     "validate_consistency",
     "prd_to_markdown",

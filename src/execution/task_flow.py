@@ -34,6 +34,7 @@ from dialectic.flow_persistence import build_sqlite_flow_persistence
 from execution.runtime import build_task_dialectic_crew
 from execution.task_reimplement_runtime import build_task_flow_reimplementation_crew
 from execution.task_verify_runtime import build_task_flow_verification_crew
+from execution.validation_gate import run_stack_validation_gate
 from schemas import (
     ValidationOutput,
     VerificationResult,
@@ -108,19 +109,27 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
         result = crew.kickoff()
 
         pydantic_result = getattr(result, "pydantic", None)
+        verification: VerificationResult | None = None
         if isinstance(pydantic_result, VerificationResult):
-            return pydantic_result
+            verification = pydantic_result
 
         tasks_out = getattr(result, "tasks_output", None) or []
-        if tasks_out:
+        if verification is None and tasks_out:
             last_p = getattr(tasks_out[-1], "pydantic", None)
             if isinstance(last_p, VerificationResult):
-                return last_p
+                verification = last_p
 
-        return VerificationResult(
-            verified=False,
-            notes="Failed to obtain structured VerificationResult",
-        )
+        if verification is None:
+            return VerificationResult(
+                verified=False,
+                notes="Failed to obtain structured VerificationResult",
+            )
+
+        if not verification.verified:
+            return verification
+
+        gate = run_stack_validation_gate("task")
+        return _merge_verification_results(verification, gate)
 
     @start()
     def dispatch(self):
@@ -311,18 +320,23 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                         f"({validation.quality_score}/10)"
                     )
                 else:
-                    self.state.verified = True
+                    gate = run_stack_validation_gate("task")
+                    self.state.verified = gate.verified
                     self.state.verification = VerificationResult(
-                        verified=True,
-                        checks_passed=failed_checks or self.state.acceptance_checks,
-                        checks_failed=[],
-                        notes=(
-                            "High-confidence re-implementation accepted without secondary "
-                            "verification pass."
+                        verified=gate.verified,
+                        checks_passed=(failed_checks or self.state.acceptance_checks) + gate.checks_passed,
+                        checks_failed=gate.checks_failed,
+                        notes=_join_verification_notes(
+                            "High-confidence re-implementation accepted pending stack validation gate.",
+                            gate.notes,
                         ),
                     )
-                    self.state.reimplement_success = True
-                    print(f"   {self.state.task_id} re-implementation approved ({validation.quality_score}/10)")
+                    self.state.reimplement_success = gate.verified
+                    status = "approved" if gate.verified else "failed stack validation"
+                    print(
+                        f"   {self.state.task_id} re-implementation {status} "
+                        f"({validation.quality_score}/10)"
+                    )
                 logger.info("Task reimplementation finished")
             else:
                 score = validation.quality_score if validation else 0.0
@@ -422,3 +436,30 @@ def _build_dialectic_context(dialectic_notes: str, impl_output: str) -> str:
     if implementation_excerpt:
         parts.append("IMPLEMENTATION EXCERPT:\n" + implementation_excerpt)
     return "\n\n".join(parts)
+
+
+def _merge_verification_results(
+    primary: VerificationResult,
+    gate: VerificationResult,
+) -> VerificationResult:
+    return VerificationResult(
+        verified=primary.verified and gate.verified,
+        checks_passed=_dedupe_preserve_order(primary.checks_passed + gate.checks_passed),
+        checks_failed=_dedupe_preserve_order(primary.checks_failed + gate.checks_failed),
+        notes=_join_verification_notes(primary.notes, gate.notes),
+    )
+
+
+def _join_verification_notes(*parts: str) -> str:
+    return " | ".join(part for part in parts if part)
+
+
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered

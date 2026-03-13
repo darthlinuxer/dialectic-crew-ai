@@ -7,7 +7,7 @@ from crewai import Agent, Crew, Task
 
 from dialectic.knowledge import crew_memory, vision_knowledge
 from dialectic.llm import llm_simple
-from dialectic.tools import directory_read_tool, file_read_tool
+from dialectic.tools import directory_read_tool, file_read_tool, stack_validation_tool
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
     load_yaml_config,
@@ -67,14 +67,15 @@ def _build_agent() -> Agent:
         backstory=(
             "You verify implementations by reading actual project files and checking "
             "whether the touched surface still hangs together. Be objective: artifacts, "
-            "imports, references, and related supporting files either line up or they do not."
+            "imports, references, and related supporting files either line up or they do not. "
+            "Use the stack-aware validation tool when it helps confirm language-specific checks."
         ),
         verbose=True,
         allow_delegation=False,
         reasoning=True,
         max_reasoning_attempts=2,
         llm=llm_simple,
-        tools=[file_read_tool, directory_read_tool],
+        tools=[file_read_tool, directory_read_tool, stack_validation_tool],
     )
 
 

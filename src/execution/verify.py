@@ -1,5 +1,7 @@
 """Task verification logic for execution plans."""
 
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime
@@ -9,6 +11,8 @@ from typing import Literal
 from schemas import UserStoryExecutionPlan, PRDSchema, ImplementationTask
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from dialectic.vision import VisionContext
+from execution.validation_gate import run_stack_validation_gate
 from execution.status import (
     STATUS_ICONS,
     find_task,
@@ -80,14 +84,13 @@ def _extract_acceptance_criteria(
 def _run_verification(
     task: ImplementationTask,
     acceptance_criteria: list[str] | None = None,
-    vision_context: "VisionContext | None" = None,
+    vision_context: VisionContext | None = None,
 ) -> dict:
     """
     Run LLM-based verification on a single task. Pure logic, no plan I/O.
 
     Returns dict with keys: task_id, verified, score, notes.
     """
-    from dialectic.vision import VisionContext
     from schemas import ValidationOutput
 
     ctx = vision_context or VisionContext.PROJECT
@@ -119,12 +122,21 @@ def _run_verification(
         }
 
     verified = validation.quality_score >= DEFAULT_VERIFICATION_SCORE
+    notes = validation.final_validation_notes
+    if verified:
+        gate = run_stack_validation_gate("story")
+        verified = gate.verified
+        notes = _join_notes(notes, gate.notes)
     return {
         "task_id": task.id,
         "verified": verified,
         "score": validation.quality_score,
-        "notes": validation.final_validation_notes,
+        "notes": notes,
     }
+
+
+def _join_notes(*parts: str) -> str:
+    return " | ".join(part for part in parts if part)
 
 
 # ---------------------------------------------------------------------------

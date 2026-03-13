@@ -1,3 +1,7 @@
+"""Shared CrewAI tool instances for dialectic and execution runtimes."""
+
+# pylint: disable=invalid-name
+
 from crewai_tools import (
     FileReadTool,
     FileWriterTool,
@@ -5,6 +9,8 @@ from crewai_tools import (
     DirectoryReadTool,
     CodeDocsSearchTool,
 )
+
+from dialectic.stack_validation import StackValidationTool
 
 file_read_tool = FileReadTool(
     name="search_a_files_content",
@@ -21,17 +27,19 @@ directory_read_tool = DirectoryReadTool(
 )
 
 try:
-    json_search_tool = JSONSearchTool(
+    json_search_tool: JSONSearchTool | None = JSONSearchTool(
         name="search_a_json_content",
         description="Search and read JSON files",
     )
-except Exception:
+except (ImportError, OSError, RuntimeError, ValueError):
     json_search_tool = None
 
 try:
-    code_docs_tool = CodeDocsSearchTool(
+    code_docs_tool: CodeDocsSearchTool | None = CodeDocsSearchTool(
         name="search_code_docs",
         description="Search through code documentation and technical documents",
     )
-except Exception:
+except (ImportError, OSError, RuntimeError, ValueError):
     code_docs_tool = None
+
+stack_validation_tool = StackValidationTool()
