@@ -1,5 +1,12 @@
-from pydantic import BaseModel, Field
+"""Pydantic schemas shared across PRD, planning, execution, and self-improve flows."""
+
+# pylint: disable=missing-class-docstring,too-few-public-methods
+
 from typing import List, Literal, Optional
+
+from pydantic import BaseModel, Field, field_validator
+
+_PLACEHOLDER_ACCEPTANCE_CRITERIA = frozenset({"effort", "xs", "s", "m", "l", "xl"})
 
 
 class UserStory(BaseModel):
@@ -8,7 +15,24 @@ class UserStory(BaseModel):
     description: str
     acceptance_criteria: List[str] = Field(..., min_length=3)
     effort: Literal["XS", "S", "M", "L", "XL"]
-    dependencies: List[str] = []
+    dependencies: List[str] = Field(default_factory=list)
+
+    @field_validator("acceptance_criteria")
+    @classmethod
+    def validate_acceptance_criteria(cls, criteria: List[str]) -> List[str]:
+        """Normalize criteria and reject empty or placeholder-only entries."""
+        normalized: List[str] = []
+        for criterion in criteria:
+            cleaned = criterion.strip()
+            if not cleaned:
+                raise ValueError("acceptance_criteria entries must be non-empty")
+            if cleaned.lower() in _PLACEHOLDER_ACCEPTANCE_CRITERIA:
+                raise ValueError(
+                    "acceptance_criteria entries must describe verifiable outcomes, "
+                    "not placeholder labels"
+                )
+            normalized.append(cleaned)
+        return normalized
 
 
 class MacroImpact(BaseModel):
@@ -44,7 +68,7 @@ class ImplementationTask(BaseModel):
     title: str
     description: str
     order: int = 0
-    dependencies: List[str] = []
+    dependencies: List[str] = Field(default_factory=list)
     acceptance_checks: List[str] = Field(
         default_factory=list,
         description="Verifiable criteria: e.g. 'file X exists', 'function Y defined in Z'",
@@ -60,7 +84,7 @@ class UserStoryExecutionPlan(BaseModel):
     user_story_title: str
     approach_summary: str = Field(..., description="Summary of the technical approach")
     tasks: List[ImplementationTask] = Field(..., min_length=1)
-    risks_mitigated: List[str] = []
+    risks_mitigated: List[str] = Field(default_factory=list)
     tech_notes: str = ""
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False

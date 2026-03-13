@@ -1,5 +1,8 @@
 """Tests for the centralized application logging subsystem."""
 
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=too-few-public-methods,duplicate-code
+
 from __future__ import annotations
 
 import json
@@ -14,10 +17,15 @@ from dialectic.app_logging import (
     reset_log_context,
     shutdown_application_logging,
 )
+from execution.task_guardrails import _text_result_guardrail
 
 
 def _read_json_lines(path: Path) -> list[dict[str, object]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 def test_get_logging_config_defaults(tmp_path, monkeypatch):
@@ -164,3 +172,33 @@ def test_json_logging_preserves_optional_event_metadata(tmp_path, monkeypatch):
     assert json_line["event_type"] == "ToolUsageFinishedEvent"
     assert json_line["agent_role"] == "Implementer"
     assert json_line["tool_name"] == "read_file"
+
+
+def test_text_result_guardrail_json_log_includes_guardrail_reason(tmp_path, monkeypatch):
+    monkeypatch.setenv("DIALECTIC_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("DIALECTIC_LOG_TO_STDERR", "false")
+    shutdown_application_logging()
+
+    config = configure_application_logging(force=True)
+
+    class Result:  # pylint: disable=too-few-public-methods
+        raw = (
+            "[ChatCompletionMessageFunctionToolCall(id='call_123', "
+            'function=Function(arguments=\'{"file_path":"internal/SELF_VISION.md"}\', '
+            "name='search_a_files_content'), type='function')]"
+        )
+
+    try:
+        _text_result_guardrail(Result())
+    finally:
+        logging.shutdown()
+        shutdown_application_logging()
+
+    json_line = next(
+        line
+        for line in _read_json_lines(config.json_log_path)
+        if line["message"].startswith("tool-call-output-rejected by text_result guardrail")
+    )
+    assert json_line["guardrail"] == "text_result"
+    assert json_line["reason"] == "tool_call_output"
+    assert "ChatCompletionMessageFunctionToolCall" in json_line["preview"]

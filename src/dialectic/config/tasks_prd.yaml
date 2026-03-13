@@ -16,6 +16,7 @@ prd_thesis:
     {retry_feedback_block}
   expected_output: Complete initial proposal in structured PRD format
   agent: visionario
+  guardrail: text_result
 
 prd_antithesis:
   description: |
@@ -39,6 +40,7 @@ prd_antithesis:
     Be relentless. Each critique must be specific and actionable.
   expected_output: Detailed critique with list of issues and score
   agent: critico_socratico
+  guardrail: text_result
 
 prd_synthesis:
   description: |
@@ -70,6 +72,7 @@ prd_synthesis:
     Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
   expected_output: Candidate PRD as raw JSON for validator review
   agent: sintetizador
+  guardrail: text_result
 
 prd_validation:
   description: |

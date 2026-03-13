@@ -16,6 +16,7 @@ reimplement_task_fix:
 
     Fix ONLY the identified gaps. Use the file reading and writing tools.
   expected_output: Description of what was fixed
+  guardrail: text_result
 
 reimplement_task_validate:
   description: |

@@ -3,6 +3,7 @@ execute_task_thesis:
     {tese_input}
   expected_output: Description of what was implemented and files created/modified
   agent: implementer
+  guardrail: text_result
 
 execute_task_antithesis:
   description: |
@@ -15,6 +16,7 @@ execute_task_antithesis:
     Check for contradictions with the macro vision.
   expected_output: Detailed critique of the implementation
   agent: critico_socratico
+  guardrail: text_result
 
 execute_task_synthesis:
   description: |
@@ -25,6 +27,7 @@ execute_task_synthesis:
     Include clear instructions for retry if necessary.
   expected_output: Refined synthesis with instructions
   agent: sintetizador
+  guardrail: text_result
 
 execute_task_validation:
   description: |

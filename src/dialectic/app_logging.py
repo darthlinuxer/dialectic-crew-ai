@@ -1,5 +1,9 @@
 """Centralized application logging with structured runtime context."""
 
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=too-many-instance-attributes,too-few-public-methods
+# pylint: disable=too-many-arguments
+
 from __future__ import annotations
 
 import json
@@ -36,6 +40,9 @@ _OPTIONAL_RECORD_KEYS = (
     "event_type",
     "event_name",
     "source_name",
+    "guardrail",
+    "reason",
+    "preview",
     "iteration",
     "retry",
 )

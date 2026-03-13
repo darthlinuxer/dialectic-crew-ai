@@ -26,14 +26,14 @@ def test_invalid_fallbacks_to_json(monkeypatch):
     # override any .env value with an invalid value
     monkeypatch.setenv("PRD_OUTPUT_FORMAT", "invalid")
     cfg = get_export_config()
-    assert cfg.output_format == "json"
+    assert cfg.output_format == "both"
 
 
 def test_empty_or_absent_fallbacks_to_json(monkeypatch):
     # set explicitly to empty string to simulate absent/empty
     monkeypatch.setenv("PRD_OUTPUT_FORMAT", "")
     cfg = get_export_config()
-    assert cfg.output_format == "json"
+    assert cfg.output_format == "both"
 
 
 def test_output_dir_conversion_and_fallback(monkeypatch, tmp_path):

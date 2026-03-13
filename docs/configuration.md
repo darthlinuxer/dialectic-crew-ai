@@ -33,7 +33,7 @@ At least one provider key must be configured for LLM-backed commands:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PRD_OUTPUT_FORMAT` | `json` | PRD/plan export format: `json`, `md`, `both` |
+| `PRD_OUTPUT_FORMAT` | `both` | PRD/plan export format: `json`, `md`, `both` |
 | `PRD_OUTPUT_DIR` | `prd_output` | Export directory for PRDs and plans |
 | `DIALECTIC_PROJECT_ROOT` | auto-detected | Override project-root discovery |
 | `DIALECTIC_METRICS_DB` | `.dialectic/metrics.db` | Override runtime metrics database path |

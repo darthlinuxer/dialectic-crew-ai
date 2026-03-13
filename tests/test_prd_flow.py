@@ -206,6 +206,20 @@ def test_prd_guardrail_ignores_unrelated_raw_json_fragments():
     assert 'feature_name' in payload
 
 
+def test_prd_guardrail_rejects_placeholder_acceptance_criterion():
+    prd = _make_prd().model_copy(deep=True)
+    prd_data = prd.model_dump()
+    prd_data["user_stories"][0]["acceptance_criteria"][2] = "effort "
+
+    class Result:
+        raw = json.dumps(prd_data)
+
+    ok, payload = prd_guardrails._prd_guardrail(Result())
+
+    assert ok is False
+    assert "valid PRDSchema JSON" in payload
+
+
 def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
     source = inspect.getsource(prd_flow.DialecticFlow)
 

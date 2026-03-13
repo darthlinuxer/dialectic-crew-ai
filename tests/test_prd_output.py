@@ -5,7 +5,7 @@ from dialectic.prd_output import get_prd_output_format
 
 def test_default_fallback(monkeypatch):
     monkeypatch.delenv("PRD_OUTPUT_FORMAT", raising=False)
-    assert get_prd_output_format() == "json"
+    assert get_prd_output_format() == "both"
 
 
 def test_valid_values(monkeypatch):
@@ -16,4 +16,4 @@ def test_valid_values(monkeypatch):
 
 def test_invalid_value(monkeypatch):
     monkeypatch.setenv("PRD_OUTPUT_FORMAT", "invalid-value")
-    assert get_prd_output_format() == "json"
+    assert get_prd_output_format() == "both"

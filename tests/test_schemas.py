@@ -8,8 +8,6 @@ from schemas import (
     MacroImpact,
     AntiDriftQuestion,
     PRDSchema,
-    ImplementationTask,
-    UserStoryExecutionPlan,
     ValidationOutput,
     VerificationResult,
     TaskExecutionResult,
@@ -50,6 +48,27 @@ class TestUserStory:
                 description="...",
                 acceptance_criteria=["AC1", "AC2", "AC3"],
                 effort="HUGE",
+            )
+
+    def test_acceptance_criteria_entries_are_trimmed(self):
+        us = UserStory(
+            id="US-001",
+            title="Login",
+            description="...",
+            acceptance_criteria=["  AC1  ", "AC2", " AC3"],
+            effort="M",
+        )
+
+        assert us.acceptance_criteria == ["AC1", "AC2", "AC3"]
+
+    def test_acceptance_criteria_reject_placeholder_labels(self):
+        with pytest.raises(ValidationError, match="acceptance_criteria"):
+            UserStory(
+                id="US-001",
+                title="Login",
+                description="...",
+                acceptance_criteria=["AC1", "AC2", "effort "],
+                effort="M",
             )
 
 

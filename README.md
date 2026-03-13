@@ -183,7 +183,7 @@ Current agent wiring:
 | `LLM_MODEL_COMPLEX` | `gpt-4o` | Critic, Synthesizer, Implementer |
 | `LLM_MODEL_REASONING` | `o3-mini` | Visionary model |
 | `LLM_MODEL_PLANNING` | same as reasoning | CrewAI planning step |
-| `PRD_OUTPUT_FORMAT` | `json` | `json`, `md`, or `both` |
+| `PRD_OUTPUT_FORMAT` | `both` | `json`, `md`, or `both` |
 | `PRD_OUTPUT_DIR` | `prd_output` | PRD and plan export directory |
 | `MIN_PLAN_SCORE` | `7.5` | Planning approval threshold |
 | `MIN_QUALITY_SCORE` | `7.5` | Task execution approval threshold |

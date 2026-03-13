@@ -48,6 +48,9 @@ def test_build_planning_crew_uses_yaml_templates(monkeypatch):
     assert len(captured_tasks) == 4
     assert "feature context" in captured_tasks[0]["description"]
     assert "story context" in captured_tasks[0]["description"]
+    assert captured_tasks[0]["guardrail"].__name__ == "_text_result_guardrail"
+    assert captured_tasks[1]["guardrail"].__name__ == "_text_result_guardrail"
+    assert captured_tasks[2]["guardrail"].__name__ == "_text_result_guardrail"
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
     assert captured_tasks[3]["output_pydantic"].__name__ == "UserStoryExecutionPlan"
     assert captured_tasks[3]["guardrail"].__name__ == "_plan_guardrail"
