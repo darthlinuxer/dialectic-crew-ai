@@ -5,6 +5,7 @@
     ],
     "venvPath": ".",
     "venv": ".venv",
+    "reportPrivateUsage": "none",
     "exclude": [
         ".venv",
         "**/__pycache__",

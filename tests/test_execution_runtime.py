@@ -89,6 +89,48 @@ def test_build_task_dialectic_crew_uses_initial_template_without_retry(monkeypat
     assert "TASK TO IMPLEMENT: T-001 — Title" in captured_tasks[0]["description"]
     assert "Context block" in captured_tasks[0]["description"]
     assert "RETRY 1/3" not in captured_tasks[0]["description"]
+    assert "Definition of done" in captured_tasks[0]["description"]
+    assert "static-analysis" in captured_tasks[0]["description"]
+    assert "adjacent files" in captured_tasks[0]["description"]
+
+
+def test_build_task_dialectic_crew_validation_mentions_integration_quality(monkeypatch):
+    from execution import runtime
+
+    captured_tasks = []
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            captured_tasks.append(kwargs)
+            self.kwargs = kwargs
+
+    class FakeCrew:
+        def __init__(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(runtime, "Task", FakeTask)
+    monkeypatch.setattr(runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(runtime, "create_implementer", lambda ctx: "impl")
+    monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "crit")
+    monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
+    monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
+    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision")
+
+    runtime.build_task_dialectic_crew(
+        task_id="T-001",
+        task_title="Title",
+        task_description="Do the thing",
+        context_str="Context block",
+        min_score=7.5,
+        vision_context=VisionContext.PROJECT,
+        synthesis_for_retry=None,
+        retry=0,
+        max_retries=3,
+    )
+
+    assert "imports, references, and package/module boundaries" in captured_tasks[3]["description"]
+    assert "related tests or supporting files" in captured_tasks[3]["description"]
 
 
 def test_build_task_dialectic_crew_mentions_self_antidrift_file(monkeypatch):

@@ -2,11 +2,10 @@
 
 import json
 import os
+from typing import Any
 
 import pytest
 from dotenv import load_dotenv
-
-load_dotenv()
 
 from schemas import (
     PRDSchema,
@@ -16,6 +15,8 @@ from schemas import (
     ImplementationTask,
     UserStoryExecutionPlan,
 )
+
+load_dotenv()
 
 
 def _has_api_key() -> bool:
@@ -41,8 +42,8 @@ def pytest_collection_modifyitems(config, items):
 # ---------------------------------------------------------------------------
 
 
-def make_prd(**overrides) -> PRDSchema:
-    defaults = dict(
+def make_prd(**overrides: Any) -> PRDSchema:
+    defaults: dict[str, Any] = dict(
         feature_name="Test Feature",
         version="1.0",
         objective="Test objective",
@@ -73,8 +74,8 @@ def make_prd(**overrides) -> PRDSchema:
     return PRDSchema(**defaults)
 
 
-def make_task(**overrides) -> ImplementationTask:
-    defaults = dict(
+def make_task(**overrides: Any) -> ImplementationTask:
+    defaults: dict[str, Any] = dict(
         id="T-001",
         title="Create endpoint",
         description="Implement the REST endpoint for the feature",
@@ -85,8 +86,8 @@ def make_task(**overrides) -> ImplementationTask:
     return ImplementationTask(**defaults)
 
 
-def make_plan(**overrides) -> UserStoryExecutionPlan:
-    defaults = dict(
+def make_plan(**overrides: Any) -> UserStoryExecutionPlan:
+    defaults: dict[str, Any] = dict(
         user_story_id="US-001",
         user_story_title="Sample Story",
         approach_summary="Implement using standard patterns.",

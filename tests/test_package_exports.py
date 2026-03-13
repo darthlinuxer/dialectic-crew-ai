@@ -17,7 +17,7 @@ from execution import (
     task_verify_runtime,
     verify_runtime,
 )
-from main import cli_main, run_self_improve
+from src.main import cli_main, run_self_improve
 from planning import run_user_story_planning, runtime as planning_runtime
 from src.mcp import skills_mcp
 from src.mcp.skills_index import SkillIndex, SkillMetadata, SkillSource

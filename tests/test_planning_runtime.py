@@ -1,3 +1,5 @@
+# pyright: reportPrivateUsage=none
+
 from conftest import make_prd
 from dialectic.tool_bundles import TOOL_BUNDLES
 from dialectic.vision import VisionContext
@@ -178,6 +180,7 @@ def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
 
 def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
     from planning import runtime
+    build_agent = getattr(runtime, "_build_agent")
 
     captured = {}
 
@@ -187,7 +190,7 @@ def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
 
     monkeypatch.setattr(runtime, "build_agent_from_config", fake_build_agent_from_config)
 
-    agent = runtime._build_agent(
+    agent = build_agent(
         {
             "role": "Planner for {vision_label}",
             "goal": "Plan {us_title}",
@@ -215,6 +218,8 @@ def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
 
 def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
     from planning import runtime
+    build_agent = getattr(runtime, "_build_agent")
+    agents_config_path = getattr(runtime, "_AGENTS_CONFIG_PATH")
 
     captured = {}
 
@@ -224,9 +229,9 @@ def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
 
     monkeypatch.setattr(runtime, "build_agent_from_config", fake_build_agent_from_config)
 
-    agent_templates = runtime.load_yaml_config(runtime._AGENTS_CONFIG_PATH)
+    agent_templates = runtime.load_yaml_config(agents_config_path)
 
-    agent = runtime._build_agent(
+    agent = build_agent(
         agent_templates["planning_visionary"],
         {
             "vision_label": "SELF_VISION.md",

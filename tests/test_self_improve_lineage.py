@@ -10,7 +10,7 @@ import pytest
 
 from dialectic.metrics import MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
-from main.self_improve import _build_pr_body, _save_self_improve_record, run_self_improve
+from src.main.self_improve import _build_pr_body, _save_self_improve_record, run_self_improve
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
 

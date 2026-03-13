@@ -120,6 +120,14 @@ def _render_tese_input(
     retry: int,
     max_retries: int,
 ) -> str:
+    integration_done_block = """
+Definition of done:
+- The task is not complete just because code or files exist.
+- Ensure imports, references, and package/module boundaries remain coherent.
+- Update related tests or supporting files when this change requires it.
+- Do not leave static-analysis, editor, or adjacent files breakage behind.
+""".strip()
+
     if synthesis_for_retry is None:
         return f"""
 TASK TO IMPLEMENT: {task_id} — {task_title}
@@ -128,6 +136,8 @@ TASK TO IMPLEMENT: {task_id} — {task_title}
 
 CONTEXT:
 {context_str}
+
+{integration_done_block}
 
 Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
 Treat the knowledge-source content for `{vision_path}` as authoritative.
@@ -139,6 +149,8 @@ RETRY {retry}/{max_retries} — Incorporate ALL refinements below.
 TASK: {task_id} — {task_title}
 
 {task_description}
+
+{integration_done_block}
 
 Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
 Treat the knowledge-source content for `{vision_path}` as authoritative.

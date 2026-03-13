@@ -17,6 +17,9 @@ reimplement_task_fix:
     PRIOR DIALECTIC CONTEXT:
     {dialectic_context}
 
+    Diagnose the root cause behind the failed checks before editing.
+    If the issue is really about imports, references, tests, or package exports,
+    fix those integration gaps instead of patching only the symptom.
     Fix ONLY the identified gaps. Use the file reading and writing tools.
   expected_output: Description of what was fixed
   guardrail: text_result
@@ -30,6 +33,8 @@ reimplement_task_validate:
 
     Minimum score: {min_score}
     Verify alignment with the macro vision.
+    Confirm the fix addressed the root cause and did not leave import/reference/
+    test/export inconsistencies behind.
   expected_output: ValidationOutput
   output_schema: ValidationOutput
   guardrail: quality

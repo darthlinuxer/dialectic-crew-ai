@@ -11,7 +11,7 @@ from execution.dialectic_execution import run_dialectic_execution
 from execution.runner import run_execution
 from execution.status import mark_task, show_status
 from execution.verify import verify_task, verify_user_story
-from main.self_improve import _list_resumable_cycles, run_self_improve
+from .self_improve import _list_resumable_cycles, run_self_improve
 from planning.flow import run_user_story_planning
 from dialectic import run_dialectic_flow
 

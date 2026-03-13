@@ -11,8 +11,8 @@ import pytest
 
 from dialectic.metrics import MetricRecord, MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
-from main.pr_builder import create_pr
-from main.self_improve import (
+from src.main.pr_builder import create_pr
+from src.main.self_improve import (
     PROTECTED_PATHS,
     _create_pr,
     _list_resumable_cycles,
@@ -512,7 +512,7 @@ class TestRunSelfImprove:
         store,
         capsys,
     ):
-        from main.self_improve import _save_self_improve_record
+        from src.main.self_improve import _save_self_improve_record
         from schemas import ImprovementOpportunity
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
@@ -575,7 +575,7 @@ class TestRunSelfImprove:
         monkeypatch,
         store,
     ):
-        from main.self_improve import _save_self_improve_record
+        from src.main.self_improve import _save_self_improve_record
         from schemas import ImprovementOpportunity
 
         git_dir = tmp_path / ".git"
@@ -647,7 +647,7 @@ class TestRunSelfImprove:
         monkeypatch,
         store,
     ):
-        from main.self_improve import _save_self_improve_record
+        from src.main.self_improve import _save_self_improve_record
         from schemas import ImprovementOpportunity
 
         git_dir = tmp_path / ".git"
@@ -752,7 +752,7 @@ class TestResumeSummary:
 
 class TestResumableCycles:
     def test_lists_saved_cycles_in_newest_first_order(self, tmp_path):
-        from main.self_improve import _save_self_improve_record
+        from src.main.self_improve import _save_self_improve_record
 
         older = SelfImprovementRecord(
             cycle_id="cycle-old",

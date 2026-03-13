@@ -1,11 +1,19 @@
-"""Tests for dialectic.agents helpers."""
-
+# pyright: reportPrivateUsage=none
 from pathlib import Path
+from typing import Any, cast
 
 import dialectic.agents as agents
 import dialectic.knowledge as knowledge
 import dialectic.mcp_config as mcp_config
 from dialectic.vision import VisionContext
+
+
+def _lookup_private(module_dict: dict[str, object], suffix: str) -> Any:
+    return module_dict[f"_{suffix}"]
+
+
+vision_label = cast(Any, _lookup_private(knowledge.__dict__, "vision_label"))
+python_command = cast(Any, _lookup_private(mcp_config.__dict__, "python_command"))
 
 
 def test_vision_knowledge_preserves_absolute_paths(monkeypatch, tmp_path):
@@ -39,8 +47,8 @@ def test_vision_knowledge_preserves_absolute_paths(monkeypatch, tmp_path):
 
 
 def test_vision_label_matches_context():
-    assert knowledge._vision_label(VisionContext.PROJECT) == "VISION.md"
-    assert knowledge._vision_label(VisionContext.SELF) == "SELF_VISION.md"
+    assert vision_label(VisionContext.PROJECT) == "VISION.md"
+    assert vision_label(VisionContext.SELF) == "SELF_VISION.md"
 
 
 def test_agent_factories_reference_self_vision_label():
@@ -100,21 +108,19 @@ def test_python_command_prefers_active_interpreter(monkeypatch):
     monkeypatch.setattr(mcp_config.sys, "executable", "/tmp/venv/bin/python")
     monkeypatch.setattr(mcp_config.shutil, "which", lambda name: "/usr/bin/python3")
 
-    assert mcp_config._python_command() == "/tmp/venv/bin/python"
+    assert python_command() == "/tmp/venv/bin/python"
 
 
 def test_python_command_falls_back_to_python3(monkeypatch):
     monkeypatch.setattr(mcp_config.sys, "executable", "")
     monkeypatch.setattr(mcp_config.shutil, "which", lambda name: "/usr/bin/python3")
 
-    assert mcp_config._python_command() == "/usr/bin/python3"
+    assert python_command() == "/usr/bin/python3"
 
 
 def test_create_visionario_uses_yaml_config(monkeypatch):
-    monkeypatch.setattr(
-        agents,
-        "_get_agent_config",
-        lambda name: {
+    def fake_get_agent_config(_name):
+        return {
             "role": "Custom Visionary",
             "goal": "Guard {vision_label}",
             "backstory": "Inspect {vision_label} first",
@@ -125,7 +131,12 @@ def test_create_visionario_uses_yaml_config(monkeypatch):
             "tool_bundle": "read_only",
             "mcp_bundle": "knowledge",
             "llm_tier": "reasoning",
-        },
+        }
+
+    monkeypatch.setattr(
+        agents,
+        "_get_agent_config",
+        fake_get_agent_config,
     )
 
     agent = agents.create_visionario(VisionContext.SELF)

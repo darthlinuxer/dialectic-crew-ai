@@ -15,6 +15,10 @@ execute_task_antithesis:
     SCOPE: Evaluate ONLY whether it meets the description: """{task_description}"""
     Do NOT critique outside the scope. Do NOT request additional features.
     Check for contradictions with the macro vision.
+    Also critique integration quality on the touched surface:
+    - imports, references, and package/module boundaries
+    - related tests or supporting files that should have been updated
+    - obvious static-analysis or editor breakage left behind in adjacent files
   expected_output: Detailed critique of the implementation
   agent: critico_socratico
   guardrail: text_result
@@ -27,6 +31,8 @@ execute_task_synthesis:
     Treat the knowledge-source content for `{vision_path}` as authoritative.
     Ensure the synthesis is aligned with the macro vision.
     Include clear instructions for retry if necessary.
+    The refined solution must preserve integration quality for imports, references,
+    tests, and supporting files on the touched surface.
   expected_output: Refined synthesis with instructions
   agent: sintetizador
   guardrail: text_result
@@ -40,6 +46,10 @@ execute_task_validation:
 
     Minimum score for approval: {min_score}
     Verify alignment with the macro vision.
+    The task is not approved unless the touched surface integrates cleanly:
+    - imports, references, and package/module boundaries remain coherent
+    - related tests or supporting files were updated when required
+    - no obvious static-analysis or editor breakage is left behind in adjacent files
   expected_output: ValidationOutput
   agent: validador_macro
   output_schema: ValidationOutput

@@ -8,6 +8,7 @@ Uses native CrewAI features:
 """
 
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -15,12 +16,16 @@ from typing import Any, Tuple
 
 from pydantic import BaseModel, ValidationError
 
+from dialectic.dependency_graph import format_dependency_errors, validate_task_dependencies
 from dialectic.export import execution_plan_to_markdown
 from dialectic.prd_guardrails import _build_retry_feedback_context
 from dialectic.prd_flow import OUTPUT_DIR
 from dialectic.vision import VisionContext, get_vision_hash
 from planning.runtime import build_planning_crew
 from schemas import PRDSchema, UserStory, UserStoryExecutionPlan
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +37,19 @@ def _plan_guardrail(result) -> Tuple[bool, Any]:
     pydantic_obj = getattr(result, "pydantic", None)
     if pydantic_obj and isinstance(pydantic_obj, UserStoryExecutionPlan):
         if pydantic_obj.tasks and len(pydantic_obj.tasks) >= 1:
+            dependency_errors = validate_task_dependencies(pydantic_obj.tasks)
+            if dependency_errors:
+                logger.warning(
+                    "dependency-graph-rejected by plan guardrail: %s",
+                    "; ".join(dependency_errors),
+                )
+                return (
+                    False,
+                    format_dependency_errors(
+                        dependency_errors,
+                        subject="Plan",
+                    ),
+                )
             return (True, _guardrail_success_output(pydantic_obj))
         return (False, "Plan must include at least one implementation task (tasks list is empty)")
     return (

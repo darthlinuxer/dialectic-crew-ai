@@ -80,10 +80,11 @@ def _render_failed_checks(failed_checks: list[str]) -> str:
 def _build_agent() -> Agent:
     return Agent(
         role="Independent Implementer",
-        goal="Fix failed implementation based on checks that did not pass",
+        goal="Fix failed implementation by addressing the root cause behind the checks that did not pass",
         backstory=(
-            "You are an implementer focused on fixing specific gaps. "
-            "Read existing files, identify what is missing, and fix it."
+            "You are an implementer focused on fixing the root cause of specific gaps. "
+            "Read existing files, identify whether the problem is in imports, references, "
+            "tests, exports, or implementation details, and fix the real source of failure."
         ),
         verbose=True,
         allow_delegation=False,

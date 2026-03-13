@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-import main.cli as cli
+import src.main.cli as cli
 import pytest
 
-from main.cli import _command_requires_api, _command_requires_vision
+from src.main.cli import _command_requires_api, _command_requires_vision
 from dialectic.vision import (
     VisionContext,
     ensure_vision_path,

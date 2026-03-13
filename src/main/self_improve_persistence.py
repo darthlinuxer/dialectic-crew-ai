@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Type
 
+from pydantic import ValidationError
+
 from schemas import ImprovementOpportunity, SelfImprovementRecord
 
 
@@ -120,7 +122,7 @@ def list_resumable_cycles(
     for path in records_dir.glob("*.json"):
         try:
             record = SelfImprovementRecord.model_validate_json(path.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, ValidationError):
             continue
         summary = summarize_resume_state(record, record.failure_reason)
         rows.append(

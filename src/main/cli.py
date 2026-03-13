@@ -25,7 +25,7 @@ from dialectic.crewai_event_logger import register_crewai_event_logger
 from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.prd_flow import get_prd_resume_state
 from dialectic.vision import ensure_vision_path, VisionContext
-from main.cli_commands import (
+from .cli_commands import (
     cmd_execute,
     cmd_mark,
     cmd_plan,

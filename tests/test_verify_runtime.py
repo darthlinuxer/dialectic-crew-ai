@@ -36,6 +36,8 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
     assert len(captured_tasks) == 1
     assert "T-123" in captured_tasks[0]["description"]
     assert "Endpoint returns 200" in captured_tasks[0]["description"]
+    assert "package/module boundaries remain coherent" in captured_tasks[0]["description"]
+    assert "Related tests, exports, or supporting files" in captured_tasks[0]["description"]
     assert captured_tasks[0]["output_pydantic"].__name__ == "ValidationOutput"
     assert captured_crew["agents"] == [agent]
     assert captured_crew["tasks"][0] is not None
@@ -70,3 +72,4 @@ def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(monk
     )
 
     assert "ACCEPTANCE CRITERIA" not in captured_tasks[0]["description"]
+    assert "static-analysis/editor inconsistencies" in captured_tasks[0]["description"]

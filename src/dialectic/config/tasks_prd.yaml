@@ -68,6 +68,12 @@ prd_synthesis:
     - user_stories
     - anti_drift_questions
 
+    Dependency rules for user_stories.dependencies:
+    - Use dependencies only for strict prerequisite relationships between user stories in this same PRD.
+    - Dependencies must reference existing user story ids from the same output only.
+    - Do NOT use dependencies for related, adjacent, future, or optional work.
+    - Never create self-dependencies or circular dependency chains.
+
     Do NOT include quality_score, consensus_reached, or final_validation_notes in the synthesis output.
     Use risk_level in English (LOW/MEDIUM/HIGH) and effort in English (XS/S/M/L/XL) for schema compatibility.
   expected_output: Candidate PRD as raw JSON for validator review
@@ -99,10 +105,11 @@ prd_validation:
     IMPORTANT: Score only against requirements that can be represented inside PRDSchema or verified against the active macro vision.
     Do NOT require separate top-level fields that are not part of PRDSchema, such as a standalone VisionContext field or a standalone mapping-table field.
     If alignment evidence is needed, express it using the existing schema fields (especially anti_drift_questions, final_validation_notes, and vision_hash when available).
+    Validate that every user story dependency is a real prerequisite, references an existing user story id, and that the dependency graph is acyclic.
     Never return a tool call, tool arguments, or raw tool output as the final answer.
     Your final answer must be the completed PRDSchema object only.
 
-    Checklist for score: (1) Feature aligned with macro vision? (2) Affected modules? (3) Risks mitigated? (4) NFRs covered? (5) Consistent user stories? (6) 5+ anti-drift?
+    Checklist for score: (1) Feature aligned with macro vision? (2) Affected modules? (3) Risks mitigated? (4) NFRs covered? (5) Consistent user stories and valid acyclic dependencies? (6) 5+ anti-drift?
 
     MANDATORY - use EXACTLY these English values (never in Portuguese):
     - risk_level: only "LOW", "MEDIUM" or "HIGH"

@@ -8,8 +8,13 @@ verify_task_flow_implementation:
     Use the file reading tool to verify whether the artifacts exist.
     For each check, verify whether the file/function/config actually exists.{acceptance_checks_block}
 
+    Also verify integration quality on the touched surface:
+    - imports and references still resolve coherently
+    - related tests or package exports/supporting files were updated when required
+    - there is no obvious static-analysis breakage or editor-visible inconsistency left behind
+
     Fill in:
-    - verified: true if ALL essential artifacts exist
+    - verified: true if ALL essential artifacts exist and the touched surface still integrates cleanly
     - checks_passed: list of checks that passed
     - checks_failed: list of checks that failed
     - notes: explanation of what was verified

@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import List
 
+from dialectic.dependency_graph import validate_user_story_dependencies
 from dialectic.vision import VisionContext, get_vision_hash
 from schemas import PRDSchema
 
@@ -160,5 +161,7 @@ def validate_consistency(
         errors.append(
             f"consensus_reached mismatch: JSON={json_consensus} vs PRD={prd.consensus_reached}"
         )
+
+    errors.extend(validate_user_story_dependencies(prd.user_stories))
 
     return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)

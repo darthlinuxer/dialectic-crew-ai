@@ -7,7 +7,9 @@
 
 import inspect
 import json
+import logging
 from types import SimpleNamespace
+from typing import Any, cast
 
 import dialectic.prd_guardrails as prd_guardrails
 import dialectic.prd_flow as prd_flow
@@ -220,6 +222,66 @@ def test_prd_guardrail_rejects_placeholder_acceptance_criterion():
     assert "valid PRDSchema JSON" in payload
 
 
+def test_prd_guardrail_rejects_circular_story_dependencies():
+    prd = _make_prd().model_copy(deep=True)
+    prd_data = prd.model_dump()
+    prd_data["user_stories"] = [
+        {
+            "id": "US-001",
+            "title": "Read memory",
+            "description": "Retrieve persisted memory safely.",
+            "acceptance_criteria": ["A", "B", "C"],
+            "effort": "M",
+            "dependencies": ["US-002"],
+        },
+        {
+            "id": "US-002",
+            "title": "Write memory",
+            "description": "Persist memory safely.",
+            "acceptance_criteria": ["D", "E", "F"],
+            "effort": "M",
+            "dependencies": ["US-001"],
+        },
+    ]
+
+    class Result:
+        raw = json.dumps(prd_data)
+
+    ok, payload = prd_guardrails._prd_guardrail(Result())
+
+    assert ok is False
+    assert "circular dependenc" in payload.lower()
+
+
+def test_prd_guardrail_logs_dependency_rejection(caplog):
+    prd = _make_prd().model_copy(deep=True)
+    prd_data = prd.model_dump()
+    prd_data["user_stories"][0]["dependencies"] = ["US-999"]
+
+    class Result:
+        raw = json.dumps(prd_data)
+
+    with caplog.at_level(logging.WARNING):
+        ok, _ = prd_guardrails._prd_guardrail(Result())
+
+    assert ok is False
+    assert "dependency-graph-rejected by prd guardrail" in caplog.text
+
+
+def test_prd_guardrail_rejects_unknown_story_dependencies():
+    prd = _make_prd().model_copy(deep=True)
+    prd_data = prd.model_dump()
+    prd_data["user_stories"][0]["dependencies"] = ["US-999"]
+
+    class Result:
+        raw = json.dumps(prd_data)
+
+    ok, payload = prd_guardrails._prd_guardrail(Result())
+
+    assert ok is False
+    assert "unknown dependenc" in payload.lower()
+
+
 def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
     source = inspect.getsource(prd_flow.DialecticFlow)
 
@@ -281,7 +343,7 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     flow.state.final_validation_notes = ""
     flow.state.file_paths = []
 
-    next_step = prd_flow.DialecticFlow.rodar_rodada_dialetica(flow)
+    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "rodar_rodada_dialetica"))(flow)
 
     assert next_step == "avaliar"
     assert flow.state.prd_data["feature_name"] == prd.feature_name
@@ -298,7 +360,7 @@ def test_avaliar_approves_when_consensus_floor_is_met():
     flow.state.retry_count = 1
     flow.state.max_retries = 5
 
-    next_step = prd_flow.DialecticFlow.avaliar(flow)
+    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "avaliar"))(flow)
 
     assert next_step == "aprovar"
     assert flow.state.current_phase == "save"
@@ -313,7 +375,7 @@ def test_avaliar_retries_when_consensus_floor_is_not_met(capsys):
     flow.state.max_retries = 5
     flow.state.final_validation_notes = "needs stronger acceptance criteria"
 
-    next_step = prd_flow.DialecticFlow.avaliar(flow)
+    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "avaliar"))(flow)
 
     captured = capsys.readouterr()
     assert next_step == "retry"

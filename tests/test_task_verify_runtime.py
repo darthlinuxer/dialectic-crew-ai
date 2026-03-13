@@ -1,3 +1,7 @@
+# pyright: reportPrivateUsage=none
+
+from typing import Any, cast
+
 from dialectic.vision import VisionContext
 
 
@@ -34,6 +38,8 @@ def test_build_task_flow_verification_crew_uses_yaml_templates(monkeypatch):
     assert "T-001" in captured_tasks[0]["description"]
     assert "ACCEPTANCE CHECKS" in captured_tasks[0]["description"]
     assert "- file exists" in captured_tasks[0]["description"]
+    assert "imports and references still resolve" in captured_tasks[0]["description"]
+    assert "related tests or package exports" in captured_tasks[0]["description"]
     assert captured_tasks[0]["output_pydantic"].__name__ == "VerificationResult"
     assert captured_tasks[0]["guardrail"].__name__ == "_verification_guardrail"
     assert captured_crew["agents"] == ["verifier"]
@@ -70,10 +76,11 @@ def test_build_task_flow_verification_crew_omits_acceptance_block_when_empty(mon
     )
 
     assert "ACCEPTANCE CHECKS" not in captured_tasks[0]["description"]
+    assert "obvious static-analysis breakage" in captured_tasks[0]["description"]
 
 
 def test_run_independent_verifier_uses_runtime_builder(monkeypatch):
-    from execution.task_flow import TaskExecutionFlow, TaskFlowState
+    from execution.task_flow import TaskExecutionFlow
 
     class FakeCrew:
         def kickoff(self):
@@ -101,7 +108,7 @@ def test_run_independent_verifier_uses_runtime_builder(monkeypatch):
     flow.state.acceptance_checks = ["one", "two"]
     flow.state.vision_context = VisionContext.SELF.value
 
-    result = flow._run_independent_verifier()
+    result = cast(Any, getattr(flow, "_run_independent_verifier"))()
 
     assert captured == {
         "task_id": "T-002",

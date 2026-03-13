@@ -116,7 +116,12 @@ def run_dialectic_execution(
         raise FileNotFoundError(f"Plan not found: {resolved_plan_path}")
 
     plan = load_plan_file(resolved_plan_path)
-    ordered_tasks = _topological_sort(plan.tasks)
+    try:
+        ordered_tasks = _topological_sort(plan.tasks)
+    except ValueError as exc:
+        raise ValueError(
+            f"Execution plan {plan.user_story_id} has invalid task dependencies: {exc}"
+        ) from exc
 
     if checkpoint is None:
         checkpoint = ExecutionCheckpoint(

@@ -16,6 +16,12 @@ thesis_plan:
     3. Risks you already foresee
     4. Relevant technical notes
 
+    Dependency rules for tasks.dependencies:
+    - Use dependencies only for strict prerequisite tasks in this same plan.
+    - Dependencies must reference existing task ids from the same output only.
+    - Do NOT use dependencies for loose sequencing, related work, or tasks that can run independently.
+    - Never create self-dependencies or circular dependency chains.
+
     Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
   expected_output: Structured implementation plan (approach + tasks + risks + notes)
   agent: planning_visionary
@@ -58,6 +64,8 @@ synthesis_plan:
     4. Includes approach_summary, risks_mitigated, tech_notes
     5. Is aligned with the macro vision and the PRD
 
+    Every dependency must be a real prerequisite edge between tasks in this same plan; do not emit self-dependencies, unknown task ids, or circular dependency chains.
+
     Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
   expected_output: Refined implementation plan (approach + tasks + mitigated risks + notes)
   agent: planning_synthesizer
@@ -83,6 +91,8 @@ validation_plan:
     - quality_score: float 0-10 (one decimal place). Approve if >= {min_plan_score}
     - consensus_reached: true if the plan is ready for execution
     - final_validation_notes: brief explanation
+
+    Reject the plan if any task dependency is not a true prerequisite, references an unknown task id, creates a self-dependency, or forms a circular dependency chain.
   expected_output: Valid UserStoryExecutionPlan with quality_score and consensus_reached
   agent: planning_validator
   output_schema: UserStoryExecutionPlan

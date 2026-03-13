@@ -7,6 +7,10 @@ from typing import Any, Tuple
 
 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
+from dialectic.dependency_graph import (
+    format_dependency_errors,
+    validate_user_story_dependencies,
+)
 from dialectic.metrics import emit as emit_metric
 from schemas import PRDSchema
 
@@ -107,6 +111,17 @@ def _prd_guardrail(result) -> Tuple[bool, Any]:
     prd = _extract_prd_from_result(result)
     if prd is not None:
         if prd.user_stories and len(prd.user_stories) >= 1:
+            dependency_errors = validate_user_story_dependencies(prd.user_stories)
+            if dependency_errors:
+                logger.warning(
+                    "dependency-graph-rejected by prd guardrail: %s",
+                    "; ".join(dependency_errors),
+                )
+                emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="invalid_dependencies")
+                return False, format_dependency_errors(
+                    dependency_errors,
+                    subject="PRD",
+                )
             return True, _guardrail_success_output(result, prd)
         emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="no_user_stories")
         return False, "PRD must include at least one user story"

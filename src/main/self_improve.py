@@ -27,7 +27,7 @@ from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.metrics import MetricsStore, emit, get_metrics_store
 from dialectic.prioritize import dialectic_prioritize
 from dialectic.vision import VisionContext, resolve_project_root
-from main.git_helpers import (
+from .git_helpers import (
     dirty_worktree_guidance,
     git_branch_create,
     git_branch_create_from_head,
@@ -41,13 +41,13 @@ from main.git_helpers import (
     recover_stale_self_improve_worktree,
     run_cmd,
 )
-from main.test_runner import (
+from .test_runner import (
     emit_test_failure_details,
     pytest_command,
     self_improve_test_timeout,
     snapshot_tests,
 )
-from main.self_improve_persistence import (
+from .self_improve_persistence import (
     list_resumable_cycles,
     load_self_improve_record,
     record_execution_artifacts,
@@ -59,8 +59,8 @@ from main.self_improve_persistence import (
     self_improve_record_path,
     summarize_resume_state,
 )
-from main.pr_builder import build_pr_body, create_pr, print_report
-from main.metrics_comparison import metrics_stable
+from .pr_builder import build_pr_body, create_pr, print_report
+from .metrics_comparison import metrics_stable
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
 logger = logging.getLogger(__name__)

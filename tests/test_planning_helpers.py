@@ -1,6 +1,8 @@
-"""Tests for planning helper functions in planning/flow.py."""
+# pyright: reportPrivateUsage=none
 
 import json
+import logging
+from typing import Any, cast
 
 import pytest
 
@@ -10,38 +12,45 @@ from schemas import UserStory, UserStoryExecutionPlan
 from conftest import make_prd, make_task
 
 
+normalize_us_ref = cast(Any, planning_flow.__dict__["_normalize_us_ref"])
+get_user_story = cast(Any, planning_flow.__dict__["_get_user_story"])
+planning_prd_metadata = cast(Any, planning_flow.__dict__["_PlanningPRDMetadata"])
+plan_guardrail = cast(Any, planning_flow.__dict__["_plan_guardrail"])
+ensure_acceptance_checks = cast(Any, planning_flow.__dict__["_ensure_acceptance_checks"])
+find_latest_prd = cast(Any, planning_flow.__dict__["_find_latest_prd"])
+
+
 class TestNormalizeUsRef:
     def test_us_dash_number(self):
-        assert planning_flow._normalize_us_ref("US-001") == "US-001"
+        assert normalize_us_ref("US-001") == "US-001"
 
     def test_us_no_dash(self):
-        result = planning_flow._normalize_us_ref("US001")
+        result = normalize_us_ref("US001")
         assert result == "US1"
 
     def test_digit_only(self):
-        assert planning_flow._normalize_us_ref("1") == "1"
+        assert normalize_us_ref("1") == "1"
 
     def test_lowercase(self):
-        result = planning_flow._normalize_us_ref("us001")
+        result = normalize_us_ref("us001")
         assert result == "US1"
 
     def test_whitespace(self):
-        result = planning_flow._normalize_us_ref("  US-001  ")
+        result = normalize_us_ref("  US-001  ")
         assert result == "US-001"
 
     def test_rejects_non_string(self):
         with pytest.raises(TypeError, match="must be a string"):
-            planning_flow._normalize_us_ref(None)
+            normalize_us_ref(None)
 
 
 class TestGetUserStory:
     def test_none_returns_first(self):
         prd = make_prd()
-        us = planning_flow._get_user_story(prd, None)
+        us = get_user_story(prd, None)
         assert us.id == "US-001"
 
     def test_by_id(self):
-        from schemas import UserStory
         prd = make_prd(
             user_stories=[
                 UserStory(id="US-001", title="A", description="...",
@@ -50,11 +59,10 @@ class TestGetUserStory:
                          acceptance_criteria=["a", "b", "c"], effort="M"),
             ]
         )
-        us = planning_flow._get_user_story(prd, "US-002")
+        us = get_user_story(prd, "US-002")
         assert us.id == "US-002"
 
     def test_by_index(self):
-        from schemas import UserStory
         prd = make_prd(
             user_stories=[
                 UserStory(id="US-001", title="A", description="...",
@@ -63,16 +71,16 @@ class TestGetUserStory:
                          acceptance_criteria=["a", "b", "c"], effort="M"),
             ]
         )
-        us = planning_flow._get_user_story(prd, "1")
+        us = get_user_story(prd, "1")
         assert us.id == "US-002"
 
     def test_not_found(self):
         prd = make_prd()
         with pytest.raises(ValueError, match="not found"):
-            planning_flow._get_user_story(prd, "US-999")
+            get_user_story(prd, "US-999")
 
     def test_selected_valid_story_ignores_invalid_unrelated_story(self):
-        prd = planning_flow._PlanningPRDMetadata.model_validate(
+        prd = planning_prd_metadata.model_validate(
             {
                 "feature_name": "Memory Fabric",
                 "objective": "Plan a valid story only",
@@ -97,12 +105,12 @@ class TestGetUserStory:
             }
         )
 
-        us = planning_flow._get_user_story(prd, "US-001")
+        us = get_user_story(prd, "US-001")
 
         assert us.id == "US-001"
 
     def test_selected_invalid_story_raises_clear_error(self):
-        prd = planning_flow._PlanningPRDMetadata.model_validate(
+        prd = planning_prd_metadata.model_validate(
             {
                 "feature_name": "Memory Fabric",
                 "objective": "Catch malformed requested story",
@@ -120,7 +128,7 @@ class TestGetUserStory:
         )
 
         with pytest.raises(ValueError, match="US-008 is invalid"):
-            planning_flow._get_user_story(prd, "US-008")
+            get_user_story(prd, "US-008")
 
 
 class TestPlanGuardrail:
@@ -140,7 +148,7 @@ class TestPlanGuardrail:
             quality_score=9.0,
             final_validation_notes="ok",
         )
-        ok, payload = planning_flow._plan_guardrail(self._make_result(plan))
+        ok, payload = plan_guardrail(self._make_result(plan))
         assert ok is True
         assert isinstance(payload, str)
         assert '"user_story_id":"US-001"' in payload
@@ -160,16 +168,65 @@ class TestPlanGuardrail:
         class FakeResult:
             pydantic = plan
 
-        ok, msg = planning_flow._plan_guardrail(FakeResult())
+        ok, msg = plan_guardrail(FakeResult())
         assert ok is False
         assert "task" in msg.lower()
 
     def test_non_pydantic(self):
         class FakeResult:
             pydantic = None
-        ok, msg = planning_flow._plan_guardrail(FakeResult())
+        ok, msg = plan_guardrail(FakeResult())
         assert ok is False
         assert "UserStoryExecutionPlan" in msg
+
+    def test_rejects_circular_task_dependencies(self):
+        plan = UserStoryExecutionPlan(
+            user_story_id="US-001",
+            user_story_title="Story",
+            approach_summary="approach",
+            tasks=[
+                make_task(id="T-001", dependencies=["T-002"]),
+                make_task(id="T-002", order=2, dependencies=["T-001"]),
+            ],
+            quality_score=9.0,
+            final_validation_notes="ok",
+        )
+
+        ok, payload = plan_guardrail(self._make_result(plan))
+
+        assert ok is False
+        assert "circular dependenc" in payload.lower()
+
+    def test_rejects_unknown_task_dependencies(self):
+        plan = UserStoryExecutionPlan(
+            user_story_id="US-001",
+            user_story_title="Story",
+            approach_summary="approach",
+            tasks=[make_task(id="T-001", dependencies=["T-999"])],
+            quality_score=9.0,
+            final_validation_notes="ok",
+        )
+
+        ok, payload = plan_guardrail(self._make_result(plan))
+
+        assert ok is False
+        assert "unknown dependenc" in payload.lower()
+
+    def test_logs_dependency_rejection(self, caplog):
+        plan = UserStoryExecutionPlan(
+            user_story_id="US-001",
+            user_story_title="Story",
+            approach_summary="approach",
+            tasks=[make_task(id="T-001", dependencies=["T-999"])],
+            quality_score=9.0,
+            final_validation_notes="ok",
+        )
+
+        with caplog.at_level(logging.WARNING):
+            ok, _ = plan_guardrail(self._make_result(plan))
+
+        assert ok is False
+        assert "dependency-graph-rejected by plan guardrail" in caplog.text
 
 
 class TestEnsureAcceptanceChecks:
@@ -185,7 +242,7 @@ class TestEnsureAcceptanceChecks:
             final_validation_notes="ok",
         )
 
-        normalized = planning_flow._ensure_acceptance_checks(plan, us)
+        normalized = ensure_acceptance_checks(plan, us)
 
         assert normalized.tasks[0].acceptance_checks
         assert any("Contributes to acceptance criterion" in item for item in normalized.tasks[0].acceptance_checks)
@@ -202,7 +259,7 @@ class TestEnsureAcceptanceChecks:
             final_validation_notes="ok",
         )
 
-        normalized = planning_flow._ensure_acceptance_checks(plan, us)
+        normalized = ensure_acceptance_checks(plan, us)
 
         assert normalized.tasks[0].acceptance_checks == ["file exists"]
 
@@ -277,7 +334,7 @@ class TestLatestPrdLoading:
 
         latest.touch()
 
-        assert planning_flow._find_latest_prd() == latest
+        assert find_latest_prd() == latest
 
     def test_run_user_story_planning_loads_requested_story_from_legacy_prd(self, tmp_path, monkeypatch):
         payload = make_prd(

@@ -124,7 +124,7 @@ class TestTokenBudgetTracker:
                     tracker.add_input_tokens(1)
                     tracker.add_output_tokens(1)
                     tracker.increment_llm_calls()
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover - defensive  # pylint: disable=broad-exception-caught
                 errors.append(exc)
 
         threads = [threading.Thread(target=add_tokens) for _ in range(4)]

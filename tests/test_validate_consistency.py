@@ -1,8 +1,4 @@
 import json
-from pathlib import Path
-import hashlib
-
-import pytest
 
 from dialectic.config import ExportConfig
 from dialectic.export_validation import validate_consistency
@@ -68,8 +64,6 @@ def test_missing_headers(tmp_path, monkeypatch):
     vision.write_text("Vision Content", encoding="utf-8")
 
     prd = _make_prd()
-    config = ExportConfig()
-
     # create MD without required headers
     md_path = tmp_path / "bad.md"
     md_path.write_text("# Some Title\n\nNo required headers here", encoding="utf-8")
@@ -177,6 +171,49 @@ def test_consistency_with_self_vision_context(tmp_path, monkeypatch):
 
     res = validate_consistency(md_path, json_path, prd, vision_context=VisionContext.SELF)
     assert res.is_valid, f"Expected valid but got errors: {res.errors} warnings: {res.warnings}"
+
+
+def test_consistency_rejects_circular_story_dependencies(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "knowledge").mkdir(exist_ok=True)
+    vision = tmp_path / "knowledge" / "VISION.md"
+    vision.write_text("Vision Content", encoding="utf-8")
+
+    prd = _make_prd().model_copy(
+        update={
+            "user_stories": [
+                UserStory(
+                    id="US-001",
+                    title="Read memory",
+                    description="Read from memory",
+                    acceptance_criteria=["AC1", "AC2", "AC3"],
+                    effort="M",
+                    dependencies=["US-002"],
+                ),
+                UserStory(
+                    id="US-002",
+                    title="Write memory",
+                    description="Write to memory",
+                    acceptance_criteria=["AC4", "AC5", "AC6"],
+                    effort="M",
+                    dependencies=["US-001"],
+                ),
+            ]
+        }
+    )
+    config = ExportConfig()
+
+    md_text = render_markdown(prd, config)
+    md_path = tmp_path / "prd.md"
+    md_path.write_text(md_text, encoding="utf-8")
+
+    json_path = tmp_path / "prd.json"
+    json_path.write_text(prd.model_dump_json(indent=2), encoding="utf-8")
+
+    res = validate_consistency(md_path, json_path, prd)
+
+    assert not res.is_valid
+    assert any("circular dependenc" in error.lower() for error in res.errors)
 
 
 def test_vision_hash_drift_self_context(tmp_path, monkeypatch):

@@ -39,6 +39,8 @@ def test_build_task_flow_reimplementation_crew_uses_yaml_templates(monkeypatch):
     assert "- missing file" in captured_tasks[0]["description"]
     assert "PRIOR DIALECTIC CONTEXT" in captured_tasks[0]["description"]
     assert "config path was inconsistent" in captured_tasks[0]["description"]
+    assert "root cause" in captured_tasks[0]["description"]
+    assert "imports, references, tests, or package exports" in captured_tasks[0]["description"]
     assert captured_tasks[0]["guardrail"].__name__ == "_text_result_guardrail"
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
     assert captured_tasks[1]["output_pydantic"].__name__ == "ValidationOutput"

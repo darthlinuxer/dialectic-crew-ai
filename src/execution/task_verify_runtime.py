@@ -63,10 +63,11 @@ def _render_acceptance_checks_block(acceptance_checks: list[str] | None) -> str:
 def _build_agent() -> Agent:
     return Agent(
         role="Independent Verifier",
-        goal="Verify whether implementation artifacts exist in the codebase",
+        goal="Verify whether the implementation is present and integrates cleanly in the codebase",
         backstory=(
-            "You verify implementations by reading actual project files. "
-            "Be objective: the artifact either exists or it does not."
+            "You verify implementations by reading actual project files and checking "
+            "whether the touched surface still hangs together. Be objective: artifacts, "
+            "imports, references, and related supporting files either line up or they do not."
         ),
         verbose=True,
         allow_delegation=False,

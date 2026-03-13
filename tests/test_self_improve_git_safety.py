@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 
 from dialectic.metrics import MetricsStore, _reset_metrics_store
-from main.self_improve import _git_worktree_clean, _recover_stale_self_improve_worktree, run_self_improve
-from main.git_helpers import run_cmd
+from src.main.self_improve import _git_worktree_clean, _recover_stale_self_improve_worktree, run_self_improve
+from src.main.git_helpers import run_cmd
 
 
 @pytest.fixture(autouse=True)

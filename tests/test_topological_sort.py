@@ -1,6 +1,6 @@
 """Tests for extracted execution ordering and context helpers."""
 
-import logging
+import pytest
 
 from conftest import make_task
 from execution.context_builder import build_task_context
@@ -40,13 +40,20 @@ class TestTopologicalSort:
         assert ids.index("T-002") < ids.index("T-004")
         assert ids.index("T-003") < ids.index("T-004")
 
-    def test_circular_fallback(self):
+    def test_circular_dependencies_raise(self):
         tasks = [
             make_task(id="T-001", order=1, dependencies=["T-002"]),
             make_task(id="T-002", order=2, dependencies=["T-001"]),
         ]
-        result = topological_sort(tasks)
-        assert len(result) == 2
+
+        with pytest.raises(ValueError, match="circular dependencies"):
+            topological_sort(tasks)
+
+    def test_self_dependency_raises(self):
+        tasks = [make_task(id="T-001", order=1, dependencies=["T-001"])]
+
+        with pytest.raises(ValueError, match="self-dependency"):
+            topological_sort(tasks)
 
     def test_single_task(self):
         tasks = [make_task(id="T-001")]
@@ -54,17 +61,14 @@ class TestTopologicalSort:
         assert len(result) == 1
         assert result[0].id == "T-001"
 
-    def test_warns_for_unknown_dependencies(self, caplog):
+    def test_unknown_dependencies_raise(self):
         tasks = [
             make_task(id="T-001", order=1, dependencies=["T-999"]),
             make_task(id="T-002", order=2),
         ]
 
-        with caplog.at_level(logging.WARNING):
-            result = topological_sort(tasks)
-
-        assert [task.id for task in result] == ["T-001", "T-002"]
-        assert "unknown dependencies" in caplog.text
+        with pytest.raises(ValueError, match="unknown dependencies"):
+            topological_sort(tasks)
 
 
 class TestBuildTaskContext:
@@ -73,6 +77,9 @@ class TestBuildTaskContext:
         assert "No previous tasks yet" in ctx
         assert sample_task.id in ctx
         assert sample_plan.user_story_id in ctx
+        assert "Definition of done" in ctx
+        assert "imports resolve" in ctx
+        assert "related tests or exports" in ctx
 
     def test_with_previous_outputs(self, sample_plan, sample_task):
         completed = {"T-000": "Created the config file at /path/to/config.yaml"}
