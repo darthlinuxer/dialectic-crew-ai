@@ -343,7 +343,14 @@ def prd_command(  # pylint: disable=too-many-arguments,too-many-positional-argum
         help="Use internal/SELF_VISION.md instead of knowledge/VISION.md.",
     ),
 ) -> None:
-    """Generate or resume a PRD workflow from the command line."""
+    """Generate or resume a PRD workflow from the command line.
+
+    Examples:
+      uv run dialectic-crew prd "Login with 2FA"
+      uv run dialectic-crew prd --resume flow-123
+      uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png --files spec.pdf
+      uv run dialectic-crew prd "Improve self-improve UX" --self --max-retries 8
+    """
     vision_context = VisionContext.SELF if self_mode else VisionContext.PROJECT
     file_list = [str(path) for path in file_paths or []]
     invalid = [path for path in file_list if not Path(path).exists()]
@@ -397,7 +404,10 @@ def plan_command(
     second: str | None = typer.Argument(
         None,
         metavar="[US-001|index]",
-        help="Optional user story reference when the first argument is a PRD path or --latest.",
+        help=(
+            "Optional user story reference when the first argument is a PRD path "
+            "or --latest."
+        ),
     ),
     self_mode: bool = typer.Option(
         False,
@@ -405,7 +415,13 @@ def plan_command(
         help="Use internal/SELF_VISION.md instead of knowledge/VISION.md.",
     ),
 ) -> None:
-    """Plan a user story execution from the latest or a specific PRD."""
+    """Plan a user story execution from the latest or a specific PRD.
+
+    Examples:
+      uv run dialectic-crew plan --latest US-01
+      uv run dialectic-crew plan prd_output/PRD_20260308_1640.json US-01
+      uv run dialectic-crew plan --self --latest US-01
+    """
     vision_context = VisionContext.SELF if self_mode else VisionContext.PROJECT
 
     if latest or first == "--latest":
@@ -468,7 +484,14 @@ def execute_command(
         help="Use internal/SELF_VISION.md instead of knowledge/VISION.md.",
     ),
 ) -> None:
-    """Execute or resume a plan using the dialectic task runner."""
+    """Execute or resume a plan using the dialectic task runner.
+
+    Examples:
+      uv run dialectic-crew execute --latest
+      uv run dialectic-crew execute prd_output/exec_US-01_20260313_125038.json
+      uv run dialectic-crew execute --resume-run 20260310_120000
+      uv run dialectic-crew execute --spec-only --latest
+    """
     vision_context = VisionContext.SELF if self_mode else VisionContext.PROJECT
     args = ["execute"]
     if latest:
@@ -503,7 +526,12 @@ def status_command(
         help="Execution plan path; defaults to the latest plan.",
     ),
 ) -> None:
-    """Show the current status for a plan and its tasks."""
+    """Show the current status for a plan and its tasks.
+
+    Examples:
+      uv run dialectic-crew status
+      uv run dialectic-crew status prd_output/exec_US-01_20260313_125038.json
+    """
     _run_guarded_command("status", ["status"], lambda: cmd_status(plan_path))
 
 
@@ -521,7 +549,12 @@ def verify_story_command(
         help="Optional PRD path to verify against.",
     ),
 ) -> None:
-    """Re-verify a story's completed tasks against PRD acceptance criteria."""
+    """Re-verify a story's completed tasks against PRD acceptance criteria.
+
+    Examples:
+      uv run dialectic-crew verify-story
+      uv run dialectic-crew verify-story --prd prd_output/PRD_20260308_1640.json
+    """
     args = ["verify-story"]
     if prd_path:
         args.extend(["--prd", prd_path])
@@ -542,7 +575,12 @@ def mark_command(
         help="Optional execution plan path.",
     ),
 ) -> None:
-    """Manually override a task status for an execution plan."""
+    """Manually override a task status for an execution plan.
+
+    Examples:
+      uv run dialectic-crew mark T0 completed
+      uv run dialectic-crew mark T3 failed prd_output/exec_US-01_20260313_125038.json
+    """
     _run_guarded_command(
         "mark",
         ["mark", task_id, status],
@@ -565,7 +603,12 @@ def verify_command(
         help="Optional PRD path to verify against.",
     ),
 ) -> None:
-    """Re-run verification for a single implementation task."""
+    """Re-run verification for a single implementation task.
+
+    Examples:
+      uv run dialectic-crew verify T0
+      uv run dialectic-crew verify T2 --prd prd_output/PRD_20260308_1640.json
+    """
     args = ["verify", task_id]
     if prd_path:
         args.extend(["--prd", prd_path])
@@ -606,7 +649,14 @@ def self_improve_command(
         help="List resumable self-improve cycles and exit.",
     ),
 ) -> None:
-    """Run the guarded self-improvement orchestration workflow."""
+    """Run the guarded self-improvement orchestration workflow.
+
+    Examples:
+      uv run dialectic-crew self-improve --dry-run
+      uv run dialectic-crew self-improve --max 2
+      uv run dialectic-crew self-improve --resume 20260310T120000
+      uv run dialectic-crew self-improve --list-resumable
+    """
     args = ["self-improve"]
     if dry_run:
         args.append("--dry-run")

@@ -33,6 +33,20 @@ class TestCliRequirementRouting:
         assert "execute" in result.stdout
         assert "self-improve" in result.stdout
 
+    def test_prd_help_includes_examples(self):
+        result = RUNNER.invoke(cli.app, ["prd", "--help"])
+
+        assert result.exit_code == 0
+        assert 'uv run dialectic-crew prd "Login with 2FA"' in result.stdout
+        assert "uv run dialectic-crew prd --resume flow-123" in result.stdout
+
+    def test_execute_help_includes_examples(self):
+        result = RUNNER.invoke(cli.app, ["execute", "--help"])
+
+        assert result.exit_code == 0
+        assert "uv run dialectic-crew execute --latest" in result.stdout
+        assert "uv run dialectic-crew execute --resume-run 20260310_120000" in result.stdout
+
     def test_status_does_not_require_api(self):
         assert _command_requires_api("status", ["status"]) is False
 
