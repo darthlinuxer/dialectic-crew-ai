@@ -20,7 +20,7 @@ from dialectic.prd_guardrails import _build_retry_feedback_context
 from dialectic.prd_flow import OUTPUT_DIR
 from dialectic.vision import VisionContext, get_vision_hash
 from planning.runtime import build_planning_crew
-from schemas import PRDSchema, UserStoryExecutionPlan
+from schemas import PRDSchema, UserStory, UserStoryExecutionPlan
 
 
 # ---------------------------------------------------------------------------
@@ -47,21 +47,45 @@ def _guardrail_success_output(validated_model: BaseModel) -> str:
     return validated_model.model_dump_json()
 
 
+class _PlanningPRDMetadata(BaseModel):
+    """Minimal PRD metadata needed by the planning flow."""
+
+    feature_name: str
+    objective: str
+    user_stories: list[dict[str, Any]]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _find_latest_prd() -> Path:
-    jsons = list(Path(OUTPUT_DIR).glob("PRD_*.json"))
-    if not jsons:
+    candidates: list[Path] = []
+    for path in Path(OUTPUT_DIR).glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if _is_prd_payload(data):
+            candidates.append(path)
+    if not candidates:
         raise FileNotFoundError(f"No PRD found in {OUTPUT_DIR}/")
-    return max(jsons, key=lambda p: p.stat().st_mtime)
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-def _load_prd(path: str) -> tuple[PRDSchema, dict]:
+def _is_prd_payload(data: Any) -> bool:
+    return (
+        isinstance(data, dict)
+        and isinstance(data.get("feature_name"), str)
+        and isinstance(data.get("objective"), str)
+        and isinstance(data.get("user_stories"), list)
+    )
+
+
+def _load_prd(path: str) -> tuple[_PlanningPRDMetadata, dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    prd = PRDSchema.model_validate(data)
+    prd = _PlanningPRDMetadata.model_validate(data)
     return prd, data
 
 
@@ -76,20 +100,43 @@ def _normalize_us_ref(s: str) -> str:
     return s
 
 
-def _get_user_story(prd: PRDSchema, ref: str | None):
+def _get_user_story(prd: PRDSchema | _PlanningPRDMetadata, ref: str | None) -> UserStory:
+    raw_stories: list[UserStory | dict[str, Any]] = list(prd.user_stories)
+    if not raw_stories:
+        raise ValueError("PRD does not contain any user stories")
+
     if ref is None:
-        return prd.user_stories[0]
+        return _validate_user_story(raw_stories[0], index=0)
     ref_norm = _normalize_us_ref(ref)
-    for us in prd.user_stories:
-        if ref_norm == _normalize_us_ref(us.id):
-            return us
+    for index, us in enumerate(raw_stories):
+        us_id = us.id if isinstance(us, UserStory) else us.get("id")
+        if isinstance(us_id, str) and ref_norm == _normalize_us_ref(us_id):
+            return _validate_user_story(us, index=index)
     try:
         idx = int(ref)
-        return prd.user_stories[idx]
+        return _validate_user_story(raw_stories[idx], index=idx)
     except (ValueError, IndexError) as exc:
+        available = [
+            us.id if isinstance(us, UserStory) else us.get("id", f"index:{index}")
+            for index, us in enumerate(raw_stories)
+        ]
         raise ValueError(
-            f"User story not found: {ref}. Available: {[u.id for u in prd.user_stories]}"
+            f"User story not found: {ref}. Available: {available}"
         ) from exc
+
+
+def _validate_user_story(user_story: UserStory | dict[str, Any], *, index: int) -> UserStory:
+    if isinstance(user_story, UserStory):
+        return user_story
+    try:
+        return UserStory.model_validate(user_story)
+    except ValidationError as exc:
+        story_id = user_story.get("id", f"index {index}")
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors()
+        )
+        raise ValueError(f"User story {story_id} is invalid in PRD: {details}") from exc
 
 
 # ---------------------------------------------------------------------------

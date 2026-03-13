@@ -72,6 +72,8 @@ def cmd_plan(
     us_ref: str | None,
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> None:
+    if prd_path == "--latest":
+        prd_path = None
     if prd_path and not os.path.exists(prd_path):
         print(f"PRD not found: {prd_path}")
         sys.exit(1)

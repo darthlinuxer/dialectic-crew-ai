@@ -76,12 +76,14 @@ Commands:
                     python main.py prd "Login with 2FA" --consensus-min-score 8.5
            python main.py prd "Dashboard redesign" --files wireframe.png spec.pdf
 
-  plan [prd.json] [US-001|index]
+    plan [prd.json|--latest] [US-001|index]
       Plans the execution of a user story with dialectic. Generates a plan
       (UserStoryExecutionPlan) with tasks and score. By default uses the latest
-      PRD in prd_output/ and the first user story.
+            PRD in prd_output/ and the first user story. By default it uses
+            knowledge/VISION.md; use --self to plan against internal/SELF_VISION.md.
       Saves to prd_output/ (exec_<US>_<timestamp>.json and .md).
       Ex.: python main.py plan
+                     python main.py plan --self --latest US-01
            python main.py plan prd_output/PRD_20260308_1640.json US1
 
     execute [plan.json|--latest] [--spec-only] [--resume-run RUN_ID]
@@ -336,8 +338,17 @@ def main():
             if sub == "plan":
                 remaining = args[1:]
                 remaining, vision_context = _extract_self_flag(remaining)
-                prd_path = remaining[0] if len(remaining) > 0 else None
-                us_ref = remaining[1] if len(remaining) > 1 else None
+                prd_path = None
+                us_ref = None
+                if remaining:
+                    first = remaining[0]
+                    if first == "--latest":
+                        us_ref = remaining[1] if len(remaining) > 1 else None
+                    elif len(remaining) == 1 and not os.path.exists(first):
+                        us_ref = first
+                    else:
+                        prd_path = first
+                        us_ref = remaining[1] if len(remaining) > 1 else None
                 cmd_plan(prd_path, us_ref, vision_context=vision_context)
                 return
             if sub == "execute":

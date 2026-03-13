@@ -65,6 +65,10 @@ class TestCliRequirementRouting:
         assert calls[:2] == ["logging", "events"]
         assert calls[-1] == "status"
 
+    def test_help_mentions_self_for_plan_command(self):
+        assert "use --self to plan against internal/SELF_VISION.md" in cli.HELP_TEXT
+        assert "python main.py plan --self --latest US-01" in cli.HELP_TEXT
+
     def test_prd_resume_requires_existing_persisted_flow(self, monkeypatch):
         monkeypatch.setattr(cli, "_check_api_key", lambda: True)
         monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
@@ -159,6 +163,48 @@ class TestCliRequirementRouting:
 
         assert captured["plan_path"] == "--latest"
         assert captured["resume_run_id"] == "run-123"
+
+    def test_plan_latest_passes_story_id_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_plan(prd_path, us_ref, vision_context=VisionContext.PROJECT):
+            captured["prd_path"] = prd_path
+            captured["us_ref"] = us_ref
+            captured["vision_context"] = vision_context
+
+        monkeypatch.setattr(cli, "cmd_plan", fake_cmd_plan)
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "plan", "--latest", "US-01"])
+
+        cli.main()
+
+        assert captured == {
+            "prd_path": None,
+            "us_ref": "US-01",
+            "vision_context": VisionContext.PROJECT,
+        }
+
+    def test_plan_single_story_argument_uses_latest_prd(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_plan(prd_path, us_ref, vision_context=VisionContext.PROJECT):
+            captured["prd_path"] = prd_path
+            captured["us_ref"] = us_ref
+            captured["vision_context"] = vision_context
+
+        monkeypatch.setattr(cli, "cmd_plan", fake_cmd_plan)
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "plan", "US-01"])
+
+        cli.main()
+
+        assert captured == {
+            "prd_path": None,
+            "us_ref": "US-01",
+            "vision_context": VisionContext.PROJECT,
+        }
 
     def test_prd_max_retries_passes_through(self, monkeypatch):
         captured = {}

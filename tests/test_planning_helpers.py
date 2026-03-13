@@ -1,10 +1,12 @@
 """Tests for planning helper functions in planning/flow.py."""
 
+import json
+
 import pytest
 
 import planning.flow as planning_flow
 from dialectic.vision import VisionContext
-from schemas import UserStoryExecutionPlan
+from schemas import UserStory, UserStoryExecutionPlan
 from conftest import make_prd, make_task
 
 
@@ -68,6 +70,57 @@ class TestGetUserStory:
         prd = make_prd()
         with pytest.raises(ValueError, match="not found"):
             planning_flow._get_user_story(prd, "US-999")
+
+    def test_selected_valid_story_ignores_invalid_unrelated_story(self):
+        prd = planning_flow._PlanningPRDMetadata.model_validate(
+            {
+                "feature_name": "Memory Fabric",
+                "objective": "Plan a valid story only",
+                "user_stories": [
+                    UserStory(
+                        id="US-001",
+                        title="Valid story",
+                        description="Works fine",
+                        acceptance_criteria=["A", "B", "C"],
+                        effort="M",
+                        dependencies=[],
+                    ).model_dump(),
+                    {
+                        "id": "US-999",
+                        "title": "Broken story",
+                        "description": "Legacy malformed data",
+                        "acceptance_criteria": ["A", "effort ", ""],
+                        "effort": "M",
+                        "dependencies": [],
+                    },
+                ],
+            }
+        )
+
+        us = planning_flow._get_user_story(prd, "US-001")
+
+        assert us.id == "US-001"
+
+    def test_selected_invalid_story_raises_clear_error(self):
+        prd = planning_flow._PlanningPRDMetadata.model_validate(
+            {
+                "feature_name": "Memory Fabric",
+                "objective": "Catch malformed requested story",
+                "user_stories": [
+                    {
+                        "id": "US-008",
+                        "title": "Broken story",
+                        "description": "Legacy malformed data",
+                        "acceptance_criteria": ["Golden dataset owner defined.", "effort "],
+                        "effort": "M",
+                        "dependencies": [],
+                    }
+                ],
+            }
+        )
+
+        with pytest.raises(ValueError, match="US-008 is invalid"):
+            planning_flow._get_user_story(prd, "US-008")
 
 
 class TestPlanGuardrail:
@@ -206,3 +259,82 @@ class TestPlanningRetryFeedback:
         assert result["quality_score"] == 8.5
         assert captured_retry_blocks[0] == ""
         assert "Cover the missing acceptance criteria." in captured_retry_blocks[1]
+
+
+class TestLatestPrdLoading:
+    def test_find_latest_prd_accepts_slugged_exports(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(planning_flow, "OUTPUT_DIR", str(tmp_path))
+        older = tmp_path / "PRD_20260313_090000.json"
+        older.write_text(
+            json.dumps(make_prd(feature_name="Older Feature").model_dump()),
+            encoding="utf-8",
+        )
+        latest = tmp_path / "policy-first-memory-1.0.0-synthesis.json"
+        latest.write_text(
+            json.dumps(make_prd(feature_name="Latest Feature").model_dump()),
+            encoding="utf-8",
+        )
+
+        latest.touch()
+
+        assert planning_flow._find_latest_prd() == latest
+
+    def test_run_user_story_planning_loads_requested_story_from_legacy_prd(self, tmp_path, monkeypatch):
+        payload = make_prd(
+            feature_name="Memory Fabric",
+            objective="Plan valid selected story from legacy artifact",
+            user_stories=[
+                UserStory(
+                    id="US-001",
+                    title="Valid story",
+                    description="Plan me",
+                    acceptance_criteria=["A", "B", "C"],
+                    effort="M",
+                    dependencies=[],
+                ),
+                UserStory(
+                    id="US-002",
+                    title="Another valid story",
+                    description="Ignore me",
+                    acceptance_criteria=["D", "E", "F"],
+                    effort="S",
+                    dependencies=[],
+                ),
+            ],
+        ).model_dump()
+        payload["user_stories"].append(
+            {
+                "id": "US-008",
+                "title": "Broken legacy story",
+                "description": "Malformed legacy acceptance criteria",
+                "acceptance_criteria": ["Golden dataset owner defined.", "effort "],
+                "effort": "M",
+                "dependencies": [],
+            }
+        )
+        prd_path = tmp_path / "policy-first-memory-1.0.0-synthesis.json"
+        prd_path.write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setattr(planning_flow, "OUTPUT_DIR", str(tmp_path))
+
+        plan = UserStoryExecutionPlan(
+            user_story_id="US-001",
+            user_story_title="Valid story",
+            approach_summary="Minimal plan",
+            tasks=[make_task()],
+            quality_score=8.6,
+            final_validation_notes="Approved",
+        )
+
+        class FakeCrew:
+            def kickoff(self):
+                return type("CrewResult", (), {"pydantic": plan})()
+
+        monkeypatch.setattr(planning_flow, "build_planning_crew", lambda **kwargs: FakeCrew())
+
+        result = planning_flow.run_user_story_planning(
+            prd_path=str(prd_path),
+            user_story_ref="US-001",
+            vision_context=VisionContext.PROJECT,
+        )
+
+        assert result["plan"]["user_story_id"] == "US-001"
