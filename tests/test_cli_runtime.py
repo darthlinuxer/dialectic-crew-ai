@@ -1,9 +1,14 @@
 """Tests for CLI runtime gating, logging bootstrap, and VISION helpers."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-many-public-methods
+# pylint: disable=too-many-arguments,too-many-positional-arguments
+# pylint: disable=consider-using-from-import,wrong-import-order,line-too-long
+
 from pathlib import Path
 
 import src.main.cli as cli
 import pytest
+from typer.testing import CliRunner
 
 from src.main.cli import _command_requires_api, _command_requires_vision
 from dialectic.vision import (
@@ -15,7 +20,19 @@ from dialectic.vision import (
 )
 
 
+RUNNER = CliRunner()
+
+
 class TestCliRequirementRouting:
+    def test_typer_help_lists_core_commands(self):
+        result = RUNNER.invoke(cli.app, ["--help"])
+
+        assert result.exit_code == 0
+        assert "prd" in result.stdout
+        assert "plan" in result.stdout
+        assert "execute" in result.stdout
+        assert "self-improve" in result.stdout
+
     def test_status_does_not_require_api(self):
         assert _command_requires_api("status", ["status"]) is False
 

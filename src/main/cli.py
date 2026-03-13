@@ -11,10 +11,18 @@ Commands:
   python main.py verify <id>                   — manual single-task re-check
 """
 
-import os
+from __future__ import annotations
+
 import logging
+import os
 import sys
+from collections.abc import Callable, Sequence
+from pathlib import Path
+
+import click
+import typer
 from dotenv import load_dotenv
+from typer.main import get_command
 
 from dialectic.app_logging import (
     configure_application_logging,
@@ -171,6 +179,23 @@ Requirements:
 """
 
 
+app = typer.Typer(
+    add_completion=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=(
+        "Modern typed CLI for Dialectic Crew AI workflows, including PRD generation, "
+        "planning, execution, and self-improvement."
+    ),
+    no_args_is_help=False,
+    pretty_exceptions_enable=False,
+    rich_markup_mode="rich",
+)
+
+
+def _print_banner() -> None:
+    print(BANNER)
+
+
 def _check_api_key():
     has = bool(
         os.getenv("OPENAI_API_KEY")
@@ -200,6 +225,7 @@ def _check_vision_exists(context: VisionContext = VisionContext.PROJECT):
 
 
 def _command_requires_api(sub: str, args: list[str]) -> bool:
+    """Return whether the requested subcommand requires an API key."""
     if sub in {"status", "mark"}:
         return False
     if sub == "execute" and "--spec-only" in args:
@@ -208,6 +234,7 @@ def _command_requires_api(sub: str, args: list[str]) -> bool:
 
 
 def _command_requires_vision(sub: str, args: list[str]) -> bool:
+    """Return whether the requested subcommand requires a vision document."""
     if sub in {"prd", "plan", "verify", "verify-story"}:
         return True
     if sub == "execute" and "--spec-only" not in args:
@@ -217,7 +244,7 @@ def _command_requires_vision(sub: str, args: list[str]) -> bool:
     return False
 
 
-def cmd_prd(
+def cmd_prd(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     feature_request: str | None,
     file_paths: list[str] | None = None,
     vision_context: VisionContext = VisionContext.PROJECT,
@@ -225,6 +252,7 @@ def cmd_prd(
     max_retries: int | None = None,
     consensus_min_score: float | None = None,
 ):
+    """Dispatch the PRD workflow while preserving the historical helper API."""
     _cmd_prd(
         feature_request,
         file_paths=file_paths,
@@ -237,212 +265,412 @@ def cmd_prd(
 
 
 def cmd_help():
+    """Print the detailed project-specific help guide."""
     print(HELP_TEXT.strip())
 
 
-def main():
+def _normalize_legacy_args(args: Sequence[str]) -> list[str]:
+    """Normalize legacy argument patterns to the Typer-friendly form."""
+    normalized = list(args)
+    if not normalized or normalized[0].lower() != "prd" or "--files" not in normalized:
+        return normalized
+
+    files_index = normalized.index("--files")
+    cursor = files_index + 1
+    file_args: list[str] = []
+    while cursor < len(normalized) and not normalized[cursor].startswith("-"):
+        file_args.extend(["--files", normalized[cursor]])
+        cursor += 1
+    if not file_args:
+        return normalized
+    return normalized[:files_index] + file_args + normalized[cursor:]
+
+
+def _run_guarded_command(
+    subcommand: str,
+    args: list[str],
+    action: Callable[[], None],
+    vision_context: VisionContext = VisionContext.PROJECT,
+) -> None:
+    """Run a command after applying API-key and vision preflight checks."""
+    if _command_requires_api(subcommand, args) and not _check_api_key():
+        logger.error("CLI command requires API key", extra={"phase": "preflight"})
+        raise SystemExit(1)
+    if _command_requires_vision(subcommand, args):
+        _check_vision_exists(vision_context)
+    with log_context(phase="command_dispatch"):
+        action()
+
+
+@app.command("prd")
+def prd_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    feature_request_parts: list[str] | None = typer.Argument(
+        None,
+        metavar="FEATURE",
+        help="Feature request to turn into a dialectic PRD.",
+    ),
+    file_paths: list[Path] | None = typer.Option(
+        None,
+        "--files",
+        metavar="PATH",
+        help=(
+            "Attach one or more reference files; repeat the option or use the "
+            "legacy single --files form."
+        ),
+    ),
+    resume_id: str | None = typer.Option(
+        None,
+        "--resume",
+        metavar="FLOW_ID",
+        help="Resume a persisted PRD flow by ID.",
+    ),
+    max_retries: int | None = typer.Option(
+        None,
+        "--max-retries",
+        min=1,
+        help="Maximum dialectic rounds before stopping.",
+    ),
+    consensus_min_score: float | None = typer.Option(
+        None,
+        "--consensus-min-score",
+        min=0.0,
+        max=10.0,
+        help="Allow consensus-aware early stopping at or above this score.",
+    ),
+    self_mode: bool = typer.Option(
+        False,
+        "--self",
+        help="Use internal/SELF_VISION.md instead of knowledge/VISION.md.",
+    ),
+) -> None:
+    """Generate or resume a PRD workflow from the command line."""
+    vision_context = VisionContext.SELF if self_mode else VisionContext.PROJECT
+    file_list = [str(path) for path in file_paths or []]
+    invalid = [path for path in file_list if not Path(path).exists()]
+    if invalid:
+        print(f"  File(s) not found: {', '.join(invalid)}")
+        raise SystemExit(1)
+
+    feature_request = " ".join(feature_request_parts or []).strip() or None
+    args = ["prd"]
+    if self_mode:
+        args.append("--self")
+    if resume_id:
+        args.extend(["--resume", resume_id])
+    if max_retries is not None:
+        args.extend(["--max-retries", str(max_retries)])
+    if consensus_min_score is not None:
+        args.extend(["--consensus-min-score", str(consensus_min_score)])
+    if file_list:
+        for path in file_list:
+            args.extend(["--files", path])
+    if feature_request:
+        args.extend(feature_request.split())
+
+    _run_guarded_command(
+        "prd",
+        args,
+        lambda: cmd_prd(
+            feature_request,
+            file_paths=file_list or None,
+            vision_context=vision_context,
+            resume_id=resume_id,
+            max_retries=max_retries,
+            consensus_min_score=consensus_min_score,
+        ),
+        vision_context=vision_context,
+    )
+
+
+@app.command("plan")
+def plan_command(
+    latest: bool = typer.Option(
+        False,
+        "--latest",
+        help="Use the latest PRD instead of passing an explicit PRD path.",
+    ),
+    first: str | None = typer.Argument(
+        None,
+        metavar="[PRD_PATH|--latest|US-001]",
+        help="Optional PRD path, --latest, or a direct user story reference.",
+    ),
+    second: str | None = typer.Argument(
+        None,
+        metavar="[US-001|index]",
+        help="Optional user story reference when the first argument is a PRD path or --latest.",
+    ),
+    self_mode: bool = typer.Option(
+        False,
+        "--self",
+        help="Use internal/SELF_VISION.md instead of knowledge/VISION.md.",
+    ),
+) -> None:
+    """Plan a user story execution from the latest or a specific PRD."""
+    vision_context = VisionContext.SELF if self_mode else VisionContext.PROJECT
+
+    if latest or first == "--latest":
+        prd_path = None
+        us_ref = first if latest and second is None else second
+    elif first and second is None and not os.path.exists(first):
+        prd_path = None
+        us_ref = first
+    else:
+        prd_path = first
+        us_ref = second
+
+    args = ["plan"]
+    if latest:
+        args.append("--latest")
+    if self_mode:
+        args.append("--self")
+    if first:
+        args.append(first)
+    if second:
+        args.append(second)
+
+    _run_guarded_command(
+        "plan",
+        args,
+        lambda: cmd_plan(prd_path, us_ref, vision_context=vision_context),
+        vision_context=vision_context,
+    )
+
+
+@app.command("execute")
+def execute_command(
+    latest: bool = typer.Option(
+        False,
+        "--latest",
+        help="Use the latest execution plan instead of passing an explicit plan path.",
+    ),
+    plan_path: str | None = typer.Argument(
+        None,
+        metavar="[PLAN_PATH|--latest]",
+        help="Execution plan JSON path or --latest.",
+    ),
+    spec_only: bool = typer.Option(
+        False,
+        "--spec-only",
+        help="Only generate the legacy Markdown spec without executing tasks.",
+    ),
+    resume_run_id: str | None = typer.Option(
+        None,
+        "--resume-run",
+        metavar="RUN_ID",
+        help=(
+            "Resume an interrupted execution run from "
+            "exec_output/<run_id>/checkpoint.json."
+        ),
+    ),
+    self_mode: bool = typer.Option(
+        False,
+        "--self",
+        help="Use internal/SELF_VISION.md instead of knowledge/VISION.md.",
+    ),
+) -> None:
+    """Execute or resume a plan using the dialectic task runner."""
+    vision_context = VisionContext.SELF if self_mode else VisionContext.PROJECT
+    args = ["execute"]
+    if latest:
+        args.append("--latest")
+    if spec_only:
+        args.append("--spec-only")
+    if self_mode:
+        args.append("--self")
+    if resume_run_id:
+        args.extend(["--resume-run", resume_run_id])
+    if plan_path:
+        args.append(plan_path)
+
+    _run_guarded_command(
+        "execute",
+        args,
+        lambda: cmd_execute(
+            plan_path or "--latest",
+            spec_only=spec_only,
+            vision_context=vision_context,
+            resume_run_id=resume_run_id,
+        ),
+        vision_context=vision_context,
+    )
+
+
+@app.command("status")
+def status_command(
+    plan_path: str | None = typer.Argument(
+        None,
+        metavar="[PLAN_PATH|--latest]",
+        help="Execution plan path; defaults to the latest plan.",
+    ),
+) -> None:
+    """Show the current status for a plan and its tasks."""
+    _run_guarded_command("status", ["status"], lambda: cmd_status(plan_path))
+
+
+@app.command("verify-story")
+def verify_story_command(
+    plan_path: str | None = typer.Argument(
+        None,
+        metavar="[PLAN_PATH]",
+        help="Optional execution plan to verify.",
+    ),
+    prd_path: str | None = typer.Option(
+        None,
+        "--prd",
+        metavar="PRD_PATH",
+        help="Optional PRD path to verify against.",
+    ),
+) -> None:
+    """Re-verify a story's completed tasks against PRD acceptance criteria."""
+    args = ["verify-story"]
+    if prd_path:
+        args.extend(["--prd", prd_path])
+    _run_guarded_command(
+        "verify-story",
+        args,
+        lambda: cmd_verify_story(plan_path, prd_path),
+    )
+
+
+@app.command("mark")
+def mark_command(
+    task_id: str = typer.Argument(..., help="Task ID to update."),
+    status: str = typer.Argument(..., help="New task status."),
+    plan_path: str | None = typer.Argument(
+        None,
+        metavar="[PLAN_PATH]",
+        help="Optional execution plan path.",
+    ),
+) -> None:
+    """Manually override a task status for an execution plan."""
+    _run_guarded_command(
+        "mark",
+        ["mark", task_id, status],
+        lambda: cmd_mark(task_id, status, plan_path),
+    )
+
+
+@app.command("verify")
+def verify_command(
+    task_id: str = typer.Argument(..., help="Task ID to verify."),
+    plan_path: str | None = typer.Argument(
+        None,
+        metavar="[PLAN_PATH]",
+        help="Optional execution plan path.",
+    ),
+    prd_path: str | None = typer.Option(
+        None,
+        "--prd",
+        metavar="PRD_PATH",
+        help="Optional PRD path to verify against.",
+    ),
+) -> None:
+    """Re-run verification for a single implementation task."""
+    args = ["verify", task_id]
+    if prd_path:
+        args.extend(["--prd", prd_path])
+    _run_guarded_command(
+        "verify",
+        args,
+        lambda: cmd_verify(task_id, plan_path, prd_path),
+    )
+
+
+@app.command("self-improve")
+def self_improve_command(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Print the introspection report without making changes.",
+    ),
+    max_improvements: int = typer.Option(
+        1,
+        "--max",
+        min=1,
+        help="Maximum number of improvements per cycle.",
+    ),
+    stash_dirty: bool = typer.Option(
+        False,
+        "--stash-dirty",
+        help="Stash dirty worktree changes before creating the self-improve branch.",
+    ),
+    resume_cycle_id: str | None = typer.Option(
+        None,
+        "--resume",
+        metavar="CYCLE_ID",
+        help="Resume an interrupted self-improve cycle.",
+    ),
+    list_resumable: bool = typer.Option(
+        False,
+        "--list-resumable",
+        help="List resumable self-improve cycles and exit.",
+    ),
+) -> None:
+    """Run the guarded self-improvement orchestration workflow."""
+    args = ["self-improve"]
+    if dry_run:
+        args.append("--dry-run")
+    if stash_dirty:
+        args.append("--stash-dirty")
+    if list_resumable:
+        args.append("--list-resumable")
+    if resume_cycle_id:
+        args.extend(["--resume", resume_cycle_id])
+    if max_improvements != 1:
+        args.extend(["--max", str(max_improvements)])
+
+    _run_guarded_command(
+        "self-improve",
+        args,
+        lambda: cmd_self_improve(
+            dry_run=dry_run,
+            max_improvements=max_improvements,
+            stash_dirty=stash_dirty,
+            resume_cycle_id=resume_cycle_id,
+            list_resumable=list_resumable,
+        ),
+    )
+
+
+@app.command("help")
+def help_command() -> None:
+    """Show the detailed legacy help text and examples."""
+    cmd_help()
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Bootstrap logging/runtime configuration and dispatch the Typer app."""
     configure_application_logging()
     register_crewai_event_logger()
-    args = sys.argv[1:]
+    args = list(argv) if argv is not None else sys.argv[1:]
     sub = args[0].lower() if args else "startup"
     with log_context(command=sub, phase="bootstrap", correlation_id=new_correlation_id()):
         configure_crewai_runtime()
         logger.debug("CLI bootstrap initialized")
         if not args:
-            print(BANNER)
+            _print_banner()
             print("Usage: python main.py <command> [arguments...]")
             print("       python main.py help   to see all commands.\n")
             logger.warning("CLI invoked without arguments")
             sys.exit(1)
 
-        if sub in ("help", "-h", "--help"):
-            print(BANNER)
-            cmd_help()
+        _print_banner()
+        normalized_args = _normalize_legacy_args(args)
+        if normalized_args[0].lower() == "help":
             logger.info("CLI help rendered")
-            sys.exit(0)
 
-        print(BANNER)
-        if _command_requires_api(sub, args) and not _check_api_key():
-            logger.error("CLI command requires API key", extra={"phase": "preflight"})
-            sys.exit(1)
-        _, vision_ctx = _extract_self_flag(args)
-        if _command_requires_vision(sub, args):
-            _check_vision_exists(vision_ctx)
-
-        with log_context(phase="command_dispatch"):
-            if sub == "prd":
-                rest = args[1:]
-                rest, vision_context = _extract_self_flag(rest)
-                resume_id = None
-                max_retries = None
-                consensus_min_score = None
-                if "--resume" in rest:
-                    idx = rest.index("--resume")
-                    if idx + 1 >= len(rest):
-                        print("Provide a flow ID after --resume")
-                        sys.exit(1)
-                    resume_id = rest[idx + 1]
-                    rest = rest[:idx] + rest[idx + 2:]
-                if "--max-retries" in rest:
-                    idx = rest.index("--max-retries")
-                    if idx + 1 >= len(rest):
-                        print("Provide an integer after --max-retries")
-                        sys.exit(1)
-                    try:
-                        max_retries = int(rest[idx + 1])
-                    except ValueError:
-                        print("--max-retries requires an integer argument")
-                        sys.exit(1)
-                    if max_retries < 1:
-                        print("--max-retries must be at least 1")
-                        sys.exit(1)
-                    rest = rest[:idx] + rest[idx + 2:]
-                if "--consensus-min-score" in rest:
-                    idx = rest.index("--consensus-min-score")
-                    if idx + 1 >= len(rest):
-                        print("Provide a float between 0 and 10 after --consensus-min-score")
-                        sys.exit(1)
-                    try:
-                        consensus_min_score = float(rest[idx + 1])
-                    except ValueError:
-                        print("--consensus-min-score requires a numeric argument")
-                        sys.exit(1)
-                    if not 0.0 <= consensus_min_score <= 10.0:
-                        print("--consensus-min-score must be between 0 and 10")
-                        sys.exit(1)
-                    rest = rest[:idx] + rest[idx + 2:]
-                if len(rest) < 1 and not resume_id:
-                    print("Provide the feature: python main.py prd 'your feature here'")
-                    sys.exit(1)
-                file_paths: list[str] = []
-                if "--files" in rest:
-                    idx = rest.index("--files")
-                    feature_parts = rest[:idx]
-                    file_paths = [f for f in rest[idx + 1:] if not f.startswith("-")]
-                    invalid = [f for f in file_paths if not os.path.exists(f)]
-                    if invalid:
-                        print(f"  File(s) not found: {', '.join(invalid)}")
-                        sys.exit(1)
-                else:
-                    feature_parts = rest
-                feature_request = " ".join(feature_parts).strip() or None
-                cmd_prd(
-                    feature_request,
-                    file_paths=file_paths or None,
-                    vision_context=vision_context,
-                    resume_id=resume_id,
-                    max_retries=max_retries,
-                    consensus_min_score=consensus_min_score,
-                )
-                return
-            if sub == "plan":
-                remaining = args[1:]
-                remaining, vision_context = _extract_self_flag(remaining)
-                prd_path = None
-                us_ref = None
-                if remaining:
-                    first = remaining[0]
-                    if first == "--latest":
-                        us_ref = remaining[1] if len(remaining) > 1 else None
-                    elif len(remaining) == 1 and not os.path.exists(first):
-                        us_ref = first
-                    else:
-                        prd_path = first
-                        us_ref = remaining[1] if len(remaining) > 1 else None
-                cmd_plan(prd_path, us_ref, vision_context=vision_context)
-                return
-            if sub == "execute":
-                remaining_all = args[1:]
-                remaining_all, vision_context = _extract_self_flag(remaining_all)
-                resume_run_id = None
-                if "--resume-run" in remaining_all:
-                    idx = remaining_all.index("--resume-run")
-                    if idx + 1 >= len(remaining_all):
-                        print("Provide a run ID after --resume-run")
-                        sys.exit(1)
-                    resume_run_id = remaining_all[idx + 1]
-                    remaining_all = remaining_all[:idx] + remaining_all[idx + 2:]
-                remaining = [a for a in remaining_all if not a.startswith("-")]
-                spec_only = "--spec-only" in remaining_all
-                plan_path = remaining[0] if remaining else "--latest"
-                cmd_execute(
-                    plan_path,
-                    spec_only=spec_only,
-                    vision_context=vision_context,
-                    resume_run_id=resume_run_id,
-                )
-                return
-            if sub == "status":
-                plan_path = args[1] if len(args) > 1 else None
-                cmd_status(plan_path)
-                return
-            if sub == "verify-story":
-                remaining = [a for a in args[1:] if not a.startswith("-")]
-                plan_path = remaining[0] if remaining else None
-                prd_path = None
-                if "--prd" in args:
-                    prd_idx = args.index("--prd")
-                    if prd_idx + 1 < len(args):
-                        prd_path = args[prd_idx + 1]
-                cmd_verify_story(plan_path, prd_path)
-                return
-            if sub == "mark":
-                if len(args) < 3:
-                    print("Usage: python main.py mark <task_id> <status> [plan.json]")
-                    print("  Valid statuses: pending, in_progress, completed, failed")
-                    sys.exit(1)
-                task_id = args[1]
-                status = args[2]
-                plan_path = args[3] if len(args) > 3 else None
-                cmd_mark(task_id, status, plan_path)
-                return
-            if sub == "verify":
-                if len(args) < 2:
-                    print("Usage: python main.py verify <task_id> [plan.json] [--prd prd.json]")
-                    sys.exit(1)
-                task_id = args[1]
-                remaining = [a for a in args[2:] if not a.startswith("-")]
-                plan_path = remaining[0] if remaining else None
-                prd_path = None
-                if "--prd" in args:
-                    prd_idx = args.index("--prd")
-                    if prd_idx + 1 < len(args):
-                        prd_path = args[prd_idx + 1]
-                cmd_verify(task_id, plan_path, prd_path)
-                return
-            if sub == "self-improve":
-                remaining = args[1:]
-                dry_run = "--dry-run" in remaining
-                stash_dirty = "--stash-dirty" in remaining
-                list_resumable = "--list-resumable" in remaining
-                resume_cycle_id = None
-                max_n = 1
-                if "--resume" in remaining:
-                    idx = remaining.index("--resume")
-                    if idx + 1 >= len(remaining):
-                        print("Provide a cycle ID after --resume")
-                        sys.exit(1)
-                    resume_cycle_id = remaining[idx + 1]
-                if "--max" in remaining:
-                    idx = remaining.index("--max")
-                    if idx + 1 < len(remaining):
-                        try:
-                            max_n = int(remaining[idx + 1])
-                        except ValueError:
-                            print("--max requires an integer argument")
-                            sys.exit(1)
-                cmd_self_improve(
-                    dry_run=dry_run,
-                    max_improvements=max_n,
-                    stash_dirty=stash_dirty,
-                    resume_cycle_id=resume_cycle_id,
-                    list_resumable=list_resumable,
-                )
-                return
-
-            print(f"Unknown command: '{args[0]}'. Use: prd | plan | execute | status | verify-story | self-improve | help")
-            logger.error("Unknown CLI command")
-            sys.exit(1)
+        command = get_command(app)
+        try:
+            command.main(
+                args=normalized_args,
+                prog_name="dialectic-crew",
+                standalone_mode=False,
+            )
+        except click.exceptions.Exit as exc:
+            raise SystemExit(exc.exit_code) from exc
+        except click.ClickException as exc:
+            exc.show()
+            raise SystemExit(exc.exit_code) from exc
 
 
 if __name__ == "__main__":
