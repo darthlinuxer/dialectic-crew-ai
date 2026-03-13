@@ -1,4 +1,5 @@
 from conftest import make_prd
+from dialectic.tool_bundles import TOOL_BUNDLES
 from dialectic.vision import VisionContext
 
 
@@ -140,6 +141,41 @@ def test_build_planning_crew_appends_retry_feedback_sources(monkeypatch):
     assert captured_crew["knowledge_sources"] == ["vision-source", "feedback-source"]
 
 
+def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
+    from planning import runtime
+
+    captured_tasks = []
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            captured_tasks.append(kwargs)
+
+    class FakeCrew:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(runtime, "Task", FakeTask)
+    monkeypatch.setattr(runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(runtime, "_build_agent", lambda template, placeholders: template["role"])
+    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "knowledge")
+
+    prd = make_prd()
+    us = prd.user_stories[0]
+
+    runtime.build_planning_crew(
+        feature_context="feature",
+        us=us,
+        us_context="story",
+        vision_context=VisionContext.SELF,
+        min_plan_score=7.5,
+        retry_feedback_block="",
+        retry_feedback_sources=None,
+    )
+
+    assert "internal/SELF_VISION.md" in captured_tasks[0]["description"]
+
+
 def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
     from planning import runtime
 
@@ -155,12 +191,13 @@ def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
         {
             "role": "Planner for {vision_label}",
             "goal": "Plan {us_title}",
-            "backstory": "Context {feature_context}",
+            "backstory": "Context {feature_context} using {vision_path}",
             "llm_tier": "planning",
-            "tool_bundle": "read_only",
+            "tool_bundle": "planning_read_only",
         },
         {
             "vision_label": "VISION.md",
+            "vision_path": "internal/SELF_VISION.md",
             "us_title": "US1",
             "feature_context": "Feature ABC",
         },
@@ -170,7 +207,50 @@ def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
     assert captured == {
         "role": "Planner for VISION.md",
         "goal": "Plan US1",
-        "backstory": "Context Feature ABC",
+        "backstory": "Context Feature ABC using internal/SELF_VISION.md",
         "llm_tier": "planning",
-        "tool_bundle": "read_only",
+        "tool_bundle": "planning_read_only",
     }
+
+
+def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
+    from planning import runtime
+
+    captured = {}
+
+    def fake_build_agent_from_config(config):
+        captured.update(config)
+        return "agent"
+
+    monkeypatch.setattr(runtime, "build_agent_from_config", fake_build_agent_from_config)
+
+    agent_templates = runtime.load_yaml_config(runtime._AGENTS_CONFIG_PATH)
+
+    agent = runtime._build_agent(
+        agent_templates["planning_visionary"],
+        {
+            "vision_label": "SELF_VISION.md",
+            "vision_path": "internal/SELF_VISION.md",
+            "us_title": "US1",
+            "feature_context": "Feature ABC",
+            "us_context": "Story context",
+            "us_id": "US-01",
+            "min_plan_score": 7.5,
+            "retry_feedback_block": "",
+        },
+    )
+
+    assert agent == "agent"
+    assert captured["tool_bundle"] == "planning_read_only"
+
+
+def test_planning_bundle_avoids_recursive_directory_context():
+    tool_names = [getattr(tool, "name", "") for tool in TOOL_BUNDLES["planning_read_only"]]
+
+    assert tool_names == ["search_a_files_content"]
+
+
+def test_planning_validator_bundle_stays_small():
+    tool_names = [getattr(tool, "name", "") for tool in TOOL_BUNDLES["validator_read"]]
+
+    assert tool_names == ["search_a_files_content"]

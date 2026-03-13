@@ -6,7 +6,7 @@ from typing import Any, Mapping
 from crewai import Crew, Process, Task
 
 from dialectic.agents import build_agent_from_config
-from dialectic.knowledge import _vision_label, crew_memory, vision_knowledge
+from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.llm import llm_planning
 from dialectic.yaml_config import (
     load_yaml_config,
@@ -39,6 +39,7 @@ def build_planning_crew(
         "us_id": us.id,
         "us_title": us.title,
         "vision_label": _vision_label(vision_context),
+        "vision_path": _vision_path(vision_context),
         "min_plan_score": min_plan_score,
         "retry_feedback_block": retry_feedback_block,
     }
