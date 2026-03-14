@@ -282,11 +282,11 @@ def test_prd_guardrail_rejects_unknown_story_dependencies():
     assert "unknown dependenc" in payload.lower()
 
 
-def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
+def test_dialectic_flow_uses_explicit_retry_label_listener_wiring():
     source = inspect.getsource(prd_flow.DialecticFlow)
 
-    assert '@listen(or_(iniciar_dialetica, fazer_retry))' in source
-    assert '@listen(or_("iniciar_dialetica", "fazer_retry"))' not in source
+    assert '@listen("rodar_rodada")' in source
+    assert '@listen(or_(iniciar_dialetica, fazer_retry))' not in source
 
 
 def test_dialectic_flow_validator_uses_full_dialectic_context():

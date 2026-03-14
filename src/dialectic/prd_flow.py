@@ -18,7 +18,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from crewai.flow import Flow, listen, or_, router, start
+from crewai.flow import Flow, listen, router, start
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from pydantic import ValidationError
 
@@ -89,14 +89,12 @@ class DialecticFlow(Flow[DialecticState]):
         self.state.current_phase = "dialectic"
         return "rodar_rodada"
 
-    # Router outputs remain string labels because CrewAI emits route names here,
-    # not method references.
     @listen("retry")
     def fazer_retry(self):
         self.state.current_phase = "dialectic"
         return "rodar_rodada"
 
-    @listen(or_(iniciar_dialetica, fazer_retry))
+    @listen("rodar_rodada")
     def rodar_rodada_dialetica(self):
         with log_context(
             flow_id=self.flow_id,
