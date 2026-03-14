@@ -62,14 +62,22 @@ def build_prd_crew(
     )
 
 
+def _disable_interactive_agent_io(agent: Any) -> Any:
+    """Keep PRD agents focused on context + knowledge, not ad-hoc tool calls."""
+    for attr in ("tools", "mcps", "mcp_servers"):
+        if hasattr(agent, attr):
+            setattr(agent, attr, [])
+    return agent
+
+
 def _build_agents(vision_context: VisionContext) -> dict[str, Any]:
     """Create fresh PRD agents for the requested vision context."""
 
     return {
-        "visionario": create_visionario(vision_context),
-        "critico_socratico": create_critico_socratico(vision_context),
-        "sintetizador": create_sintetizador(vision_context),
-        "validador_macro": create_validador_macro(vision_context),
+        "visionario": _disable_interactive_agent_io(create_visionario(vision_context)),
+        "critico_socratico": _disable_interactive_agent_io(create_critico_socratico(vision_context)),
+        "sintetizador": _disable_interactive_agent_io(create_sintetizador(vision_context)),
+        "validador_macro": _disable_interactive_agent_io(create_validador_macro(vision_context)),
     }
 
 
