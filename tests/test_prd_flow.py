@@ -285,8 +285,9 @@ def test_prd_guardrail_rejects_unknown_story_dependencies():
 def test_dialectic_flow_uses_explicit_retry_label_listener_wiring():
     source = inspect.getsource(prd_flow.DialecticFlow)
 
+    assert '@router(iniciar_dialetica)' in source
     assert '@listen("rodar_rodada")' in source
-    assert '@listen(or_(iniciar_dialetica, fazer_retry))' not in source
+    assert '@listen("retry")' not in source
 
 
 def test_dialectic_flow_validator_uses_full_dialectic_context():
@@ -378,7 +379,7 @@ def test_avaliar_retries_when_consensus_floor_is_not_met(capsys):
     next_step = cast(Any, getattr(prd_flow.DialecticFlow, "avaliar"))(flow)
 
     captured = capsys.readouterr()
-    assert next_step == "retry"
+    assert next_step == "rodar_rodada"
     assert flow.state.current_phase == "dialectic"
     assert flow.state.retry_count == 2
     assert "Consensus reached, but score 8.4 is below consensus floor 8.5" in captured.out
