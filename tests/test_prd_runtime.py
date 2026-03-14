@@ -60,6 +60,7 @@ def test_build_prd_crew_uses_yaml_templates(monkeypatch):
     assert captured_tasks[3]["output_pydantic"].__name__ == "PRDSchema"
     assert captured_tasks[3]["guardrail"].__name__ == "_prd_guardrail"
     assert captured_crew["knowledge_sources"] == ["vision:self", "feedback-source"]
+    assert captured_crew["memory"].startswith("memory:self:prd/")
     assert captured_crew["planning"] is False
 
 
@@ -103,6 +104,17 @@ def test_build_prd_crew_strips_interactive_tools_from_agents(monkeypatch):
         assert agent.tools == []
         assert agent.mcps == []
         assert agent.mcp_servers == []
+
+
+def test_prd_memory_namespace_is_feature_scoped():
+    first = prd_runtime._prd_memory_namespace("Ship resilient PRD validation")
+    second = prd_runtime._prd_memory_namespace("Ship resilient PRD validation")
+    third = prd_runtime._prd_memory_namespace("A different feature entirely")
+
+    assert first == second
+    assert first.startswith("prd/")
+    assert third.startswith("prd/")
+    assert first != third
 
 
 def test_build_prd_crew_includes_exact_vision_path_in_prompts(monkeypatch):

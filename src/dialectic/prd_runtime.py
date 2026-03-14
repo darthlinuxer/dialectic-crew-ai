@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -24,6 +25,12 @@ from dialectic.yaml_config import (
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_prd.yaml"
+
+
+def _prd_memory_namespace(feature_objective: str) -> str:
+    normalized = feature_objective.strip() or "shared"
+    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:12]
+    return f"prd/{digest}"
 
 
 def build_prd_crew(
@@ -56,7 +63,7 @@ def build_prd_crew(
         tasks=tasks,
         process=Process.sequential,
         verbose=True,
-        memory=crew_memory(vision_context, "prd"),
+        memory=crew_memory(vision_context, _prd_memory_namespace(feature_objective)),
         planning=False,
         knowledge_sources=knowledge_sources,
     )
