@@ -10,7 +10,9 @@ from typing import Literal
 
 from schemas import UserStoryExecutionPlan, PRDSchema, ImplementationTask
 
+from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from dialectic.target import resolve_active_project_root, temporary_working_directory
 from dialectic.vision import VisionContext
 from execution.validation_gate import run_stack_validation_gate
 from execution.status import (
@@ -51,7 +53,10 @@ def _load_prd_for_plan(plan: UserStoryExecutionPlan, prd_path: str | None) -> PR
     if plan.source_prd_path and os.path.exists(plan.source_prd_path):
         with open(plan.source_prd_path, "r", encoding="utf-8") as f:
             return PRDSchema.model_validate(json.load(f))
-    base = Path(PRD_OUTPUT_DIR)
+    if PRD_OUTPUT_DIR == "prd_output":
+        base = resolve_prd_output_dir(VisionContext.PROJECT)
+    else:
+        base = Path(PRD_OUTPUT_DIR)
     if not base.exists():
         return None
     jsons = list(base.glob("PRD_*.json"))
@@ -99,7 +104,8 @@ def _run_verification(
         acceptance_criteria=acceptance_criteria,
         vision_context=ctx,
     )
-    result = crew.kickoff()
+    with temporary_working_directory(resolve_active_project_root()):
+        result = crew.kickoff()
 
     validation: ValidationOutput | None = None
     pydantic_result = getattr(result, "pydantic", None)

@@ -43,6 +43,14 @@ from .cli_commands import (
     cmd_verify,
     cmd_verify_story,
 )
+from .target_commands import (
+    cmd_clear_target,
+    cmd_get_target,
+    cmd_list_targets,
+    cmd_set_target,
+)
+from .cleanup_commands import cmd_clear_runtime, cmd_clear_self_improve
+from .vision_commands import cmd_make_vision
 
 load_dotenv()
 
@@ -681,6 +689,100 @@ def self_improve_command(
             resume_cycle_id=resume_cycle_id,
             list_resumable=list_resumable,
         ),
+    )
+
+
+@app.command("set-target")
+def set_target_command(
+    path: str = typer.Argument(..., metavar="PATH", help="Path to a local git repository."),
+) -> None:
+    """Set the active target repository for project-mode workflows."""
+    cmd_set_target(path)
+
+
+@app.command("get-target")
+def get_target_command() -> None:
+    """Show the currently configured target repository."""
+    cmd_get_target()
+
+
+@app.command("clear-target")
+def clear_target_command() -> None:
+    """Clear the currently configured target repository."""
+    cmd_clear_target()
+
+
+@app.command("list-targets")
+def list_targets_command() -> None:
+    """List known target repositories and their vision status."""
+    cmd_list_targets()
+
+
+@app.command("make-vision")
+def make_vision_command(
+    output_path: str | None = typer.Option(
+        None,
+        "--output",
+        metavar="PATH",
+        help="Optional path where the generated vision document should be written.",
+    ),
+    self_mode: bool = typer.Option(
+        False,
+        "--self",
+        help=(
+            "Analyze the dialectic-crew-ai repository and write to "
+            "internal/SELF_VISION.md by default."
+        ),
+    ),
+) -> None:
+    """Generate a VISION.md draft for the active target or, with --self, this repository."""
+    cmd_make_vision(output_path=output_path, self_mode=self_mode)
+
+
+@app.command("clear-runtime")
+def clear_runtime_command(
+    logs: bool = typer.Option(False, "--logs", help="Clear application log files."),
+    metrics: bool = typer.Option(False, "--metrics", help="Clear the metrics database."),
+    flows: bool = typer.Option(False, "--flows", help="Clear the CrewAI flow database."),
+    prd: bool = typer.Option(False, "--prd", help="Clear centralized PRD and plan artifacts."),
+    exec_output: bool = typer.Option(False, "--exec", help="Clear centralized execution artifacts."),
+    all_scopes: bool = typer.Option(False, "--all", help="Clear all runtime artifact categories."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview matching runtime artifacts without deleting them."),
+) -> None:
+    """Clear selected centralized runtime artifacts."""
+    if all_scopes:
+        logs = metrics = flows = prd = exec_output = True
+    cmd_clear_runtime(
+        logs=logs,
+        metrics=metrics,
+        flows=flows,
+        prd=prd,
+        exec_output=exec_output,
+        dry_run=dry_run,
+    )
+
+
+@app.command("clear-self-improve")
+def clear_self_improve_command(
+    cycle_id: str | None = typer.Argument(
+        None,
+        metavar="[CYCLE_ID]",
+        help="Optional self-improve cycle ID to clear.",
+    ),
+    clear_all: bool = typer.Option(False, "--all", help="Clear all persisted self-improve snapshots."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview self-improve cleanup without deleting files."),
+    with_linked_exec: bool = typer.Option(
+        False,
+        "--with-linked-exec",
+        help="Also remove linked execution artifacts for a specific cycle.",
+    ),
+) -> None:
+    """Clear persisted self-improve snapshots and linked execution artifacts."""
+    cmd_clear_self_improve(
+        cycle_id=cycle_id,
+        clear_all=clear_all,
+        dry_run=dry_run,
+        with_linked_exec=with_linked_exec,
     )
 
 

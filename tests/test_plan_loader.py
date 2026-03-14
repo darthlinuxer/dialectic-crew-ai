@@ -7,7 +7,7 @@ import pytest
 
 from execution.plan_loader import find_latest_plan, load_plan
 from schemas import UserStoryExecutionPlan
-from conftest import make_plan
+from tests.conftest import make_plan
 
 
 class TestFindLatestPlan:

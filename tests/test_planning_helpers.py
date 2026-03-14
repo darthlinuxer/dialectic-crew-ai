@@ -9,7 +9,7 @@ import pytest
 import planning.flow as planning_flow
 from dialectic.vision import VisionContext
 from schemas import UserStory, UserStoryExecutionPlan
-from conftest import make_prd, make_task
+from tests.conftest import make_prd, make_task
 
 
 normalize_us_ref = cast(Any, planning_flow.__dict__["_normalize_us_ref"])

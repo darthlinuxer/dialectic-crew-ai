@@ -5,7 +5,6 @@ Generates and analyzes test coverage across different languages.
 """
 
 import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, Optional
 import json
@@ -68,7 +67,7 @@ class CoverageAnalyzer:
         
         try:
             # Run dotnet test with coverage
-            result = subprocess.run(
+            subprocess.run(
                 [
                     "dotnet", "test",
                     "/p:CollectCoverage=true",
@@ -210,7 +209,7 @@ class CoverageAnalyzer:
             print(f"{language} Coverage")
             print(f"{'='*60}")
             
-            print(f"\nOverall Metrics:")
+            print("\nOverall Metrics:")
             print(f"  Line Coverage:     {data.get('overall_line_coverage', 0):.2f}%")
             print(f"  Branch Coverage:   {data.get('overall_branch_coverage', 0):.2f}%")
             
@@ -222,7 +221,7 @@ class CoverageAnalyzer:
             # Show low coverage files
             low_coverage = self.analyze_coverage_gaps(data)
             if low_coverage:
-                print(f"\nFiles Below 80% Coverage:")
+                print("\nFiles Below 80% Coverage:")
                 for item in low_coverage[:10]:  # Show worst 10
                     print(f"  {item['coverage']:.1f}% - {item['file']}")
             

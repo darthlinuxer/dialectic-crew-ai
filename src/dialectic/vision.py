@@ -1,3 +1,5 @@
+"""Vision path resolution for project and self contexts."""
+
 from __future__ import annotations
 
 import hashlib
@@ -39,7 +41,8 @@ def _find_first_matching(candidates: list[Path], predicate) -> Path | None:
     return None
 
 
-def resolve_project_root() -> Path:
+def resolve_app_root() -> Path:
+    """Resolve the dialectic-crew-ai application root."""
     env_root = os.getenv(_ENV_PROJECT_ROOT)
     if env_root:
         env_path = Path(env_root).expanduser().resolve()
@@ -75,17 +78,42 @@ def resolve_project_root() -> Path:
     return Path.cwd().resolve()
 
 
+def resolve_project_root() -> Path:
+    """Backward-compatible alias for the application root resolver."""
+    return resolve_app_root()
+
+
 def get_vision_path(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
-    return resolve_project_root() / _VISION_PATHS[context]
+    """Return the absolute vision path for the requested context."""
+    if context is VisionContext.PROJECT:
+        from dialectic.target import (  # pylint: disable=import-outside-toplevel
+            resolve_project_vision_path,
+        )
+
+        return resolve_project_vision_path()
+    return resolve_app_root() / _VISION_PATHS[context]
 
 
 def ensure_vision_path(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
+    """Ensure the requested vision path exists and return it."""
     vision_path = get_vision_path(context)
     if not vision_path.exists():
+        if context is VisionContext.PROJECT:
+            from dialectic.target import (  # pylint: disable=import-outside-toplevel
+                get_active_target,
+            )
+
+            active_target = get_active_target()
+            if active_target is not None:
+                raise FileNotFoundError(
+                    "Active target vision not found. Expected at: "
+                    f"{vision_path}. Run `dialectic-crew make-vision` for the active target "
+                    "or `dialectic-crew clear-target` to return to the default project vision."
+                )
         label = _VISION_PATHS[context]
         raise FileNotFoundError(
             f"{label} not found. Expected at: {vision_path}"
@@ -96,15 +124,14 @@ def ensure_vision_path(
 def prepare_vision_runtime(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
-    project_root = resolve_project_root()
-    if Path.cwd().resolve() != project_root:
-        os.chdir(project_root)
+    """Prepare the active vision path without mutating the process working directory."""
     return ensure_vision_path(context)
 
 
 def get_vision_hash(
     context: VisionContext = VisionContext.PROJECT,
 ) -> str | None:
+    """Return a stable content hash for the requested vision document."""
     try:
         content = ensure_vision_path(context).read_text(encoding="utf-8")
     except OSError:

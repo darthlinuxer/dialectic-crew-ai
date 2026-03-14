@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
+
 """
 Integration Tests for Analytical Scripts
 
@@ -21,11 +23,10 @@ if SCRIPT_DIR not in sys.path:
 import unittest
 from datetime import datetime, timedelta
 import json
-import re
 import tempfile
 
 # Import all modules to test
-from critical_path import CriticalPathAnalyzer, Activity
+from critical_path import CriticalPathAnalyzer
 from budget_calculator import BudgetCalculator, BudgetConfig, TeamMember
 from poker_planning import PokerPlanningCalculator, PokerConfig, Story, EstimationScale
 from gantt_chart import GanttChartGenerator, GanttConfig, Task, TaskType, TaskStatus
@@ -262,7 +263,7 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         self.assertIn('classDef normal', mermaid, "Normal node styling must be defined")
 
         print(f"   ✅ Mermaid flowchart has {edge_count} edges (arrows)")
-        print(f"   ✅ Critical path nodes styled in RED (#ff6b6b)")
+        print("   ✅ Critical path nodes styled in RED (#ff6b6b)")
         print(f"   ✅ Mermaid saved: {filepath}")
 
         # Test PlantUML Gantt Diagram
@@ -302,8 +303,8 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         self.assertIn('colored in Red', plantuml, "Critical tasks should be colored red")
 
         print(f"   ✅ PlantUML Gantt includes all {len(complex_activities)} tasks")
-        print(f"   ✅ Dependencies properly represented")
-        print(f"   ✅ Critical tasks colored RED")
+        print("   ✅ Dependencies properly represented")
+        print("   ✅ Critical tasks colored RED")
         print(f"   ✅ PlantUML saved: {filepath}")
 
         # Generate comprehensive markdown report

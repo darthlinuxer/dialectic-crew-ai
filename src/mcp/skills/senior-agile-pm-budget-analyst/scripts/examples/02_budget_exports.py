@@ -243,7 +243,7 @@ def main():
     calculator = BudgetCalculator(config, team, fixed_costs)
     result = calculator.calculate()
 
-    print(f"\n✅ Analysis Complete!")
+    print("\n✅ Analysis Complete!")
     print(f"   Total Budget: ${result['summary']['total_budget']:,.2f}")
     print(f"   Total Sprints: {result['project_metrics']['total_sprints']}")
 

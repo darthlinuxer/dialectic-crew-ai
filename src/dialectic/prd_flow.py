@@ -13,11 +13,14 @@ import json
 import os
 import logging
 from datetime import datetime
+from functools import lru_cache
 from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 from crewai.flow import Flow, listen, or_, router, start
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
+from pydantic import ValidationError
 
 from dialectic.app_logging import bind_log_context, log_context
 from dialectic.config import get_export_config
@@ -25,6 +28,7 @@ from dialectic.export import PRDExporter, prd_to_markdown
 from dialectic.flow_persistence import build_sqlite_flow_persistence
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
+from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_guardrails import (
     _build_retry_feedback_context,
     _extract_prd_from_result,
@@ -33,6 +37,7 @@ from dialectic.prd_guardrails import (
 )
 from dialectic.prd_runtime import build_prd_crew
 from dialectic.state import CONSENSUS_MIN_SCORE, DialecticState, MAX_RETRIES
+from dialectic.target import resolve_active_project_root, temporary_working_directory
 from dialectic.vision import VisionContext
 from schemas import PRDSchema
 
@@ -47,6 +52,12 @@ except (ImportError, AttributeError):
 logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = "prd_output"
+
+
+def _resolved_output_dir(vision_context: VisionContext) -> Path:
+    if OUTPUT_DIR != "prd_output":
+        return Path(OUTPUT_DIR)
+    return resolve_prd_output_dir(vision_context)
 
 
 @persist()
@@ -131,7 +142,8 @@ class DialecticFlow(Flow[DialecticState]):
                 token_budget=0,
                 label=f"prd/{feature_label}",
             ):
-                resultado = crew.kickoff(**kickoff_kwargs)
+                with temporary_working_directory(resolve_active_project_root()):
+                    resultado = crew.kickoff(**kickoff_kwargs)
 
         # Extract PRD using the same helper used by the guardrail so the flow
         # stores the exact validated representation rather than reparsing a
@@ -170,7 +182,7 @@ class DialecticFlow(Flow[DialecticState]):
                 self.state.quality_score = prd.quality_score
                 self.state.consensus_reached = prd.consensus_reached
                 self.state.final_validation_notes = prd.final_validation_notes
-            except Exception:
+            except (json.JSONDecodeError, TypeError, ValueError, ValidationError):
                 self.state.prd_data = {"_parse_failed": True, "raw": raw_text[:5000]}
                 self.state.quality_score = 0.0
                 self.state.consensus_reached = False
@@ -179,9 +191,10 @@ class DialecticFlow(Flow[DialecticState]):
                     "On retry, the Validator MUST return ONLY valid JSON matching PRDSchema "
                     "with all required fields."
                 )
-                os.makedirs(OUTPUT_DIR, exist_ok=True)
+                debug_dir = _resolved_output_dir(VisionContext(self.state.vision_context))
+                debug_dir.mkdir(parents=True, exist_ok=True)
                 debug_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                debug_path = os.path.join(OUTPUT_DIR, f"debug_crew_output_{debug_ts}.txt")
+                debug_path = debug_dir / f"debug_crew_output_{debug_ts}.txt"
                 try:
                     with open(debug_path, "w", encoding="utf-8") as f:
                         f.write("# Raw crew output (parse failed)\n\n")
@@ -249,11 +262,10 @@ class DialecticFlow(Flow[DialecticState]):
             data = _materialize_plain_data(self.state.prd_data)
             try:
                 return PRDSchema.model_validate(data)
-            except Exception:
+            except (TypeError, ValueError, ValidationError):
                 return None
 
         self.state.current_phase = "save"
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
         emit_metric(
             "prd_score",
             self.state.quality_score,
@@ -281,7 +293,7 @@ class DialecticFlow(Flow[DialecticState]):
 
         try:
             prd = PRDSchema.model_validate(data)
-        except Exception as exc:
+        except (TypeError, ValueError, ValidationError) as exc:
             self.state.prd_path_json = ""
             self.state.prd_path_md = ""
             logger.error(
@@ -300,6 +312,7 @@ class DialecticFlow(Flow[DialecticState]):
         if float(self.state.quality_score) >= 9.0:
             try:
                 config = get_export_config()
+                config.output_dir = _resolved_output_dir(VisionContext(self.state.vision_context))
                 exporter = PRDExporter()
                 created_paths = exporter.export(prd, config)
                 created_path_strings = [str(path) for path in created_paths]
@@ -313,12 +326,14 @@ class DialecticFlow(Flow[DialecticState]):
                     print(f"Saved to: {p}")
                 self.state.current_phase = "completed"
                 return prd
-            except Exception as e:
+            except (OSError, TypeError, ValueError) as e:
                 logger.exception("Failed to export PRD via PRDExporter: %s", e)
                 print("Failed to export PRD via PRDExporter; falling back to local save.")
 
+        output_dir = _resolved_output_dir(VisionContext(self.state.vision_context))
+        output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{OUTPUT_DIR}/PRD_{timestamp}.json"
+        filename = str(output_dir / f"PRD_{timestamp}.json")
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(prd.model_dump(), f, indent=2, ensure_ascii=False)
 
@@ -336,14 +351,9 @@ class DialecticFlow(Flow[DialecticState]):
         return prd
 
 
-_persistence: SQLiteFlowPersistence | None = None
-
-
+@lru_cache(maxsize=1)
 def _get_persistence() -> SQLiteFlowPersistence:
-    global _persistence
-    if _persistence is None:
-        _persistence = build_sqlite_flow_persistence()
-    return _persistence
+    return build_sqlite_flow_persistence()
 
 
 def get_prd_resume_state(flow_id: str) -> dict[str, Any] | None:

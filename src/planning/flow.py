@@ -18,8 +18,10 @@ from pydantic import BaseModel, ValidationError
 
 from dialectic.dependency_graph import format_dependency_errors, validate_task_dependencies
 from dialectic.export import execution_plan_to_markdown
+from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_guardrails import _build_retry_feedback_context
 from dialectic.prd_flow import OUTPUT_DIR
+from dialectic.target import resolve_active_project_root, temporary_working_directory
 from dialectic.vision import VisionContext, get_vision_hash
 from planning.runtime import build_planning_crew
 from schemas import PRDSchema, UserStory, UserStoryExecutionPlan
@@ -77,9 +79,15 @@ class _PlanningPRDMetadata(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _find_latest_prd() -> Path:
+def _resolved_output_dir(vision_context: VisionContext) -> Path:
+    if OUTPUT_DIR != "prd_output":
+        return Path(OUTPUT_DIR)
+    return resolve_prd_output_dir(vision_context)
+
+
+def _find_latest_prd(vision_context: VisionContext = VisionContext.PROJECT) -> Path:
     candidates: list[Path] = []
-    for path in Path(OUTPUT_DIR).glob("*.json"):
+    for path in _resolved_output_dir(vision_context).glob("*.json"):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -87,7 +95,7 @@ def _find_latest_prd() -> Path:
         if _is_prd_payload(data):
             candidates.append(path)
     if not candidates:
-        raise FileNotFoundError(f"No PRD found in {OUTPUT_DIR}/")
+        raise FileNotFoundError(f"No PRD found in {_resolved_output_dir(vision_context)}/")
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
@@ -228,7 +236,7 @@ def run_user_story_planning(
     - Task guardrails for output validation
     """
     if prd_path is None:
-        prd_path = str(_find_latest_prd())
+        prd_path = str(_find_latest_prd(vision_context))
     prd, _ = _load_prd(prd_path)
     us = _get_user_story(prd, user_story_ref)
 
@@ -257,15 +265,16 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
             attempt,
         )
 
-        result = build_planning_crew(
-            feature_context=feature_context,
-            us=us,
-            us_context=us_context,
-            vision_context=vision_context,
-            min_plan_score=MIN_PLAN_SCORE,
-            retry_feedback_block=retry_feedback_block,
-            retry_feedback_sources=retry_feedback_sources,
-        ).kickoff()
+        with temporary_working_directory(resolve_active_project_root()):
+            result = build_planning_crew(
+                feature_context=feature_context,
+                us=us,
+                us_context=us_context,
+                vision_context=vision_context,
+                min_plan_score=MIN_PLAN_SCORE,
+                retry_feedback_block=retry_feedback_block,
+                retry_feedback_sources=retry_feedback_sources,
+            ).kickoff()
         plan_valid = _extract_plan(result, us)
 
         if plan_valid is None:
@@ -290,9 +299,10 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
             "could not extract a valid UserStoryExecutionPlan from crew output."
         )
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    output_dir = _resolved_output_dir(vision_context)
+    output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base = f"{OUTPUT_DIR}/exec_{us.id}_{timestamp}"
+    base = str(output_dir / f"exec_{us.id}_{timestamp}")
     with open(f"{base}.json", "w", encoding="utf-8") as f:
         json.dump(plan_valid.model_dump(), f, indent=2, ensure_ascii=False)
     with open(f"{base}.md", "w", encoding="utf-8") as f:

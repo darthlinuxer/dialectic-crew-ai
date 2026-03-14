@@ -17,7 +17,7 @@ class ExportException(Exception):
     """Raised when export fails and a rollback is performed."""
 
 
-def _slugify(text: str) -> str:
+def _slugify(text: str | None) -> str:
     text = (text or "").lower()
     text = re.sub(r"[^a-z0-9]+", "-", text)
     text = re.sub(r"-+", "-", text).strip("-")

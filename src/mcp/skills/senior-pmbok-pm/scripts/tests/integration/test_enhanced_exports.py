@@ -13,7 +13,6 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from pmbok_utils import write_output
-from pmbok_exporters import WorkflowExporter, AuditExporter
 
 TEMP_OUTPUT_DIR = tempfile.TemporaryDirectory(prefix="pmbok_enhanced_exports_")
 EXAMPLES_DIR = Path(TEMP_OUTPUT_DIR.name) / "advanced"
@@ -281,7 +280,7 @@ class TestEnhancedExports(unittest.TestCase):
         # Mermaid should use tree diagram
         self.assertIn("graph TD", mmd_content)
 
-        print(f"   ✅ Fallback mechanisms work correctly (JSON/Tree)")
+        print("   ✅ Fallback mechanisms work correctly (JSON/Tree)")
 
 
 if __name__ == "__main__":

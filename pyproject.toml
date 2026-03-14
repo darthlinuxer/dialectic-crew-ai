@@ -76,3 +76,14 @@ source = ["src"]
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+
+[tool.mypy]
+python_version = "3.12"
+explicit_package_bases = true
+exclude = [
+    '^src/mcp/skills/.*/scripts/',
+]
+
+[[tool.mypy.overrides]]
+module = ["schemas"]
+ignore_missing_imports = true

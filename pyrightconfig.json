@@ -9,7 +9,8 @@
     "exclude": [
         ".venv",
         "**/__pycache__",
-        "main.py"
+        "main.py",
+        "src/mcp/skills/**/scripts"
     ],
     "executionEnvironments": [
         {

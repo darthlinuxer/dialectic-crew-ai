@@ -1,6 +1,6 @@
 """Enhanced export utilities for PMBOK PM artifacts with domain-specific visualizations."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 class WorkflowExporter:

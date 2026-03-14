@@ -12,7 +12,7 @@ from execution.runner import (
     _find_latest_plan,
     run_execution,
 )
-from conftest import make_plan, make_task
+from tests.conftest import make_plan, make_task
 
 
 class TestArtifactMarkdown:

@@ -27,7 +27,33 @@ python main.py <command> [arguments...]
 | `verify` | Re-verify a single task |
 | `mark` | Manually override a task status |
 | `self-improve` | Run introspection → PRD → plan → execute → validate → PR |
+| `set-target` | Set the active external project checkout |
+| `get-target` | Show the active external project checkout |
+| `clear-target` | Clear the active external project checkout |
+| `list-targets` | List known target repositories |
+| `make-vision` | Generate a VISION.md draft for the active target or `--self` |
+| `clear-runtime` | Clear centralized runtime artifacts |
+| `clear-self-improve` | Clear persisted self-improve snapshots |
 | `help` | Show CLI help |
+
+## Targeted project workflow
+
+```bash
+uv run dialectic-crew set-target ~/projects/my-app
+uv run dialectic-crew make-vision
+uv run dialectic-crew prd "Improve onboarding"
+uv run dialectic-crew plan
+uv run dialectic-crew execute
+```
+
+With an active target:
+
+- `PROJECT` resolves to `knowledge/target/<target-slug>/VISION.md`
+- PRD and plan artifacts are saved under `prd_output/targets/<target-slug>/`
+- execution tracking is saved under `exec_output/targets/<target-slug>/`
+- file-reading and file-writing tool activity runs relative to the target checkout
+
+`--self` still routes `prd`, `plan`, and `execute` back to `internal/SELF_VISION.md` and this repository.
 
 ## `prd`
 
@@ -37,7 +63,7 @@ uv run dialectic-crew prd "your feature request" [--files file1 file2 ...] [--se
 
 - uses the main dialectic flow
 - retries until the PRD reaches the approval threshold or the flow exhausts retries
-- exports to `prd_output/`
+- exports to the current scope under `prd_output/default/`, `prd_output/self/`, or `prd_output/targets/<target-slug>/`
 - switches to `internal/SELF_VISION.md` when `--self` is provided
 - supports `--resume <flow-id>` to continue a persisted PRD flow from its last saved phase
 
@@ -58,7 +84,7 @@ uv run dialectic-crew plan [prd.json] [US-001|index] [--self]
 - defaults to the latest PRD when no file is provided
 - defaults to the first user story when no story reference is provided
 - accepts flexible story references such as `US-001`, `US1`, or `1`
-- exports plan JSON + Markdown into `prd_output/`
+- exports plan JSON + Markdown into the current scoped directory under `prd_output/`
 
 The planning threshold is controlled by `MIN_PLAN_SCORE` and defaults to `7.5`.
 
@@ -77,9 +103,9 @@ Without `--spec-only`, the command:
 3. runs dialectic → verify → reimplement per task
 4. post-verifies completed tasks against PRD acceptance criteria
 5. updates task and story status in the plan artifact
-6. writes an execution report to `exec_output/`
+6. writes an execution report to the current scoped directory under `exec_output/`
 
-Interrupted runs also write `exec_output/<run_id>/checkpoint.json`. Resume them with:
+Interrupted runs also write `exec_output/<scope>/<run_id>/checkpoint.json`. Resume them with:
 
 ```bash
 uv run dialectic-crew execute --resume-run <run-id>
@@ -173,6 +199,27 @@ stage, and last failure reason before choosing one to resume.
 `--stash-dirty` stashes tracked and untracked changes from the current branch before self-improve continues. The stash is preserved in the stash stack so it can be reviewed or restored manually later.
 
 `--resume` is for continuing a previously interrupted self-improve cycle after PRD/plan/execution errors. It reuses persisted flow IDs and execution checkpoints; it does not start a brand-new cycle.
+
+## `clear-runtime`
+
+```bash
+uv run dialectic-crew clear-runtime --logs --metrics --flows --prd --exec
+uv run dialectic-crew clear-runtime --logs --prd --dry-run
+uv run dialectic-crew clear-runtime --all
+```
+
+Clears centralized runtime state owned by this repository, including `.dialectic/` databases/logs and scoped `prd_output/` or `exec_output/` trees. At least one explicit scope is required unless `--all` is passed. Use `--dry-run` to preview deletions.
+
+## `clear-self-improve`
+
+```bash
+uv run dialectic-crew clear-self-improve 20260310T120000
+uv run dialectic-crew clear-self-improve 20260310T120000 --with-linked-exec
+uv run dialectic-crew clear-self-improve 20260310T120000 --dry-run
+uv run dialectic-crew clear-self-improve --all
+```
+
+Clears one persisted self-improve snapshot, or all snapshots with `--all`. By default, deleting a single snapshot preserves linked execution artifacts; add `--with-linked-exec` to prune those too. Use `--dry-run` to preview deletions.
 
 ## `--self` flag
 

@@ -17,7 +17,7 @@ License: MIT
 import sys
 sys.path.append('..')
 
-from critical_path import CriticalPathAnalyzer, Activity
+from critical_path import CriticalPathAnalyzer
 from exporters import (
     MarkdownExporter, MermaidExporter, PlantUMLExporter,
     HTMLExporter, CSVExporter, JSONExporter, save_to_file
@@ -259,7 +259,7 @@ def main():
     analyzer = CriticalPathAnalyzer(activities, unit="days")
     result = analyzer.analyze()
 
-    print(f"\n✅ Analysis Complete!")
+    print("\n✅ Analysis Complete!")
     print(f"   Project Duration: {result['project_duration']} days")
     print(f"   Critical Path: {' → '.join(result['critical_path'])}")
 
@@ -280,28 +280,28 @@ def main():
     mermaid_chart = export_to_mermaid_flowchart(result)
     save_to_file(mermaid_chart, 'critical_path_flowchart.md')
     print("   ✅ Saved: critical_path_flowchart.md")
-    print(f"   (Paste into GitHub/GitLab markdown for visualization)")
+    print("   (Paste into GitHub/GitLab markdown for visualization)")
 
     # 3. PlantUML Gantt
     print("\n📊 3. PlantUML Gantt Diagram")
     plantuml_gantt = export_to_plantuml_gantt(result)
     save_to_file(plantuml_gantt, 'critical_path_gantt.puml')
     print("   ✅ Saved: critical_path_gantt.puml")
-    print(f"   (Use PlantUML renderer to visualize)")
+    print("   (Use PlantUML renderer to visualize)")
 
     # 4. HTML Report
     print("\n🌐 4. HTML Report")
     html_report = export_to_html_report(result)
     save_to_file(html_report, 'critical_path_report.html')
     print("   ✅ Saved: critical_path_report.html")
-    print(f"   (Open in browser to view)")
+    print("   (Open in browser to view)")
 
     # 5. CSV Data
     print("\n📊 5. CSV Export")
     csv_data = export_to_csv(result)
     save_to_file(csv_data, 'critical_path_data.csv')
     print("   ✅ Saved: critical_path_data.csv")
-    print(f"   (Import into Excel/Google Sheets)")
+    print("   (Import into Excel/Google Sheets)")
 
     # 6. JSON
     print("\n💾 6. JSON Data")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from conftest import make_plan, make_task
+from tests.conftest import make_plan, make_task
 from execution import dialectic_execution as de
 from schemas import ExecutionCheckpoint, TaskExecutionResult
 

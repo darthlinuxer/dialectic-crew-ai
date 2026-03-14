@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 """
 Convenience script to run the full dialectic flow.
 Delegates to dialectic.prd_flow which uses native CrewAI features

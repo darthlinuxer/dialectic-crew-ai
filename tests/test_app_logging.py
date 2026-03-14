@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import cast
 
 from dialectic.app_logging import (
     bind_log_context,
@@ -197,8 +198,10 @@ def test_text_result_guardrail_json_log_includes_guardrail_reason(tmp_path, monk
     json_line = next(
         line
         for line in _read_json_lines(config.json_log_path)
-        if line["message"].startswith("tool-call-output-rejected by text_result guardrail")
+        if cast(str, line["message"]).startswith(
+            "tool-call-output-rejected by text_result guardrail"
+        )
     )
     assert json_line["guardrail"] == "text_result"
     assert json_line["reason"] == "tool_call_output"
-    assert "ChatCompletionMessageFunctionToolCall" in json_line["preview"]
+    assert "ChatCompletionMessageFunctionToolCall" in cast(str, json_line["preview"])

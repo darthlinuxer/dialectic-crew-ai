@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from crewai import Crew, Process, Task
-from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
 from dialectic.agents import (
     create_critico_socratico,
@@ -32,7 +31,7 @@ def build_prd_crew(
     feature_objective: str,
     vision_context: VisionContext,
     retry_feedback_block: str,
-    retry_feedback_sources: list[StringKnowledgeSource],
+    retry_feedback_sources: list[Any],
 ) -> Crew:
     """Build the PRD dialectic crew for a single feature objective."""
 

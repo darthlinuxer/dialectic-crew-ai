@@ -29,7 +29,7 @@ class ValidationResult:
     warnings: List[str]
 
 
-def _parse_frontmatter(md_text: str) -> dict:
+def _parse_frontmatter(md_text: str | None) -> dict:
     """Extract YAML frontmatter as a dict from the start of md_text."""
     md_text = (md_text or "").lstrip()
     if not md_text.startswith("---"):

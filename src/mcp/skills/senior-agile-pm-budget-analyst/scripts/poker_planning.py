@@ -577,11 +577,11 @@ def main():
 
     print(f"\nStory: {analysis['story']['id']} - {analysis['story']['title']}")
     print(f"\nEstimates: {session.estimates}")
-    print(f"\nStatistics:")
+    print("\nStatistics:")
     for key, value in analysis['statistics'].items():
         print(f"  {key:20}: {value:.2f}")
 
-    print(f"\nConsensus:")
+    print("\nConsensus:")
     print(f"  Reached: {analysis['consensus']['reached']}")
     print(f"  Variance Coefficient: {analysis['consensus']['variance_coefficient']:.2f}%")
     print(f"  Recommendation: {analysis['consensus']['recommendation']}")
@@ -636,14 +636,14 @@ def main():
 
     velocity = calculator.calculate_velocity(completed_sprints=3)
 
-    print(f"\nVelocity Metrics:")
+    print("\nVelocity Metrics:")
     print(f"  Average Velocity: {velocity['average_velocity']:.1f} points/sprint")
     print(f"  Median Velocity: {velocity['median_velocity']:.1f} points/sprint")
     print(f"  Range: {velocity['min_velocity']:.1f} - {velocity['max_velocity']:.1f} points/sprint")
     print(f"  Standard Deviation: {velocity['std_dev']:.2f}")
     print(f"  Stability: {velocity['stability']}")
 
-    print(f"\nSprint Details:")
+    print("\nSprint Details:")
     for sprint, points in velocity['sprint_details'].items():
         print(f"  Sprint {sprint}: {points} points")
 
@@ -658,7 +658,7 @@ def main():
     print(f"\nRemaining Points: {estimation['remaining_points']}")
     print(f"Velocity Used: {estimation['velocity_used']:.1f} points/sprint")
 
-    print(f"\nScenarios:")
+    print("\nScenarios:")
     for scenario_name, scenario_data in estimation['scenarios'].items():
         print(f"\n  {scenario_name.upper()}:")
         print(f"    Velocity: {scenario_data['velocity']:.1f} points/sprint")
@@ -693,14 +693,14 @@ def main():
 
     backlog_analysis = calculator.analyze_backlog()
 
-    print(f"\nBacklog Summary:")
+    print("\nBacklog Summary:")
     print(f"  Total Stories: {backlog_analysis['total_stories']}")
     print(f"  Total Points: {backlog_analysis['total_points']}")
     print(f"  Completed: {backlog_analysis['completed_points']} points "
           f"({backlog_analysis['completion_percentage']:.1f}%)")
     print(f"  Remaining: {backlog_analysis['remaining_points']} points")
 
-    print(f"\nSize Distribution:")
+    print("\nSize Distribution:")
     for size, data in backlog_analysis['size_distribution'].items():
         print(f"  {size.upper()}:")
         print(f"    Count: {data['count']} stories ({data['percentage']:.1f}%)")
@@ -708,11 +708,11 @@ def main():
         if 'action_required' in data:
             print(f"    Action: {data['action_required']}")
             if data['stories']:
-                print(f"    Stories needing breakdown:")
+                print("    Stories needing breakdown:")
                 for s in data['stories']:
                     print(f"      - {s['id']}: {s['title']} ({s['points']} points)")
 
-    print(f"\nHealth Check:")
+    print("\nHealth Check:")
     print(f"  Ideal Distribution: {backlog_analysis['health_check']['ideal_distribution']:.1f}%")
     print(f"  Status: {backlog_analysis['health_check']['status']}")
 
@@ -728,7 +728,7 @@ def main():
     print(f"  Committed: {sprint_plan['committed_points']} points")
     print(f"  Utilization: {sprint_plan['capacity_utilization']:.1f}%")
 
-    print(f"\nSelected Stories:")
+    print("\nSelected Stories:")
     for story in sprint_plan['stories']:
         print(f"  - {story['id']}: {story['title']} ({story['points']} points) [Epic: {story['epic_id']}]")
 

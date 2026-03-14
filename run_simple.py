@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 """
 Simplified script to run a single pass of the dialectic flow (no retry).
 Delegates to dialectic.prd_flow with max_retries=0.

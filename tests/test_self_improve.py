@@ -6,6 +6,7 @@
 
 import subprocess
 import sys
+from typing import Any, cast
 
 import pytest
 
@@ -832,7 +833,10 @@ class TestCreatePr:
             tmp_path,
             command_available_fn=lambda command: True,
             run_cmd_fn=fake_run,
-            logger=type("Logger", (), {"warning": lambda self, msg, *args: None})(),
+            logger=cast(
+                Any,
+                type("Logger", (), {"warning": lambda self, msg, *args: None})(),
+            ),
         )
 
         assert pr_url == "https://example/pr/123"

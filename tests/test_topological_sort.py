@@ -2,7 +2,7 @@
 
 import pytest
 
-from conftest import make_task
+from tests.conftest import make_task
 from execution.context_builder import build_task_context
 from execution.topological_sort import topological_sort
 

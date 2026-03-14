@@ -1,6 +1,5 @@
 """Tests for dialectic.metrics -- SQLite-backed passive metrics store."""
 
-import sqlite3
 from pathlib import Path
 
 import pytest

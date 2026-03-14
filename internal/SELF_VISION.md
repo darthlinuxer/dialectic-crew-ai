@@ -17,7 +17,7 @@
 
 1. **PRDs in Markdown and JSON** — Every approved PRD must be persisted in `prd_output/` as both `.md` (narrative document, human-ready) and `.json` (validated schema, tool-ready).
 2. **Quality through dialectics** — Maintain the Thesis → Antithesis → Synthesis → Validation loop with retry until score >= 9.0 and zero contradictions with the active vision context.
-3. **Anti-drift** — For self-evolution flows (e.g. `self-improve`), all agents MUST ingest `internal/SELF_VISION.md` via `VisionContext.SELF`. For external projects, all agents MUST ingest `knowledge/VISION.md` via `VisionContext.PROJECT`. Anti-drift questions and validation ensure continuous alignment with the correct macro vision.
+3. **Anti-drift** — For self-evolution flows (e.g. `self-improve`), all agents MUST ingest `internal/SELF_VISION.md` via `VisionContext.SELF`. For external projects, all agents MUST ingest the active project vision via `VisionContext.PROJECT`, resolving to `knowledge/target/<target-slug>/VISION.md` when a target checkout is selected and falling back to `knowledge/VISION.md` otherwise. Anti-drift questions and validation ensure continuous alignment with the correct macro vision.
 4. **Self-improvement** — This file (`internal/SELF_VISION.md`) defines the macro vision for Dialectic Crew AI itself. Self-evolution behavior or scope changes must be consistent with this document, and self-improve cycles MUST never substitute a project vision (`knowledge/VISION.md`) in place of this self vision.
 5. **API-first architecture** — Expose all capabilities (PRD creation, planning, execution, verification) through a REST API backed by CrewAI Event Listeners for real-time progress streaming, enabling programmatic integration and a web frontend.
 6. **Web experience** — Provide a web UI for PRD creation, browsing, review workflows (powered by CrewAI's `@human_feedback` decorator), user story boards, and live dialectic visualization — making the tool accessible to non-technical stakeholders.
@@ -47,7 +47,7 @@
 ### Integrations (current / desired)
 
 - **Input:** CLI arguments, self vision content from `internal/SELF_VISION.md` (via `VisionContext.SELF`), project vision content from `knowledge/VISION.md` for the currently active project (via `VisionContext.PROJECT`), project source files from the active project directory, and environment variables (API keys).
-- **Output:** Files in `prd_output/` (PRDs and plans in **JSON + Markdown**); execution artifacts in `exec_output/`; centrally managed `knowledge/VISION.md` files that capture the macro vision of each active project.
+- **Output:** Files in scoped `prd_output/` directories (`default/`, `self/`, `targets/<target-slug>/`) for PRDs and plans in **JSON + Markdown**; scoped execution tracking in `exec_output/`; centrally managed `knowledge/VISION.md` files that capture the macro vision of each active project.
 - **LLM:** Support for multiple providers (OpenAI, Anthropic, Groq, etc.) configurable in `dialectic/agents.py`.
 
 ---
@@ -100,7 +100,7 @@
 3. **Dual output (MD + JSON)** — Serve both human readers and tools/integrations.
 4. **Extensible** — Architecture must allow new flows (e.g., dialectics for user story execution) without breaking the core.
 5. **Framework-first** — Leverage CrewAI's native features (Memory, Knowledge, Event Listeners, Human Feedback, Training, Reasoning, Hooks) before building custom infrastructure. Custom code should only fill gaps the framework doesn't cover.
-6. **Single write target per run** — Self-evolution flows are restricted to this repository (plus metrics and logs) and MUST NOT modify external project trees. When an active project directory is set, project-focused commands (PRD, plan, execute, project vision generation) write only to that project tree, shared PRD/exec output folders, and central knowledge locations designated for project VISION files.
+6. **Single write target per run** — Self-evolution flows are restricted to this repository (plus metrics and logs) and MUST NOT modify external project trees. When an active project directory is set, project-focused commands (PRD, plan, execute, project vision generation) write only to that project tree, scoped shared PRD/exec output folders, and central knowledge locations designated for project VISION files.
 
 ---
 

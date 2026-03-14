@@ -253,6 +253,42 @@ class TestBeforeToolCallHook:
         result = _before_tool_call_hook(ctx)
         assert result is False
 
+    def test_blocks_write_outside_allowed_root(self, tmp_path, monkeypatch):
+        allowed_root = tmp_path / "target"
+        allowed_root.mkdir()
+        monkeypatch.chdir(allowed_root)
+        scope = HookScope(
+            allowed_write_roots=frozenset({allowed_root}),
+            label="test",
+        )
+        _active_scope.current = scope
+        ctx = _make_tool_context(
+            tool_name="write_to_file",
+            tool_input={"file_path": "../outside.py"},
+        )
+
+        result = _before_tool_call_hook(ctx)
+
+        assert result is False
+
+    def test_allows_write_inside_allowed_root(self, tmp_path, monkeypatch):
+        allowed_root = tmp_path / "target"
+        allowed_root.mkdir()
+        monkeypatch.chdir(allowed_root)
+        scope = HookScope(
+            allowed_write_roots=frozenset({allowed_root}),
+            label="test",
+        )
+        _active_scope.current = scope
+        ctx = _make_tool_context(
+            tool_name="write_to_file",
+            tool_input={"file_path": "src/new_feature.py"},
+        )
+
+        result = _before_tool_call_hook(ctx)
+
+        assert result is None
+
     def test_allows_when_no_protection_active(self):
         scope = HookScope(label="test")
         _active_scope.current = scope
@@ -401,6 +437,12 @@ class TestHookScope:
         paths = frozenset({"a.py", "b.py"})
         scope = HookScope(protected_paths=paths, label="test")
         assert scope.protected_paths == paths
+
+    def test_scope_with_allowed_write_roots(self, tmp_path):
+        root = tmp_path / "target"
+        root.mkdir()
+        scope = HookScope(allowed_write_roots=frozenset({root}), label="test")
+        assert root.resolve() in scope.allowed_write_roots
 
     def test_scope_default_budget_unlimited(self):
         scope = HookScope(label="test")

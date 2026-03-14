@@ -43,7 +43,21 @@ class TestCliRequirementRouting:
         assert help_command.exit_code == 0
         assert "Modern typed CLI for Dialectic Crew AI workflows" in help_command.stdout
         assert "Commands:" not in help_command.stdout
-        assert "prd           Generate or resume a PRD workflow" in help_command.stdout
+        assert "prd" in help_command.stdout
+        assert "Generate or resume a PRD workflow" in help_command.stdout
+
+    def test_clear_runtime_requires_scope_or_all(self):
+        result = RUNNER.invoke(cli.app, ["clear-runtime"])
+
+        assert result.exit_code == 1
+        assert "Select at least one runtime scope or use --all" in result.stdout
+
+    def test_clear_self_improve_help_mentions_linked_exec_flag(self):
+        result = RUNNER.invoke(cli.app, ["clear-self-improve", "--help"])
+
+        assert result.exit_code == 0
+        assert "--with-linked-exec" in result.stdout
+        assert "--dry-run" in result.stdout
 
     def test_prd_help_includes_examples(self):
         result = RUNNER.invoke(cli.app, ["prd", "--help"])

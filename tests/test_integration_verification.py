@@ -1,6 +1,7 @@
+# ruff: noqa: E402
+
 """Integration test: _run_verification with real LLM (requires API keys)."""
 
-import os
 import tempfile
 from pathlib import Path
 

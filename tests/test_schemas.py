@@ -1,5 +1,7 @@
 """Tests for Pydantic schema validation in schemas.py."""
 
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
 
@@ -15,7 +17,7 @@ from schemas import (
     ExecutionCheckpoint,
     SelfImprovementRecord,
 )
-from conftest import make_prd, make_task, make_plan
+from tests.conftest import make_prd, make_task, make_plan
 
 
 class TestUserStory:
@@ -47,7 +49,7 @@ class TestUserStory:
                 title="Login",
                 description="...",
                 acceptance_criteria=["AC1", "AC2", "AC3"],
-                effort="HUGE",
+                effort=cast(Any, "HUGE"),
             )
 
     def test_acceptance_criteria_entries_are_trimmed(self):
@@ -86,7 +88,7 @@ class TestMacroImpact:
         with pytest.raises(ValidationError, match="risk_level"):
             MacroImpact(
                 modules_affected=["auth"],
-                risk_level="EXTREME",
+                risk_level=cast(Any, "EXTREME"),
                 performance_impact="...",
                 security_impact="...",
             )

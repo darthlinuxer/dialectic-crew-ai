@@ -19,6 +19,7 @@ It can:
 - generate PRDs from a feature request
 - plan implementation for a selected user story
 - execute tasks with dialectic review, independent verification, and reimplementation
+- target an external local git checkout while keeping shared dialectic artifacts centralized
 - track task and story status in plan artifacts
 - run a guarded `self-improve` cycle against the app's own roadmap
 - expose local agent skills through a built-in MCP server wired into core agents
@@ -30,6 +31,7 @@ This repository is **beta / pre-production** and already ships the end-to-end en
 - dual-vision architecture:
   - `knowledge/VISION.md` for the user's project
   - `internal/SELF_VISION.md` for the app's own evolution
+- active-target workflow for external repositories with generated visions under `knowledge/target/<slug>/VISION.md`
 - PRD, planning, execution, verification, and status commands
 - passive metrics in `.dialectic/metrics.db` by default
 - four-lens introspection plus dialectic prioritization for self-improvement
@@ -88,18 +90,33 @@ uv run dialectic-crew prd "Login with 2FA"
 uv run dialectic-crew prd "Dashboard redesign" --files wireframe.png spec.pdf
 ```
 
+### Optional: point the workflow at another repository
+
+```bash
+uv run dialectic-crew set-target ~/projects/my-app
+uv run dialectic-crew make-vision
+uv run dialectic-crew get-target
+```
+
+When a target is active, project-mode commands use the generated target vision and:
+
+- keep PRDs/plans centralized under `prd_output/targets/<target-slug>/`
+- keep execution tracking under `exec_output/targets/<target-slug>/`
+- run project file operations against the target checkout
+- leave `self-improve` and `--self` scoped strictly to this repository
+
 ### 2. Plan a user story
 
 ```bash
 uv run dialectic-crew plan
-uv run dialectic-crew plan prd_output/PRD_20260308_164012.json US1
+uv run dialectic-crew plan prd_output/default/PRD_20260308_164012.json US1
 ```
 
 ### 3. Execute the plan
 
 ```bash
 uv run dialectic-crew execute
-uv run dialectic-crew execute prd_output/exec_US1_20260308_175030.json
+uv run dialectic-crew execute prd_output/default/exec_US1_20260308_175030.json
 uv run dialectic-crew execute --spec-only
 ```
 
@@ -118,6 +135,16 @@ uv run dialectic-crew mark T0 completed
 uv run dialectic-crew self-improve --dry-run
 uv run dialectic-crew self-improve
 uv run dialectic-crew self-improve --max 3
+```
+
+### 6. Clean local runtime state
+
+```bash
+uv run dialectic-crew clear-runtime --logs --prd
+uv run dialectic-crew clear-runtime --logs --prd --dry-run
+uv run dialectic-crew clear-runtime --all
+uv run dialectic-crew clear-self-improve --all
+uv run dialectic-crew clear-self-improve 20260310T120000 --with-linked-exec
 ```
 
 ## Self-improvement workflow

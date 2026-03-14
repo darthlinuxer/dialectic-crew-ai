@@ -19,6 +19,7 @@ Flow structure:
 import os
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -184,6 +185,11 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
 
                 with HookScope(
                     token_budget=0,
+                    allowed_write_roots=(
+                        frozenset({str(Path(self.state.output_dir).resolve())})
+                        if self.state.output_dir
+                        else None
+                    ),
                     label=f"task/{self.state.task_id}",
                 ):
                     result = crew.kickoff()

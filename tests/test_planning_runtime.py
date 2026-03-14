@@ -1,6 +1,6 @@
 # pyright: reportPrivateUsage=none
 
-from conftest import make_prd
+from tests.conftest import make_prd
 from dialectic.tool_bundles import TOOL_BUNDLES
 from dialectic.vision import VisionContext
 

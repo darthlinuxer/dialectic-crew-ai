@@ -6,7 +6,7 @@ from schemas import (
     ValidationOutput,
     VerificationResult,
 )
-from conftest import make_prd
+from tests.conftest import make_prd
 
 
 class _FakeResult:

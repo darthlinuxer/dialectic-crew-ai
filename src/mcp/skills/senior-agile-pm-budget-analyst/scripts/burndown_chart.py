@@ -13,7 +13,7 @@ Author: Senior Agile PM Budget Analyst Skill
 License: MIT
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 from enum import Enum
@@ -485,7 +485,7 @@ class BurndownCalculator:
         lines[height] = "  0" + lines[height][3:]
 
         # X-axis label
-        lines.append(f"Day 0" + " " * (width - 15) + f"Day {total_days}")
+        lines.append("Day 0" + " " * (width - 15) + f"Day {total_days}")
 
         # Legend
         lines.append("")
@@ -603,7 +603,7 @@ def main():
     # Generate chart
     chart_data = calculator.generate()
 
-    print(f"\nSprint Information:")
+    print("\nSprint Information:")
     print(f"  Start Date: {chart_data['start_date']}")
     print(f"  End Date: {chart_data['end_date']}")
     print(f"  Initial Scope: {chart_data['initial_scope']} points")
@@ -612,12 +612,12 @@ def main():
 
     # Scope Changes
     if chart_data['scope_changes']:
-        print(f"\nScope Changes:")
+        print("\nScope Changes:")
         for change in chart_data['scope_changes']:
             print(f"  {change['date']}: {change['change']:+.0f} points - {change['reason']}")
 
     # Forecast
-    print(f"\nForecast:")
+    print("\nForecast:")
     forecast = chart_data['forecast']
     if 'error' not in forecast:
         print(f"  Current Velocity: {forecast['current_velocity']} points/day")
@@ -631,7 +631,7 @@ def main():
         print(f"  {forecast['error']}")
 
     # Trend
-    print(f"\nTrend Analysis:")
+    print("\nTrend Analysis:")
     trend = chart_data['trend']
     if 'error' not in trend:
         print(f"  Actual Burndown Rate: {trend['average_actual_burndown_rate']} points/day")
@@ -642,7 +642,7 @@ def main():
         print(f"  {trend['error']}")
 
     # Health
-    print(f"\nSprint Health:")
+    print("\nSprint Health:")
     health = chart_data['health']
     print(f"  Status: {health['color']} {health['status']}")
     print(f"  Time Elapsed: {health['time_elapsed_percent']:.1f}%")
@@ -698,13 +698,13 @@ def main():
 
     chart_data_burnup = calculator_burnup.generate()
 
-    print(f"\nRelease Information:")
+    print("\nRelease Information:")
     print(f"  Duration: {chart_data_burnup['start_date']} to {chart_data_burnup['end_date']}")
     print(f"  Initial Scope: {chart_data_burnup['initial_scope']} points")
     print(f"  Current Scope: {chart_data_burnup['current_scope']} points")
     print(f"  Scope Delta: {chart_data_burnup['current_scope'] - chart_data_burnup['initial_scope']:+.0f} points")
 
-    print(f"\nProgress:")
+    print("\nProgress:")
     latest = chart_data_burnup['data_points'][-1]
     print(f"  Completed: {latest['completed_points']} points ({latest['completion_percent']:.1f}%)")
     print(f"  Remaining: {latest['remaining_points']} points")

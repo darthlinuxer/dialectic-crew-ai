@@ -5,7 +5,7 @@ from dialectic.vision import VisionContext
 
 
 def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatch):
-    from conftest import make_task
+    from tests.conftest import make_task
 
     captured_tasks: list[dict] = []
     captured_crew: dict = {}
@@ -47,7 +47,7 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
 
 
 def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(monkeypatch):
-    from conftest import make_task
+    from tests.conftest import make_task
 
     captured_tasks: list[dict] = []
 

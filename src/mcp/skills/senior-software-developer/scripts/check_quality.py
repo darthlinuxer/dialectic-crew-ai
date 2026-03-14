@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import List, Tuple
-import json
 
 
 class QualityChecker:
@@ -192,11 +191,13 @@ class QualityChecker:
             print(f"\n{status} - {tool}")
             if not success and output:
                 # Show first 10 lines of error output
-                lines = output.split('\n')[:10]
+                output_lines = output.splitlines()
+                lines = output_lines[:10]
                 for line in lines:
                     print(f"  {line}")
-                if len(output.split('\n')) > 10:
-                    print(f"  ... ({len(output.split('\n')) - 10} more lines)")
+                if len(output_lines) > 10:
+                    remaining_lines = len(output_lines) - 10
+                    print(f"  ... ({remaining_lines} more lines)")
         
         print("\n" + "="*60)
         print(f"SUMMARY: {passed} passed, {failed} failed")

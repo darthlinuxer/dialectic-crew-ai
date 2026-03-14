@@ -28,12 +28,12 @@ import logging
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from crewai.hooks import (
     LLMCallHookContext,
     ToolCallHookContext,
-    get_before_llm_call_hooks,
     register_after_llm_call_hook,
     register_after_tool_call_hook,
     register_before_llm_call_hook,
@@ -87,11 +87,8 @@ def _before_llm_call_hook(context: LLMCallHookContext) -> bool | None:
     if agent_obj is not None:
         agent_role = getattr(agent_obj, "role", str(agent_obj))
 
-    task_desc = ""
     task_obj = getattr(context, "task", None)
-    if task_obj is not None:
-        raw_desc = getattr(task_obj, "description", str(task_obj))
-        task_desc = raw_desc[:80] if isinstance(raw_desc, str) else str(raw_desc)[:80]
+    del task_obj
 
     iterations = getattr(context, "iterations", 0)
 
@@ -199,31 +196,74 @@ def _before_tool_call_hook(context: ToolCallHookContext) -> bool | None:
 
     logger.debug("Tool call: tool=%s, agent=%s", tool_name, agent_role[:40])
 
-    if scope.protected_paths:
-        write_tools = {"write_to_file", "file_writer", "FileWriterTool"}
-        if tool_name in write_tools or "write" in tool_name.lower():
-            target_path = (
-                tool_input.get("file_path", "")
-                or tool_input.get("path", "")
-                or tool_input.get("filename", "")
-            )
-            for protected in scope.protected_paths:
-                if protected in str(target_path):
-                    logger.warning(
-                        "Blocked write to protected path: %s (tool=%s, agent=%s)",
-                        target_path,
-                        tool_name,
-                        agent_role[:40],
-                    )
-                    emit_metric(
-                        "tool_blocked",
-                        1.0,
-                        tool=tool_name,
-                        path=str(target_path)[:120],
-                        agent=agent_role[:60],
-                        label=scope.label,
-                    )
-                    return False
+    write_tools = {"write_to_file", "file_writer", "FileWriterTool"}
+    is_write_tool = tool_name in write_tools or "write" in tool_name.lower()
+    if is_write_tool:
+        target_path = (
+            tool_input.get("file_path", "")
+            or tool_input.get("path", "")
+            or tool_input.get("filename", "")
+        )
+        if scope.allowed_write_roots:
+            if not target_path:
+                logger.warning(
+                    "Blocked write without target path metadata (tool=%s, agent=%s)",
+                    tool_name,
+                    agent_role[:40],
+                )
+                emit_metric(
+                    "tool_blocked",
+                    1.0,
+                    tool=tool_name,
+                    path="<missing>",
+                    agent=agent_role[:60],
+                    label=scope.label,
+                )
+                return False
+
+            resolved_target = Path(str(target_path)).expanduser()
+            if not resolved_target.is_absolute():
+                resolved_target = (Path.cwd() / resolved_target).resolve()
+            else:
+                resolved_target = resolved_target.resolve()
+
+            if not any(
+                resolved_target == allowed_root or allowed_root in resolved_target.parents
+                for allowed_root in scope.allowed_write_roots
+            ):
+                logger.warning(
+                    "Blocked write outside allowed roots: %s (tool=%s, agent=%s)",
+                    resolved_target,
+                    tool_name,
+                    agent_role[:40],
+                )
+                emit_metric(
+                    "tool_blocked",
+                    1.0,
+                    tool=tool_name,
+                    path=str(resolved_target)[:120],
+                    agent=agent_role[:60],
+                    label=scope.label,
+                )
+                return False
+
+        for protected in scope.protected_paths:
+            if protected in str(target_path):
+                logger.warning(
+                    "Blocked write to protected path: %s (tool=%s, agent=%s)",
+                    target_path,
+                    tool_name,
+                    agent_role[:40],
+                )
+                emit_metric(
+                    "tool_blocked",
+                    1.0,
+                    tool=tool_name,
+                    path=str(target_path)[:120],
+                    agent=agent_role[:60],
+                    label=scope.label,
+                )
+                return False
 
     context.tool_input["_hook_start_time"] = time.time()
     return None
@@ -280,6 +320,7 @@ class HookScope:
         token_budget: int | None = None,
         max_iterations: int | None = None,
         protected_paths: frozenset[str] | None = None,
+        allowed_write_roots: frozenset[str | Path] | None = None,
         label: str = "",
         cost_per_input_token: float | None = None,
         cost_per_output_token: float | None = None,
@@ -302,6 +343,9 @@ class HookScope:
             max_iterations if max_iterations is not None else _DEFAULT_MAX_ITERATIONS
         )
         self.protected_paths = protected_paths or frozenset()
+        self.allowed_write_roots = frozenset(
+            Path(root).expanduser().resolve() for root in (allowed_write_roots or frozenset())
+        )
         self.label = label
         self._previous_scope: HookScope | None = None
         self._entered = False
@@ -350,18 +394,15 @@ class HookScope:
             snap["estimated_cost"],
         )
 
-        try:
-            emit_metric(
-                "hook_scope_summary",
-                float(snap["total_tokens"]),
-                label=self.label,
-                input_tokens=snap["input_tokens"],
-                output_tokens=snap["output_tokens"],
-                llm_calls=snap["llm_calls"],
-                tool_calls=snap["tool_calls"],
-                estimated_cost=snap["estimated_cost"],
-                budget=snap["budget"],
-                budget_exceeded=snap["budget_exceeded"],
-            )
-        except Exception:
-            logger.debug("Failed to emit hook_scope_summary", exc_info=True)
+        emit_metric(
+            "hook_scope_summary",
+            float(snap["total_tokens"]),
+            label=self.label,
+            input_tokens=snap["input_tokens"],
+            output_tokens=snap["output_tokens"],
+            llm_calls=snap["llm_calls"],
+            tool_calls=snap["tool_calls"],
+            estimated_cost=snap["estimated_cost"],
+            budget=snap["budget"],
+            budget_exceeded=snap["budget_exceeded"],
+        )

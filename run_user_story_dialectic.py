@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 """
 Convenience script: plans execution of a user story (dialectic).
 Equivalent to: python main.py plan [prd_path] [US-001]

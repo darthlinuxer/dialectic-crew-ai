@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 """Integration tests: LLM tool calling via CrewAI (requires API keys).
 
 Each test verifies that a configured LLM tier can invoke FileReadTool

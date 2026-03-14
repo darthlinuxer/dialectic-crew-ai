@@ -16,7 +16,7 @@ from execution.verify import (
     _run_verification,
     _extract_acceptance_criteria,
 )
-from conftest import make_plan, make_task, make_prd
+from tests.conftest import make_plan, make_task, make_prd
 
 
 class TestLoadSavePlan:

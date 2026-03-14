@@ -104,7 +104,7 @@ class SkillIndex:
         query: Optional[str] = None,
         source: Optional[SkillSource] = None,
     ) -> List[SkillMetadata]:
-        items = self._skills_by_id.values()
+        items: Iterable[SkillMetadata] = self._skills_by_id.values()
         if query:
             q = query.lower()
             items = [

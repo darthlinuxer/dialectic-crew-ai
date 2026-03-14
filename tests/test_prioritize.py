@@ -1,5 +1,6 @@
 """Tests for dialectic.prioritize -- dialectic prioritization of improvement opportunities."""
 
+from typing import Literal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,8 +28,8 @@ from schemas import (
 def _opp(
     id: str = "opp-1",
     title: str = "Test opportunity",
-    impact: str = "medium",
-    category: str = "vision_gap",
+    impact: Literal["low", "medium", "high"] = "medium",
+    category: Literal["vision_gap", "metric_regression", "code_health", "failure_pattern"] = "vision_gap",
 ) -> ImprovementOpportunity:
     return ImprovementOpportunity(
         id=id,
@@ -91,7 +92,7 @@ class TestPrioritizedOpportunitySchema:
 
     def test_required_fields(self):
         with pytest.raises(Exception):
-            PrioritizedOpportunity(rank=1)
+            PrioritizedOpportunity.model_validate({"rank": 1})
 
 
 # ---------------------------------------------------------------------------

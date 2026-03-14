@@ -108,7 +108,7 @@ def test_crew_memory_uses_context_isolated_storage(monkeypatch, tmp_path):
     knowledge.crew_memory(VisionContext.PROJECT, "prd")
     knowledge.crew_memory(VisionContext.SELF, "prd")
 
-    assert captured[0]["storage"].endswith("/.crewai/memory/project/prd")
+    assert captured[0]["storage"].endswith("/.crewai/memory/project/default/prd")
     assert captured[1]["storage"].endswith("/.crewai/memory/self/prd")
 
 

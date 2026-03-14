@@ -13,7 +13,7 @@ from typing import Any, Callable, Literal, Type, cast
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from dialectic.vision import resolve_project_root
+from dialectic.target import resolve_active_project_root
 
 StackName = Literal["python", "dotnet", "typescript", "react"]
 ValidationProfile = Literal["task", "story"]
@@ -93,7 +93,7 @@ class StackValidationTool(BaseTool):
         del args
         mode = str(kwargs.get("mode", "guide"))
         target = str(kwargs.get("target", "auto"))
-        project_root = resolve_project_root()
+        project_root = resolve_active_project_root()
         target_stack = None if target == "auto" else target
         if mode == "run":
             report = run_validation_plan(project_root, target_stack=target_stack)

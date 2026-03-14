@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from dialectic.vision import VisionContext
 from execution.plan_loader import find_latest_plan, load_plan as load_plan_file
 from schemas import ImplementationTask, UserStoryExecutionPlan
 
@@ -26,6 +28,8 @@ STATUS_ICONS = {
 
 
 def find_latest_plan_path() -> Path:
+    if PRD_OUTPUT_DIR == "prd_output":
+        return find_latest_plan(resolve_prd_output_dir(VisionContext.PROJECT))
     return find_latest_plan(PRD_OUTPUT_DIR)
 
 

@@ -277,6 +277,7 @@ def run_self_improve(
     project_root = resolve_project_root()
     store = get_metrics_store()
     is_resume = resume_cycle_id is not None
+    resume_summary: dict[str, str | list[str]] = {}
     if is_resume:
         assert resume_cycle_id is not None
         record = _load_self_improve_record(project_root, resume_cycle_id)

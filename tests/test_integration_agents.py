@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 """Integration tests: agent creation and basic LLM execution (requires API keys)."""
 
 import os
@@ -78,15 +80,17 @@ def test_single_agent_simple_task(tmp_path, monkeypatch):
 
 @pytest.mark.llm
 @pytest.mark.timeout(180)
-def test_agent_with_tool_usage():
+def test_agent_with_tool_usage(monkeypatch):
     """Run create_implementer with a file reading task."""
-    from dialectic.agents import create_implementer
+    import dialectic.agents as agents
 
     tmp_dir = tempfile.mkdtemp(prefix="agent_tool_test_")
     test_file = os.path.join(tmp_dir, "data.txt")
     Path(test_file).write_text("The answer is 42.", encoding="utf-8")
 
-    agent = create_implementer()
+    monkeypatch.setitem(agents.MCP_BUNDLES, "research", [])
+
+    agent = agents.create_implementer()
     task = Task(
         description=(
             f"Read the file at {test_file} using your file reading tool. "

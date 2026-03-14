@@ -7,6 +7,7 @@ from pathlib import Path
 from crewai import Memory  # pylint: disable=no-name-in-module
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
+from dialectic.target import target_memory_namespace
 from dialectic.vision import (
     VisionContext,
     _VISION_PATHS,
@@ -33,7 +34,12 @@ def vision_path_label(vision_paths: dict[VisionContext, Path], context: VisionCo
 
 def _vision_path(context: VisionContext = VisionContext.PROJECT) -> str:
     """Return the active repo-relative vision path for prompt rendering."""
-    return vision_path_label(_VISION_PATHS, context)
+    app_root = resolve_project_root()
+    vision_path = get_vision_path(context)
+    try:
+        return vision_path.relative_to(app_root).as_posix()
+    except ValueError:
+        return vision_path.as_posix()
 
 
 def vision_knowledge_source(
@@ -74,6 +80,8 @@ def crew_memory_store(
 ) -> Memory:
     """Return a Memory instance isolated by vision context and crew namespace."""
     safe_namespace = namespace.strip("/") or "shared"
+    if context is VisionContext.PROJECT:
+        safe_namespace = target_memory_namespace(safe_namespace)
     storage_dir = (
         resolve_project_root_fn()
         / ".crewai"

@@ -22,7 +22,9 @@ from pathlib import Path
 from typing import Literal
 
 from dialectic.app_logging import log_context
+from dialectic.output_paths import resolve_exec_output_dir, resolve_prd_output_dir
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from dialectic.target import resolve_execution_root, temporary_working_directory
 from dialectic.vision import VisionContext, get_vision_hash
 from schemas import (
     ExecutionCheckpoint,
@@ -83,7 +85,7 @@ def run_dialectic_execution(
     The active vision document is loaded via TextFileKnowledgeSource on each
     Crew according to the provided VisionContext, not injected as raw text.
     """
-    out_dir = Path(output_dir or EXEC_OUTPUT_DIR)
+    out_dir = Path(output_dir) if output_dir else resolve_exec_output_dir(vision_context)
     resumed_from_run_id = resume_run_id or None
 
     if resume_run_id:
@@ -105,7 +107,12 @@ def run_dialectic_execution(
         checkpoint = None
         path = plan_path
         if path is None or path == "--latest":
-            path = str(find_latest_plan(PRD_OUTPUT_DIR))
+            latest_dir = (
+                resolve_prd_output_dir(vision_context)
+                if PRD_OUTPUT_DIR == "prd_output"
+                else Path(PRD_OUTPUT_DIR)
+            )
+            path = str(find_latest_plan(latest_dir))
 
     if path is None:
         raise FileNotFoundError("Execution plan path could not be resolved")
@@ -204,8 +211,7 @@ def run_dialectic_execution(
                     logger.warning("Failed to update status for skipped %s: %s", task.id, exc)
                 continue
 
-            task_output_dir = run_dir / f"{task.id}_output"
-            task_output_dir.mkdir(exist_ok=True)
+            task_output_dir = resolve_execution_root()
             logger.info("Executing task")
             print(f"\n>>> Executing task {task.id} — {task.title}")
 
@@ -223,20 +229,21 @@ def run_dialectic_execution(
                 _save_checkpoint(run_dir, checkpoint)
 
                 with log_context(flow_id=flow_id):
-                    flow_result = flow.kickoff(
-                        inputs={
-                            "id": flow_id,
-                            "task_id": task.id,
-                            "task_title": task.title,
-                            "task_description": task.description,
-                            "context_str": context_str,
-                            "output_dir": str(task_output_dir),
-                            "acceptance_checks": task.acceptance_checks,
-                            "min_score": DEFAULT_MIN_SCORE,
-                            "max_retries": max_retries_per_task,
-                            "vision_context": vision_context.value,
-                        }
-                    )
+                    with temporary_working_directory(resolve_execution_root()):
+                        flow_result = flow.kickoff(
+                            inputs={
+                                "id": flow_id,
+                                "task_id": task.id,
+                                "task_title": task.title,
+                                "task_description": task.description,
+                                "context_str": context_str,
+                                "output_dir": str(task_output_dir),
+                                "acceptance_checks": task.acceptance_checks,
+                                "min_score": DEFAULT_MIN_SCORE,
+                                "max_retries": max_retries_per_task,
+                                "vision_context": vision_context.value,
+                            }
+                        )
 
                 if isinstance(flow_result, TaskExecutionResult):
                     result = flow_result

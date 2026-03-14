@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 """
 Isolated test: LLM + Tool Calling via CrewAI.
 

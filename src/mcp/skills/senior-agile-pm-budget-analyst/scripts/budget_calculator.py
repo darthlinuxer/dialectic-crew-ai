@@ -9,8 +9,8 @@ team composition, and standard cost accounting practices. Includes
 overhead, fixed costs, contingency reserves, and scenario analysis.
 """
 
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 import json
 import logging
@@ -565,7 +565,7 @@ if __name__ == "__main__":
 
     # Print summary
     summary = result['summary']
-    print(f"\n📊 Budget Summary:")
+    print("\n📊 Budget Summary:")
     print(f"   Total Budget: {summary['currency']} {summary['total_budget']:,.2f}")
     print(f"   Base Cost: {summary['currency']} {summary['base_cost']:,.2f}")
     print(f"   Overhead ({summary['overhead_percentage']:.0f}%): {summary['currency']} {summary['overhead_cost']:,.2f}")
@@ -574,7 +574,7 @@ if __name__ == "__main__":
 
     # Print metrics
     metrics = result['metrics']
-    print(f"\n📈 Key Metrics:")
+    print("\n📈 Key Metrics:")
     print(f"   Cost per Story Point: {summary['currency']} {metrics['cost_per_point']:,.2f}")
     print(f"   Cost per Sprint: {summary['currency']} {metrics['cost_per_sprint']:,.2f}")
     print(f"   Total Story Points: {metrics['total_story_points']}")
@@ -583,24 +583,24 @@ if __name__ == "__main__":
 
     # Print timeline
     timeline = result['timeline']
-    print(f"\n📅 Timeline:")
+    print("\n📅 Timeline:")
     print(f"   Duration: {timeline['total_sprints']} sprints = {timeline['total_weeks']} weeks = {timeline['total_months']} months")
 
     # Print team breakdown
-    print(f"\n👥 Team Cost Breakdown:")
+    print("\n👥 Team Cost Breakdown:")
     for role, data in result['breakdown']['base_cost']['by_role'].items():
         print(f"   {role} (x{data['count']}): {summary['currency']} {data['cost']:,.2f} "
               f"[{data['hours']:,.0f}h @ {summary['currency']} {data['hourly_rate']}/h]")
 
     # Print scenarios
-    print(f"\n🎯 Scenario Analysis:")
+    print("\n🎯 Scenario Analysis:")
     for scenario_name, scenario in result['scenarios'].items():
         variance = f"+{scenario['variance_percent']}" if scenario['variance_percent'] > 0 else f"{scenario['variance_percent']}"
         print(f"   {scenario_name.capitalize()} ({variance}%): {summary['currency']} {scenario['total_budget']:,.2f}")
         print(f"      {scenario['description']}")
 
     # Print first 3 sprints
-    print(f"\n🏃 Sprint Budget Allocation (first 3 sprints):")
+    print("\n🏃 Sprint Budget Allocation (first 3 sprints):")
     for sprint_data in result['by_sprint'][:3]:
         print(f"   Sprint {sprint_data['sprint']}: {sprint_data['story_points']} points → {summary['currency']} {sprint_data['budget']:,.2f}")
 

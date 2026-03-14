@@ -17,6 +17,7 @@ import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from dialectic.metrics import MetricsStore, get_metrics_store
 from dialectic.vision import VisionContext, get_vision_path, resolve_project_root
@@ -50,7 +51,7 @@ def _vision_gap_lens(
         return []
 
     for idx, item in enumerate(incomplete_items):
-        impact = "high" if idx < 3 else "medium"
+        impact: Literal["high", "medium"] = "high" if idx < 3 else "medium"
         opportunities.append(
             ImprovementOpportunity(
                 id=f"vision-gap-{idx+1}",
@@ -188,7 +189,7 @@ def _code_health_lens(project_root: Path) -> list[ImprovementOpportunity]:
             cwd=str(project_root),
         )
         if result.returncode == 0:
-            lines = [l for l in result.stdout.strip().splitlines() if l.strip()]
+            lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
             test_count_line = lines[-1] if lines else ""
             match = re.search(r"(\d+)\s+test", test_count_line)
             test_count = int(match.group(1)) if match else 0

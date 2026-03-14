@@ -8,7 +8,7 @@ Implements the Critical Path Method algorithm to identify the longest sequence
 of dependent activities, calculate slack times, and optimize project schedules.
 """
 
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List
 from dataclasses import dataclass, field
 import json
 import logging

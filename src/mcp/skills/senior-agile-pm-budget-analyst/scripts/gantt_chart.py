@@ -13,7 +13,7 @@ License: MIT
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from enum import Enum
 import logging
@@ -709,7 +709,7 @@ def main():
     chart_data = generator.generate()
 
     timeline = chart_data["timeline"]
-    print(f"\nProject Timeline:")
+    print("\nProject Timeline:")
     print(f"  Start Date: {timeline['project_start']}")
     print(f"  End Date: {timeline['project_end']}")
     print(f"  Total Duration: {timeline['total_duration_days']} days "
@@ -773,7 +773,7 @@ def main():
         print(f"  Story Points: {sprint_data['story_points']}")
         print(f"  Completed Points: {sprint_data['completed_points']}")
         print(f"  Completion Rate: {sprint_data['completion_rate']:.1f}%")
-        print(f"\n  Tasks:")
+        print("\n  Tasks:")
         for task in sprint_data['tasks']:
             status_icon = "✓" if task['status'] == 'completed' else "•"
             print(f"    {status_icon} {task['id']}: {task['name']} "

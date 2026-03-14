@@ -2,15 +2,16 @@
 Execution of the approved plan: consume UserStoryExecutionPlan and generate artifacts (spec/outline).
 """
 
-import json
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Union
 
+from dialectic.output_paths import resolve_exec_output_dir, resolve_prd_output_dir
 from schemas import UserStoryExecutionPlan
 
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
+from dialectic.vision import VisionContext
 from execution.plan_loader import find_latest_plan, load_plan
 
 EXEC_OUTPUT_DIR = "exec_output"
@@ -18,6 +19,8 @@ EXEC_OUTPUT_DIR = "exec_output"
 
 def _find_latest_plan() -> Path:
     """Find the most recent execution plan in prd_output/ (exec_*.json)."""
+    if PRD_OUTPUT_DIR == "prd_output":
+        return find_latest_plan(resolve_prd_output_dir(VisionContext.PROJECT))
     return find_latest_plan(PRD_OUTPUT_DIR)
 
 
@@ -76,7 +79,7 @@ def run_execution(
     Returns:
         dict with output_path (generated .md file), plan_id, success.
     """
-    out_dir = output_dir or EXEC_OUTPUT_DIR
+    out_dir = output_dir or str(resolve_exec_output_dir(VisionContext.PROJECT))
     os.makedirs(out_dir, exist_ok=True)
 
     if plan is not None:

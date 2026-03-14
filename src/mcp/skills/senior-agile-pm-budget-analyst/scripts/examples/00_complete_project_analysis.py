@@ -22,10 +22,8 @@ from critical_path import CriticalPathAnalyzer
 from budget_calculator import BudgetCalculator, BudgetConfig, TeamMember
 from poker_planning import PokerPlanningCalculator, PokerConfig, Story, EstimationScale
 from gantt_chart import GanttChartGenerator, GanttConfig, Task, TaskType, TaskStatus
-from burndown_chart import BurndownCalculator, BurndownConfig, ChartType
 from exporters import (
-    MarkdownExporter, MermaidExporter, PlantUMLExporter,
-    HTMLExporter, CSVExporter, JSONExporter, save_to_file
+    MarkdownExporter, MermaidExporter, HTMLExporter, JSONExporter, save_to_file
 )
 from datetime import datetime, timedelta
 
@@ -206,7 +204,6 @@ class ProjectAnalysisReport:
 
             # Scenario table
             scenarios = budget['scenarios']
-            budget_summary = budget['summary']
             scenario_headers = ["Scenario", "Budget"]
             scenario_rows = [
                 ["Optimistic", f"${scenarios['optimistic']:,.2f}"],

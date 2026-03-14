@@ -200,7 +200,7 @@ class MermaidExporter:
         """
         lines = ["gantt"]
         lines.append(f"    title {title}")
-        lines.append(f"    dateFormat YYYY-MM-DD")
+        lines.append("    dateFormat YYYY-MM-DD")
 
         for section in sections:
             lines.append(f"    section {section['name']}")
@@ -257,7 +257,6 @@ class MermaidExporter:
         lines.append(f'    x-axis [{x_axis_labels}]')
 
         for dataset in datasets:
-            label = dataset['label']
             data = dataset['data']
             lines.append(f'    line [{", ".join(str(v) for v in data)}]')
 
@@ -287,9 +286,6 @@ class PlantUMLExporter:
         for activity in activities:
             act_id = activity['id']
             name = activity['name']
-            is_critical = activity.get('critical', False)
-
-            color = "#FF6B6B" if is_critical else "#4ECDC4"
             lines.append(f":{name};")
             lines.append(f"note right: {act_id}")
 
