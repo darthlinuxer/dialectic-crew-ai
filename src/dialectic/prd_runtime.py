@@ -39,6 +39,7 @@ def build_prd_crew(
     vision_context: VisionContext,
     retry_feedback_block: str,
     retry_feedback_sources: list[Any],
+    memory_namespace: str | None = None,
 ) -> Crew:
     """Build the PRD dialectic crew for a single feature objective."""
 
@@ -63,7 +64,10 @@ def build_prd_crew(
         tasks=tasks,
         process=Process.sequential,
         verbose=True,
-        memory=crew_memory(vision_context, _prd_memory_namespace(feature_objective)),
+        memory=crew_memory(
+            vision_context,
+            memory_namespace or _prd_memory_namespace(feature_objective),
+        ),
         planning=False,
         knowledge_sources=knowledge_sources,
     )

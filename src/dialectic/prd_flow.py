@@ -153,6 +153,7 @@ class DialecticFlow(Flow[DialecticState]):
                 vision_context=vision_context,
                 retry_feedback_block=retry_feedback_block,
                 retry_feedback_sources=retry_feedback_sources,
+                memory_namespace=f"prd/{self.flow_id}",
             )
 
             kickoff_kwargs: dict[str, Any] = {
