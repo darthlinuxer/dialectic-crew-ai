@@ -18,8 +18,11 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
+from typing import Callable, TypeVar
 
 from dialectic.hooks import HookScope
 from dialectic.introspect import run_introspection
@@ -75,7 +78,10 @@ PROTECTED_PATHS = frozenset({
 MIN_METRIC_RETENTION = float(os.getenv("MIN_METRIC_RETENTION", "0.95"))
 DEFAULT_SELF_IMPROVE_TEST_TIMEOUT = 1800
 DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE = 8.5
+DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES = 2
+DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS = 2.0
 SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
+_StageResultT = TypeVar("_StageResultT")
 
 
 def _configure_crewai_runtime() -> None:
@@ -109,6 +115,7 @@ def _self_improve_prd_min_score() -> float:
     raw_value = os.getenv("SELF_IMPROVE_MIN_PRD_SCORE")
     if raw_value in {None, ""}:
         return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
+    assert raw_value is not None
     try:
         score = float(raw_value)
     except ValueError:
@@ -126,6 +133,145 @@ def _self_improve_prd_min_score() -> float:
         )
         return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
     return score
+
+
+def _self_improve_llm_stage_retries() -> int:
+    """Return how many extra attempts self-improve should make on transient LLM failures."""
+    raw_value = os.getenv("SELF_IMPROVE_LLM_STAGE_RETRIES")
+    if raw_value in {None, ""}:
+        return DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES
+    assert raw_value is not None
+    try:
+        retries = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SELF_IMPROVE_LLM_STAGE_RETRIES=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES,
+        )
+        return DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES
+    if retries < 0:
+        logger.warning(
+            "Negative SELF_IMPROVE_LLM_STAGE_RETRIES=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES,
+        )
+        return DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES
+    return retries
+
+
+def _self_improve_llm_retry_backoff_seconds() -> float:
+    """Return the base backoff between transient LLM retry attempts."""
+    raw_value = os.getenv("SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS")
+    if raw_value in {None, ""}:
+        return DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS
+    assert raw_value is not None
+    try:
+        seconds = float(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS,
+        )
+        return DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS
+    if seconds < 0:
+        logger.warning(
+            "Negative SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS,
+        )
+        return DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS
+    return seconds
+
+
+def _is_transient_llm_error(exc: Exception) -> bool:
+    """Return True when the exception looks like a transient provider/network failure."""
+    message = str(exc).lower()
+    transient_markers = (
+        "request timed out",
+        "timed out",
+        "timeout",
+        "failed to connect to openai api",
+        "connection error",
+        "api connection error",
+        "temporarily unavailable",
+        "service unavailable",
+        "rate limit",
+        "too many requests",
+        "server disconnected",
+    )
+    return any(marker in message for marker in transient_markers)
+
+
+def _run_with_transient_llm_retries(
+    stage_name: str,
+    operation: Callable[[], _StageResultT],
+) -> _StageResultT:
+    """Retry a self-improve stage when transient LLM/provider failures occur."""
+    max_attempts = _self_improve_llm_stage_retries() + 1
+    backoff_seconds = _self_improve_llm_retry_backoff_seconds()
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return operation()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            if not _is_transient_llm_error(exc) or attempt >= max_attempts:
+                raise
+
+            wait_seconds = backoff_seconds * attempt
+            logger.warning(
+                "Transient LLM failure during %s (attempt %s/%s): %s",
+                stage_name,
+                attempt,
+                max_attempts,
+                exc,
+            )
+            print(
+                f"  Transient LLM failure during {stage_name} "
+                f"(attempt {attempt}/{max_attempts}): {exc}"
+            )
+            print(f"  Retrying {stage_name} in {wait_seconds:.1f}s...")
+            if wait_seconds > 0:
+                time.sleep(wait_seconds)
+
+    raise RuntimeError(f"Retry loop exited unexpectedly for {stage_name}")
+
+
+def _kickoff_prd_flow(
+    flow,
+    *,
+    flow_id: str,
+    feature_request: str,
+) -> None:
+    flow.kickoff(
+        inputs={
+            "id": flow_id,
+            "feature_objective": feature_request,
+            "vision_context": VisionContext.SELF.value,
+        }
+    )
+
+
+def _run_planning_stage(run_user_story_planning_fn, *, prd_path: str) -> dict:
+    return run_user_story_planning_fn(
+        prd_path=prd_path,
+        user_story_ref=None,
+        vision_context=VisionContext.SELF,
+    )
+
+
+def _run_execution_stage(
+    run_dialectic_execution_fn,
+    *,
+    plan_path: str,
+    resume_run_id: str | None,
+) -> dict:
+    return run_dialectic_execution_fn(
+        plan_path=plan_path,
+        vision_context=VisionContext.SELF,
+        resume_run_id=resume_run_id,
+    )
 
 
 def _snapshot_tests(project_root: Path, timeout: int | None = None) -> dict:
@@ -513,12 +659,15 @@ def run_self_improve(
                     flow = DialecticFlow(persistence=_get_persistence())
                     record.prd_flow_id = record.prd_flow_id or flow.flow_id
                     _save_self_improve_record(project_root, record)
-                    flow.kickoff(
-                        inputs={
-                            "id": record.prd_flow_id,
-                            "feature_objective": feature_request,
-                            "vision_context": VisionContext.SELF.value,
-                        }
+
+                    _run_with_transient_llm_retries(
+                        "PRD generation",
+                        partial(
+                            _kickoff_prd_flow,
+                            flow,
+                            flow_id=record.prd_flow_id,
+                            feature_request=feature_request,
+                        ),
                     )
                     prd_path = _record_prd_artifacts(record, flow)
                     _save_self_improve_record(project_root, record)
@@ -562,10 +711,9 @@ def run_self_improve(
                         run_user_story_planning,
                     )
 
-                    plan_result = run_user_story_planning(
-                        prd_path=prd_path,
-                        user_story_ref=None,
-                        vision_context=VisionContext.SELF,
+                    plan_result = _run_with_transient_llm_retries(
+                        "planning",
+                        partial(_run_planning_stage, run_user_story_planning, prd_path=prd_path),
                     )
                     plan_path = _record_plan_artifacts(record, plan_result)
                     _save_self_improve_record(project_root, record)
@@ -604,10 +752,14 @@ def run_self_improve(
                         run_dialectic_execution,
                     )
 
-                    exec_result = run_dialectic_execution(
-                        plan_path=plan_path,
-                        vision_context=VisionContext.SELF,
-                        resume_run_id=record.execution_run_id or None,
+                    exec_result = _run_with_transient_llm_retries(
+                        "execution",
+                        partial(
+                            _run_execution_stage,
+                            run_dialectic_execution,
+                            plan_path=plan_path,
+                            resume_run_id=record.execution_run_id or None,
+                        ),
                     )
                     _record_execution_artifacts(record, exec_result)
                     record.execution_attempted = True

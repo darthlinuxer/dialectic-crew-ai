@@ -16,9 +16,12 @@ from src.main.pr_builder import create_pr
 from src.main.self_improve import (
     PROTECTED_PATHS,
     _create_pr,
+    _is_transient_llm_error,
     _list_resumable_cycles,
     _metrics_stable,
     _pytest_command,
+    _run_with_transient_llm_retries,
+    _self_improve_llm_stage_retries,
     _self_improve_test_timeout,
     _snapshot_tests,
     _summarize_resume_state,
@@ -102,6 +105,11 @@ class TestSnapshotTests:
 
         assert _self_improve_test_timeout() == 1800
 
+    def test_invalid_llm_stage_retry_budget_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("SELF_IMPROVE_LLM_STAGE_RETRIES", "not-a-number")
+
+        assert _self_improve_llm_stage_retries() == 2
+
     def test_prefers_uv_when_available(self, monkeypatch):
         monkeypatch.setattr(
             "main.self_improve.shutil.which",
@@ -172,6 +180,82 @@ class TestSnapshotTests:
 
 
 class TestRunSelfImprove:
+    def test_retries_transient_llm_timeout_during_prd_generation(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Retry transient provider failures\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr("main.self_improve.time.sleep", lambda seconds: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 8.5
+        mock_flow.state.consensus_reached = False
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_retry.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "prd_output" / "PRD_retry.md")
+
+        attempts = {"count": 0}
+
+        def fake_kickoff(*, inputs):
+            del inputs
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise RuntimeError("Failed to connect to OpenAI API: Request timed out.")
+            return None
+
+        mock_flow.kickoff.side_effect = fake_kickoff
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_retry.json"),
+            "plan_path_md": str(tmp_path / "prd_output" / "exec_retry.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-retry-prd",
+            "task_flow_ids": {"T-001": "task-flow-retry-prd"},
+            "output_path": str(tmp_path / "exec_output" / "run-retry-prd"),
+            "report_path": str(tmp_path / "exec_output" / "run-retry-prd" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(max_improvements=1)
+
+        assert attempts["count"] == 2
+        assert record.prd_generated is True
+        assert record.plan_generated is True
+        assert "Request timed out" not in record.failure_reason
+
     def test_dry_run_no_changes(self, tmp_path, monkeypatch, store):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True)
@@ -838,6 +922,28 @@ class TestResumableCycles:
         assert [row["cycle_id"] for row in rows] == ["cycle-new", "cycle-old"]
         assert rows[0]["next_stage"] == "execution"
         assert rows[1]["next_stage"] == "planning"
+
+
+class TestTransientLlmRetries:
+    def test_detects_transient_timeout_messages(self):
+        assert _is_transient_llm_error(RuntimeError("Failed to connect to OpenAI API: Request timed out."))
+        assert _is_transient_llm_error(RuntimeError("Rate limit exceeded"))
+        assert not _is_transient_llm_error(RuntimeError("Invalid API key"))
+
+    def test_retries_only_transient_failures(self, monkeypatch):
+        monkeypatch.setenv("SELF_IMPROVE_LLM_STAGE_RETRIES", "2")
+        monkeypatch.setenv("SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS", "0")
+
+        attempts = {"count": 0}
+
+        def flaky_operation():
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                raise RuntimeError("Failed to connect to OpenAI API: Request timed out.")
+            return "ok"
+
+        assert _run_with_transient_llm_retries("planning", flaky_operation) == "ok"
+        assert attempts["count"] == 3
 
 
 class TestSelfImprovementRecord:
