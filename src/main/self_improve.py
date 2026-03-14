@@ -74,6 +74,7 @@ PROTECTED_PATHS = frozenset({
 
 MIN_METRIC_RETENTION = float(os.getenv("MIN_METRIC_RETENTION", "0.95"))
 DEFAULT_SELF_IMPROVE_TEST_TIMEOUT = 1800
+DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE = 8.5
 SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
 
 
@@ -101,6 +102,30 @@ def _self_improve_test_timeout() -> int:
         default_timeout=DEFAULT_SELF_IMPROVE_TEST_TIMEOUT,
         logger=logger,
     )
+
+
+def _self_improve_prd_min_score() -> float:
+    """Return the minimum PRD score that allows self-improve to continue."""
+    raw_value = os.getenv("SELF_IMPROVE_MIN_PRD_SCORE")
+    if raw_value in {None, ""}:
+        return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
+    try:
+        score = float(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SELF_IMPROVE_MIN_PRD_SCORE=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE,
+        )
+        return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
+    if not 0.0 <= score <= 10.0:
+        logger.warning(
+            "Out-of-range SELF_IMPROVE_MIN_PRD_SCORE=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE,
+        )
+        return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
+    return score
 
 
 def _snapshot_tests(project_root: Path, timeout: int | None = None) -> dict:
@@ -498,11 +523,19 @@ def run_self_improve(
                     prd_path = _record_prd_artifacts(record, flow)
                     _save_self_improve_record(project_root, record)
 
-                    if flow.state.quality_score < 9.0 and not flow.state.consensus_reached:
+                    prd_min_score = _self_improve_prd_min_score()
+                    if (
+                        flow.state.quality_score < prd_min_score
+                        and not flow.state.consensus_reached
+                    ):
                         record.failure_reason = (
                             f"PRD quality too low: {flow.state.quality_score}"
                         )
-                        print(f"  PRD did not reach threshold: {flow.state.quality_score}/10")
+                        print(
+                            "  PRD did not reach threshold: "
+                            f"{flow.state.quality_score}/10 "
+                            f"(required {prd_min_score}/10)"
+                        )
                         raise _CycleAbort(record.failure_reason)
                     prd_path = _require_artifact(
                         prd_path,
