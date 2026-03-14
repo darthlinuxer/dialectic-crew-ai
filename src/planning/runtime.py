@@ -21,6 +21,14 @@ _AGENTS_CONFIG_PATH = Path(__file__).with_name("config") / "agents.yaml"
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks.yaml"
 
 
+def _disable_interactive_agent_io(agent: Any) -> Any:
+    """Keep planning agents focused on context + knowledge, not ad-hoc tool calls."""
+    for attr in ("tools", "mcps", "mcp_servers"):
+        if hasattr(agent, attr):
+            setattr(agent, attr, [])
+    return agent
+
+
 def build_planning_crew(
     *,
     feature_context: str,
@@ -44,10 +52,18 @@ def build_planning_crew(
         "retry_feedback_block": retry_feedback_block,
     }
 
-    vis = _build_agent(agent_templates["planning_visionary"], placeholders)
-    crit = _build_agent(agent_templates["planning_critic"], placeholders)
-    sint = _build_agent(agent_templates["planning_synthesizer"], placeholders)
-    val = _build_agent(agent_templates["planning_validator"], placeholders)
+    vis = _disable_interactive_agent_io(
+        _build_agent(agent_templates["planning_visionary"], placeholders)
+    )
+    crit = _disable_interactive_agent_io(
+        _build_agent(agent_templates["planning_critic"], placeholders)
+    )
+    sint = _disable_interactive_agent_io(
+        _build_agent(agent_templates["planning_synthesizer"], placeholders)
+    )
+    val = _disable_interactive_agent_io(
+        _build_agent(agent_templates["planning_validator"], placeholders)
+    )
     agents = {
         "planning_visionary": vis,
         "planning_critic": crit,

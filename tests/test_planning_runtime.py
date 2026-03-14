@@ -143,6 +143,55 @@ def test_build_planning_crew_appends_retry_feedback_sources(monkeypatch):
     assert captured_crew["knowledge_sources"] == ["vision-source", "feedback-source"]
 
 
+def test_build_planning_crew_strips_interactive_tools_from_agents(monkeypatch):
+    from planning import runtime
+
+    captured_crew = {}
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeCrew:
+        def __init__(self, **kwargs):
+            captured_crew.update(kwargs)
+
+    class FakeAgent:
+        def __init__(self, label):
+            self.label = label
+            self.tools = [f"tool:{label}"]
+            self.mcps = [f"mcp:{label}"]
+            self.mcp_servers = [f"server:{label}"]
+
+    monkeypatch.setattr(runtime, "Task", FakeTask)
+    monkeypatch.setattr(runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(
+        runtime,
+        "_build_agent",
+        lambda template, placeholders: FakeAgent(template["role"]),
+    )
+    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision-source")
+
+    prd = make_prd()
+    us = prd.user_stories[0]
+
+    runtime.build_planning_crew(
+        feature_context="feature",
+        us=us,
+        us_context="story",
+        vision_context=VisionContext.SELF,
+        min_plan_score=7.5,
+        retry_feedback_block="",
+        retry_feedback_sources=None,
+    )
+
+    for agent in captured_crew["agents"]:
+        assert agent.tools == []
+        assert agent.mcps == []
+        assert agent.mcp_servers == []
+
+
 def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
     from planning import runtime
 
