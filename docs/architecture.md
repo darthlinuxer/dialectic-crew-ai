@@ -20,14 +20,24 @@ graph TB
         YAMLCFG[yaml_config.py]
         PRDFLOW[prd_flow.py]
         PRDRT[prd_runtime.py]
+        PRDGUARD[prd_guardrails.py]
+        PRDOUT[prd_output.py]
         EXPORT[export.py]
+        EXPVAL[export_validation.py]
         STATE[state.py]
         HOOKS[hooks.py]
         METRICS[metrics.py]
+        TOKTRK[token_tracker.py]
         INTRO[introspect.py]
         PRIOR[prioritize.py]
         PRIORRT[prioritize_runtime.py]
         VISION[vision.py]
+        KNOW[knowledge.py]
+        DEPGRAPH[dependency_graph.py]
+        STACKVAL[stack_validation.py]
+        APPLOG[app_logging.py]
+        CREWLOG[crewai_event_logger.py]
+        CREWRT[crewai_runtime.py]
     end
 
     subgraph Planning[src/planning]
@@ -42,6 +52,15 @@ graph TB
         VERIFY[verify.py]
         VRT[verify_runtime.py]
         RUNNER[runner.py]
+        GUARD[task_guardrails.py]
+        REIMPL[task_reimplement_runtime.py]
+        TASKVFY[task_verify_runtime.py]
+        TOPO[topological_sort.py]
+        VALGATE[validation_gate.py]
+        CHECK[checkpoint.py]
+        CTXB[context_builder.py]
+        PLANLD[plan_loader.py]
+        STATUS[task_status.py]
     end
 
     subgraph MCP[src/mcp]
@@ -67,27 +86,92 @@ graph TB
 
     PRDFLOW --> AGENTS
     PRDFLOW --> PRDRT
+    PRDFLOW --> PRDGUARD
+    PRDFLOW --> PRDOUT
+    PRDFLOW --> DEPGRAPH
+    PRDFLOW --> STACKVAL
     PFLOW --> AGENTS
     PFLOW --> PRT
     TFLOW --> AGENTS
     TFLOW --> TRT
+    TFLOW --> GUARD
+    TFLOW --> REIMPL
+    TFLOW --> TASKVFY
+    TFLOW --> TOPO
+    TFLOW --> VALGATE
     VERIFY --> VRT
+    ORCH --> CTXB
+    ORCH --> PLANLD
+    ORCH --> CHECK
+    ORCH --> STATUS
+
     AGENTS --> SKMCP
     SKMCP --> SKIDX
     SKIDX --> SKILLS
 
     PRDFLOW --> EXPORT
+    PRDFLOW --> EXPVAL
     PRDFLOW --> STATE
     PRDFLOW --> METRICS
+    PRDFLOW --> TOKTRK
     TFLOW --> METRICS
+    TFLOW --> TOKTRK
     INTRO --> METRICS
     SELF --> HOOKS
+    HOOKS --> APPLOG
 
     PRDFLOW --> SCHEMAS
     PFLOW --> SCHEMAS
     TFLOW --> SCHEMAS
     ORCH --> SCHEMAS
     INTRO --> SCHEMAS
+```
+
+## Data flow architecture
+
+```mermaid
+flowchart LR
+    subgraph Input
+        V[Vision.md]
+        P[PRD]
+    end
+
+    subgraph PRD_Generation[PRD Flow]
+        PRDF[prd_flow.py]
+        PRDR[prd_runtime.py]
+        PRDG[prd_guardrails.py]
+        PRDO[prd_output.py]
+    end
+
+    subgraph Planning[Planning Flow]
+        PLF[flow.py]
+        PLR[runtime.py]
+    end
+
+    subgraph Execution[Execution Flow]
+        DEX[dialectic_execution.py]
+        TFL[task_flow.py]
+        VFY[verify.py]
+        RUN[runner.py]
+    end
+
+    subgraph Storage
+        FLOWDB[.dialectic/flows.db]
+        METDB[.dialectic/metrics.db]
+        PRD_OUT[prd_output/]
+        EXEC_OUT[exec_output/]
+    end
+
+    V --> PRDF
+    PRDF --> PRDR --> PRDG --> PRDO --> PRD_OUT
+    PRD_OUT --> PLF
+    PLF --> PLR --> PRD_OUT
+    PRD_OUT --> DEX
+    DEX --> TFL --> VFY --> RUN --> EXEC_OUT
+    PRDF -.-> FLOWDB
+    TFL -.-> FLOWDB
+    PRDF -.-> METDB
+    TFL -.-> METDB
 ```
 
 ## Module responsibilities
@@ -100,17 +184,32 @@ graph TB
 | `yaml_config.py` | Shared YAML config loader, placeholder rendering, and symbolic schema/guardrail resolution |
 | `prd_flow.py` | PRD dialectic flow with retry, export, hooks, and persistence |
 | `prd_runtime.py` | YAML-backed PRD crew builder used by `prd_flow.py` |
+| `prd_guardrails.py` | Pydantic guardrails for PRD output validation |
+| `prd_output.py` | PRD artifact writing (JSON/Markdown) |
 | `flow_persistence.py` | Shared CrewAI flow persistence backend selection (`.dialectic/flows.db` by default) |
 | `state.py` | Flow state for PRD generation |
 | `export.py` | JSON/Markdown export helpers |
+| `export_validation.py` | Validation of exported artifacts |
 | `config.py` | Export configuration loader |
 | `hooks.py` | HookScope, token budgets, protected-path enforcement, cost tracking |
 | `metrics.py` | SQLite-backed metrics store, defaulting to `.dialectic/metrics.db` |
+| `token_tracker.py` | Token counting and cost estimation |
 | `introspect.py` | Four-lens introspection engine |
 | `prioritize.py` | Dialectic prioritization for improvement opportunities, plus graceful-degradation fallback |
 | `prioritize_runtime.py` | YAML-backed prioritization crew builder kept separate from fallback orchestration |
 | `vision.py` | Vision context resolution and project-root helpers |
+| `knowledge.py` | Knowledge source management and loading |
 | `tools.py` | Shared CrewAI tool setup |
+| `tool_bundles.py` | Tool bundle definitions for different agent roles |
+| `dependency_graph.py` | Task dependency graph analysis and validation |
+| `stack_validation.py` | Stack-aware validation checks for project consistency |
+| `app_logging.py` | Centralized rotating logging system |
+| `crewai_event_logger.py` | CrewAI event logging and telemetry |
+| `crewai_runtime.py` | CrewAI runtime helpers and utilities |
+| `llm.py` | LLM client utilities |
+| `markdown_renderers.py` | Markdown rendering helpers |
+| `mcp_config.py` | MCP configuration handling |
+| `prd_exporter.py` | PRD export formatting |
 | `config/*.yaml` | Shared declarative agent/task templates for core dialectic crews |
 
 ### `src/planning/`
@@ -130,10 +229,17 @@ graph TB
 | `task_flow.py` | Per-task dialectic → verify → reimplement pipeline |
 | `runtime.py` | YAML-backed task dialectic crew builder |
 | `verify.py` | Shared task/story verification and status persistence |
-| `task_reimplement_runtime.py` | YAML-backed independent reimplementation task builder used inside `task_flow.py` |
-| `task_verify_runtime.py` | YAML-backed independent verifier task builder used inside `task_flow.py` |
 | `verify_runtime.py` | YAML-backed standalone verification crew builder with read-only validator override |
+| `task_verify_runtime.py` | YAML-backed independent verifier task builder used inside `task_flow.py` |
+| `task_reimplement_runtime.py` | YAML-backed independent reimplementation task builder used inside `task_flow.py` |
+| `task_guardrails.py` | Guardrails specific to task execution |
 | `runner.py` | Static spec generation (`--spec-only`) |
+| `topological_sort.py` | Topological sorting for task dependencies |
+| `validation_gate.py` | Validation gates for execution checkpoints |
+| `checkpoint.py` | Checkpoint management for interrupted runs |
+| `context_builder.py` | Context building for dependent tasks |
+| `plan_loader.py` | Plan loading and validation |
+| `status.py` | Task and story status management |
 | `config/*.yaml` | Declarative execution and verification task templates |
 
 The architecture now distinguishes two SQLite stores under `.dialectic/` by default:
@@ -149,11 +255,34 @@ The architecture now distinguishes two SQLite stores under `.dialectic/` by defa
 | `skills_mcp.py` | FastMCP server exposing skill listing, fetch, search, and resources |
 | `skills/` | Project-local skill library |
 
+### `src/main/`
+
+| File | Responsibility |
+|---|---|
+| `cli.py` | Main CLI entry point with all command definitions |
+| `cli_commands.py` | Helper functions for CLI commands |
+| `self_improve.py` | Self-improvement orchestration workflow |
+| `self_improve_persistence.py` | Persistence for self-improvement cycles |
+| `pr_builder.py` | PR creation helpers |
+| `git_helpers.py` | Git operation helpers |
+| `test_runner.py` | Test execution helpers |
+
 ## Key design choices
 
 ### 1. Dual vision contexts
 
 The system does not hardcode a single vision file.
+
+```mermaid
+flowchart TD
+    A[Command] --> B{--self flag?}
+    B -->|yes| C[VisionContext.SELF]
+    B -->|no| D[VisionContext.PROJECT]
+    C --> E[internal/SELF_VISION.md]
+    D --> F[knowledge/VISION.md]
+    E --> G[Attached as Knowledge Source]
+    F --> G
+```
 
 - `VisionContext.PROJECT` → `knowledge/VISION.md`
 - `VisionContext.SELF` → `internal/SELF_VISION.md`
@@ -172,6 +301,18 @@ Prioritization intentionally remains on this runtime-builder pattern rather than
 
 Task execution is intentionally skeptical:
 
+```mermaid
+flowchart TD
+    A[dialectic run] --> B[implementation]
+    B --> C[independent verifier]
+    C --> D{verified?}
+    D -->|yes| E[task completed]
+    D -->|no| F[fresh reimplementer]
+    F --> G{reimplementation passed?}
+    G -->|yes| E
+    G -->|no| H[task failed]
+```
+
 1. dialectic run produces an implementation
 2. independent verifier checks actual files
 3. fresh reimplementer tries to repair failed checks
@@ -182,6 +323,15 @@ In other words, the codebase has trust issues, and honestly, good for it.
 ### 4. Hook-scoped safety
 
 `HookScope` wraps expensive or risky flows to enforce:
+
+```mermaid
+flowchart LR
+    A[HookScope] --> B[Token Budget]
+    A --> C[Iteration Cap]
+    A --> D[Protected Paths]
+    A --> E[Cost Tracking]
+    A --> F[Metric Emission]
+```
 
 - token budgets
 - iteration caps
@@ -198,6 +348,16 @@ Runtime metrics are stored in `.dialectic/metrics.db` by default, not in a track
 
 External MCP servers are loaded only when prerequisites are present. Missing Docker or missing API keys should reduce capability, not crash the entire run.
 
+```mermaid
+flowchart TD
+    A[MCP Server Request] --> B{API Key?}
+    B -->|no| C[Skip - graceful]
+    B -->|yes| D{Docker?}
+    D -->|no| C
+    D -->|yes| E[Load MCP]
+    E --> F[Wire to Agent]
+```
+
 The local `skills_mcp` server is treated differently: it is a project capability and is wired directly into four core agents.
 
 ### 7. YAML-backed crews, Python-owned orchestration
@@ -209,6 +369,38 @@ The repository now follows a clearer split:
 - Flow classes and orchestrators remain in Python, along with persistence, retries, result extraction, and safety logic
 
 That keeps core orchestration explicit while making prompt-heavy modules much leaner.
+
+### 8. Stack-aware validation
+
+The `stack_validation.py` module provides project-consistency checks:
+
+```mermaid
+flowchart TD
+    A[Stack Validation] --> B[Dependency Graph]
+    A --> C[Import Analysis]
+    A --> D[Config Consistency]
+    A --> E[Guardrail Matching]
+    B --> F[ValidationReport]
+    C --> F
+    D --> F
+    E --> F
+```
+
+### 9. Application logging
+
+Centralized logging system with rotating files:
+
+```mermaid
+flowchart LR
+    A[app_logging.py] --> B[Text Log]
+    A --> C[JSON Log]
+    A --> D[Error Log]
+    A --> E[Stderr]
+    
+    B --> F[.dialectic/app.log]
+    C --> G[.dialectic/app.jsonl]
+    D --> H[.dialectic/error.log]
+```
 
 ## Self-improve architecture
 
@@ -224,7 +416,9 @@ flowchart TD
     F --> G[Execute plan]
     G --> H[Run tests]
     H --> I[Check metric retention]
-    I --> J[Create PR if gh is available]
+    I --> J{gh available?}
+    J -->|yes| K[Create PR]
+    J -->|no| L[Leave branch for manual review]
 ```
 
 Important current behavior:
@@ -237,6 +431,33 @@ Important current behavior:
 - resumes from the next unfinished stage using persisted PRD flow IDs, plan artifacts, and execution checkpoints
 - prints a short resume summary describing the last failure, next stage, and reused artifacts/checkpoints
 - creates a PR only when `gh` is available; otherwise it keeps the branch for manual review
+
+### Self-improve vs --self
+
+```mermaid
+flowchart TD
+    A[Command] --> B{Type?}
+    B -->|self-improve| C[Full orchestration]
+    B -->|prd --self| D[PRD only]
+    B -->|plan --self| E[Plan only]
+    B -->|execute --self| F[Execute only]
+    
+    C --> G[Branch creation]
+    C --> H[Introspection]
+    C --> I[Safety gates]
+    C --> J[Token budget]
+    C --> K[Artifact persistence]
+    C --> L[Resume capability]
+    
+    D --> M[Uses SELF_VISION.md]
+    E --> M
+    F --> M
+```
+
+| Command | What it does |
+|---------|-------------|
+| `self-improve --max 1` | Full guarded orchestration: introspects → PRD → plan → execute in one cycle, with safety gates, branch creation, token budget, and artifact management |
+| `prd --self` / `plan --self` / `execute --self` | Just changes the vision context from `knowledge/VISION.md` → `internal/SELF_VISION.md` for that single command |
 
 ## Technology stack
 

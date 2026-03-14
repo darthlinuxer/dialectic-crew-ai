@@ -151,6 +151,30 @@ By default the skills server runs over **stdio**. It can also serve streamable H
 
 Optional CrewAI tools degrade gracefully when their dependencies are unavailable.
 
+## Logging and event tracking
+
+### Application logging
+
+**Source:** `src/dialectic/app_logging.py`
+
+Centralized rotating logging system that can be enabled via environment variables:
+
+- Rotating file handlers for text and JSON logs
+- Separate error log channel
+- Optional stderr output
+- Configurable via `DIALECTIC_LOG_*` environment variables
+
+### CrewAI event logging
+
+**Source:** `src/dialectic/crewai_event_logger.py`
+
+Captures CrewAI agent events for debugging and analysis:
+
+- Agent thought processes
+- Tool usage tracking
+- Task completion events
+- Can be enabled via `CREWAI_LOG_AGENT_OUTPUT` environment variable
+
 ## Dynamically created execution agents
 
 Beyond the five core factories, execution still uses two short-lived execution-only agents, now wired through narrow runtime helpers rather than large inline task strings:

@@ -86,6 +86,28 @@ Skills are indexed from:
 - `~/.agents/skills`
 - `~/.cursor/skills-cursor`
 
+## Application logging
+
+Dialectic Crew AI includes a centralized rotating logging system implemented in `src/dialectic/app_logging.py`:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DIALECTIC_LOG_ENABLED` | `false` | Enable centralized rotating logs |
+| `DIALECTIC_LOG_LEVEL` | `INFO` | Root log level (DEBUG, INFO, WARNING, ERROR) |
+| `DIALECTIC_LOG_DIR` | `.dialectic` | Base directory for log files |
+| `DIALECTIC_TEXT_LOG` | `.dialectic/app.log` | Path to human-readable log |
+| `DIALECTIC_JSON_LOG` | `.dialectic/app.jsonl` | Path to JSON-structured log |
+| `DIALECTIC_ERROR_LOG` | `.dialectic/error.log` | Path to error-only log |
+| `DIALECTIC_LOG_TO_STDERR` | `false` | Also emit logs to stderr/console |
+| `DIALECTIC_LOG_MAX_BYTES` | `5000000` | Max size per log file before rotation |
+| `DIALECTIC_LOG_BACKUP_COUNT` | `5` | Number of rotated log files to keep |
+
+### CrewAI event logging
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CREWAI_LOG_AGENT_OUTPUT` | - | Enable CrewAI agent output logging (via `crewai_event_logger.py`) |
+
 ## Vision contexts
 
 The active vision is selected by runtime context, not by an environment variable:

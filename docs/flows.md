@@ -158,3 +158,133 @@ The flows are instrumented rather than silent:
 - `metrics.py` captures passive PRD/task/guardrail events
 - `hooks.py` tracks tokens, estimated cost, and protected-path writes
 - `self-improve` uses hook scopes to keep its own blast radius in check
+
+## Additional execution components
+
+### Topological sorting
+
+**Source:** `src/execution/topological_sort.py`
+
+Tasks with dependencies are sorted to ensure correct execution order:
+
+```mermaid
+flowchart TD
+    A[Raw task list] --> B[Build dependency graph]
+    B --> C[Topological sort]
+    C --> D[Sorted execution order]
+    
+    E[T0] --> F[T2]
+    E --> G[T3]
+    F --> H[T4]
+    G --> H
+```
+
+### Validation gates
+
+**Source:** `src/execution/validation_gate.py`
+
+Validation gates enforce checkpoints before proceeding to the next phase:
+
+```mermaid
+flowchart TD
+    A[Phase 1] --> B[Validation Gate]
+    B --> C{Passed?}
+    C -->|yes| D[Phase 2]
+    C -->|no| E[Abort / Retry]
+    D --> F[Validation Gate]
+    F --> G{ Passed? }
+    G -->|yes| H[Phase 3]
+    G -->|no| I[Abort / Retry]
+```
+
+### Checkpoint system
+
+**Source:** `src/execution/checkpoint.py`
+
+Interrupted runs can be resumed without redoing completed tasks:
+
+- Checkpoints stored in `exec_output/<run_id>/checkpoint.json`
+- Contains task status, execution state, and artifact references
+- Resume via `execute --resume-run <run-id>`
+
+### Context building for dependent tasks
+
+**Source:** `src/execution/context_builder.py`
+
+When tasks have dependencies, completed task outputs are fed into dependent tasks:
+
+```mermaid
+flowchart LR
+    A[T0 completed] --> B[Extract outputs]
+    B --> C[Build context]
+    C --> D[T1 input]
+    D --> E[T1 executes with T0 context]
+```
+
+## Stack validation
+
+**Source:** `src/dialectic/stack_validation.py`
+
+Stack-aware validation checks project consistency:
+
+```mermaid
+flowchart TD
+    A[Stack Validation Request] --> B[Dependency Graph Analysis]
+    A --> C[Import Analysis]
+    A --> D[Config Consistency Check]
+    A --> E[Guardrail Matching]
+    
+    B --> F[ValidationReport]
+    C --> F
+    D --> F
+    E --> F
+    
+    F --> G{Issues found?}
+    G -->|yes| H[Report issues]
+    G -->|no| I[Validation passed]
+```
+
+## Logging system
+
+**Source:** `src/dialectic/app_logging.py` and `src/dialectic/crewai_event_logger.py`
+
+Centralized logging with multiple output sinks:
+
+```mermaid
+flowchart LR
+    subgraph Input
+        A[Application logs]
+        B[CrewAI events]
+        C[Errors]
+    end
+    
+    subgraph Processing
+        D[RotatingFileHandler]
+        E[JSON Formatter]
+        F[Error Filter]
+    end
+    
+    subgraph Output
+        G[.dialectic/app.log]
+        H[.dialectic/app.jsonl]
+        I[.dialectic/error.log]
+        J[stderr (optional)]
+    end
+    
+    A --> D
+    B --> E
+    C --> F
+    
+    D --> G
+    D --> J
+    E --> H
+    F --> I
+    F --> J
+```
+
+Features:
+- Rotating log files with size limits
+- JSON-structured logging for machine parsing
+- Separate error log
+- Optional stderr output
+- CrewAI event capture for debugging agent behavior
