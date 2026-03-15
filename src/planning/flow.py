@@ -16,6 +16,7 @@ from typing import Any, Tuple
 
 from pydantic import BaseModel, ValidationError
 
+from dialectic.crewai_runtime import run_crew_kickoff
 from dialectic.dependency_graph import format_dependency_errors, validate_task_dependencies
 from dialectic.export import execution_plan_to_markdown
 from dialectic.output_paths import resolve_prd_output_dir
@@ -266,7 +267,7 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
         )
 
         with temporary_working_directory(resolve_active_project_root()):
-            result = build_planning_crew(
+            crew = build_planning_crew(
                 feature_context=feature_context,
                 us=us,
                 us_context=us_context,
@@ -274,7 +275,8 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
                 min_plan_score=MIN_PLAN_SCORE,
                 retry_feedback_block=retry_feedback_block,
                 retry_feedback_sources=retry_feedback_sources,
-            ).kickoff()
+            )
+            result = run_crew_kickoff(crew)
         plan_valid = _extract_plan(result, us)
 
         if plan_valid is None:

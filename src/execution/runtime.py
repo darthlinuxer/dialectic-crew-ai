@@ -18,6 +18,7 @@ from dialectic.knowledge import (
     style_guide_knowledge,
     vision_knowledge,
 )
+from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.llm import llm_planning
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
@@ -111,7 +112,8 @@ def build_task_dialectic_crew(
         agents=[impl, crit, sint, val],
         tasks=tasks,
         process=Process.sequential,
-        verbose=True,
+        verbose=is_verbose(),
+        output_log_file=get_output_log_file(),
         memory=crew_memory(vision_context, "task_dialectic"),
         planning=True,
         planning_llm=llm_planning,

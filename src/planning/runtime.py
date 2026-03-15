@@ -6,6 +6,7 @@ from typing import Any, Mapping
 from crewai import Crew, Process, Task
 
 from dialectic.agents import build_agent_from_config
+from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.llm import llm_planning
 from dialectic.yaml_config import (
@@ -96,7 +97,8 @@ def build_planning_crew(
         agents=[vis, crit, sint, val],
         tasks=tasks,
         process=Process.sequential,
-        verbose=True,
+        verbose=is_verbose(),
+        output_log_file=get_output_log_file(),
         memory=crew_memory(vision_context, "planning"),
         planning=True,
         planning_llm=llm_planning,

@@ -29,6 +29,7 @@ from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from pydantic import BaseModel, Field
 
 from dialectic.app_logging import log_context
+from dialectic.crewai_runtime import run_crew_kickoff
 from dialectic.flow_persistence import build_sqlite_flow_persistence
 from dialectic.hooks import HookScope
 from dialectic.metrics import emit as emit_metric
@@ -137,7 +138,7 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
             vision_context=VisionContext(self.state.vision_context),
         )
         try:
-            result = crew.kickoff()
+            result = run_crew_kickoff(crew)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Independent verifier raised an exception: %s", exc)
             fallback = _run_local_verification_fallback(checks_to_verify)
@@ -264,7 +265,7 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                     ),
                     label=f"task/{self.state.task_id}",
                 ):
-                    result = crew.kickoff()
+                    result = run_crew_kickoff(crew)
 
                 validation: ValidationOutput | None = None
                 tasks_out = getattr(result, "tasks_output", None) or []
@@ -398,7 +399,7 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                 vision_context=vision_context,
             )
 
-            result = crew.kickoff()
+            result = run_crew_kickoff(crew)
 
             validation: ValidationOutput | None = None
             tasks_out = getattr(result, "tasks_output", None) or []

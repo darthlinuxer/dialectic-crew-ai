@@ -6,6 +6,7 @@ from typing import Any
 from crewai import Crew, Task
 
 from dialectic.agents import create_validador_macro
+from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.knowledge import crew_memory, vision_knowledge
 from dialectic.tools import file_read_tool, stack_validation_tool
 from dialectic.vision import VisionContext
@@ -42,7 +43,8 @@ def build_verification_crew(
     return Crew(
         agents=[verify_agent],
         tasks=[verify_task],
-        verbose=True,
+        verbose=is_verbose(),
+        output_log_file=get_output_log_file(),
         memory=crew_memory(vision_context, "verify"),
         knowledge_sources=[vision_knowledge(vision_context)],
     )

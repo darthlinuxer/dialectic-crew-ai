@@ -5,6 +5,7 @@ from typing import Any, Mapping
 
 from crewai import Agent, Crew, Process, Task
 
+from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.knowledge import _vision_label, vision_knowledge
 from dialectic.llm import llm_simple
 from dialectic.vision import VisionContext
@@ -58,7 +59,8 @@ def build_prioritization_crew(*, opp_text: str, opp_ids_str: str, vision_context
         agents=[analyst, critic, ranker],
         tasks=tasks,
         process=Process.sequential,
-        verbose=False,
+        verbose=is_verbose(),
+        output_log_file=get_output_log_file(),
         knowledge_sources=[vision_knowledge(vision_context)],
     )
 

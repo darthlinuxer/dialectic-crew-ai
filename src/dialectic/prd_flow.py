@@ -24,6 +24,7 @@ from pydantic import ValidationError
 
 from dialectic.app_logging import bind_log_context, log_context
 from dialectic.config import get_export_config
+from dialectic.crewai_runtime import run_crew_kickoff
 from dialectic.export import PRDExporter, prd_to_markdown
 from dialectic.flow_persistence import build_sqlite_flow_persistence
 from dialectic.hooks import HookScope
@@ -178,7 +179,7 @@ class DialecticFlow(Flow[DialecticState]):
                 label=f"prd/{feature_label}",
             ):
                 with temporary_working_directory(resolve_active_project_root()):
-                    resultado = crew.kickoff(**kickoff_kwargs)
+                    resultado = run_crew_kickoff(crew, **kickoff_kwargs)
 
         # Extract PRD using the same helper used by the guardrail so the flow
         # stores the exact validated representation rather than reparsing a

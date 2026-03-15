@@ -23,6 +23,7 @@ from typing import Any, Tuple
 
 from pydantic import BaseModel, ValidationError
 
+from dialectic.crewai_runtime import run_crew_kickoff
 from dialectic.prioritize_runtime import build_prioritization_crew
 from dialectic.vision import VisionContext
 from schemas import (
@@ -114,7 +115,7 @@ def dialectic_prioritize(
             opp_ids_str=opp_ids_str,
             vision_context=vision_context,
         )
-        result = crew.kickoff()
+        result = run_crew_kickoff(crew)
     except Exception:
         logger.warning(
             "Dialectic prioritization crew failed; falling back to impact sort",

@@ -10,6 +10,7 @@ All hooks emit metrics to the MetricsStore for persistent telemetry.
 
 Usage::
 
+    from dialectic.crewai_runtime import run_crew_kickoff
     from dialectic.hooks import HookScope
 
     with HookScope(
@@ -18,7 +19,7 @@ Usage::
         protected_paths=frozenset({"internal/SELF_VISION.md"}),
         label="self-improve/20260309",
     ) as tracker:
-        crew.kickoff()
+        run_crew_kickoff(crew)
         print(tracker.total_tokens, tracker.estimated_cost)
 """
 

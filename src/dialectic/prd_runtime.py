@@ -14,6 +14,7 @@ from dialectic.agents import (
     create_validador_macro,
     create_visionario,
 )
+from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
@@ -63,7 +64,8 @@ def build_prd_crew(
         ],
         tasks=tasks,
         process=Process.sequential,
-        verbose=True,
+        verbose=is_verbose(),
+        output_log_file=get_output_log_file(),
         memory=crew_memory(
             vision_context,
             memory_namespace or _prd_memory_namespace(feature_objective),

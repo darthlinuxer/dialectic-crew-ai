@@ -5,14 +5,24 @@ non-interactive CLI contexts. CrewAI's first-run tracing prompt can spawn an
 input thread after successful executions, which is undesirable in automated or
 captured runs. This helper applies safe defaults while preserving explicit user
 opt-in to tracing via environment variables.
+
+When verbose logs are routed to a file (CREWAI_OUTPUT_LOG_FILE), run_crew_kickoff
+runs the crew and then prints an LLM-generated 4-5 line summary to the console
+instead of the full verbose stream.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import sys
 from collections.abc import Callable
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from typing import Any
+
+from dialectic.crew_log_summarizer import summarize_crew_log
+from dialectic.crew_verbose_config import get_output_log_file
 
 logger = logging.getLogger(__name__)
 
@@ -78,3 +88,23 @@ def configure_crewai_runtime() -> None:
         mark_first_execution_done(user_consented=tracing_enabled)
     except Exception as exc:  # pragma: no cover - defensive runtime fallback
         logger.debug("Failed to suppress CrewAI tracing prompt: %s", exc)
+
+
+def run_crew_kickoff(crew: Any, **kickoff_kwargs: Any) -> Any:
+    """
+    Run crew.kickoff() and optionally print an LLM summary of verbose logs.
+
+    When CREWAI_VERBOSE is true and CREWAI_OUTPUT_LOG_FILE is set, verbose
+    output is written to that file. During kickoff we redirect stdout/stderr
+    so the console is not flooded; after kickoff we print a 4-5 line LLM
+    summary of the log. When no log file is configured, kickoff runs normally
+    (verbose output goes to console if CREWAI_VERBOSE is true).
+    """
+    log_path = get_output_log_file()
+    if log_path:
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            result = crew.kickoff(**kickoff_kwargs)
+        summary = summarize_crew_log(log_path)
+        print(summary, file=sys.stderr, flush=True)
+        return result
+    return crew.kickoff(**kickoff_kwargs)

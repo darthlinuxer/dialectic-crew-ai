@@ -6,6 +6,7 @@ from typing import Any
 from crewai import Agent, Crew, Process, Task
 
 from dialectic.agents import create_validador_macro
+from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.llm import llm_complex
 from dialectic.tools import directory_read_tool, file_read_tool, file_write_tool, stack_validation_tool
@@ -65,7 +66,8 @@ def build_task_flow_reimplementation_crew(
         agents=[reimpl_agent, reval_agent],
         tasks=[task_fix, task_revalidate],
         process=Process.sequential,
-        verbose=True,
+        verbose=is_verbose(),
+        output_log_file=get_output_log_file(),
         memory=crew_memory(vision_context, "task_reimplement"),
         knowledge_sources=[vision_knowledge(vision_context)],
     )
@@ -87,7 +89,7 @@ def _build_agent() -> Agent:
             "tests, exports, or implementation details, and fix the real source of failure. "
             "Use the stack-aware validation tool before you conclude the fix is done."
         ),
-        verbose=True,
+        verbose=is_verbose(),
         allow_delegation=False,
         reasoning=True,
         max_reasoning_attempts=2,

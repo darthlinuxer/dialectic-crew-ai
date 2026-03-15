@@ -17,6 +17,7 @@ from schemas import (
     ImplementationTask,
 )
 
+from dialectic.crewai_runtime import run_crew_kickoff
 from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
 from dialectic.target import resolve_active_project_root, temporary_working_directory
@@ -132,7 +133,7 @@ def _run_verification(
         vision_context=ctx,
     )
     with temporary_working_directory(resolve_active_project_root()):
-        result = crew.kickoff()
+        result = run_crew_kickoff(crew)
 
     validation: ValidationOutput | None = None
     pydantic_result = getattr(result, "pydantic", None)

@@ -24,6 +24,7 @@ def test_build_task_dialectic_crew_uses_yaml_templates(monkeypatch):
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
     monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}")
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+    monkeypatch.setattr(runtime, "style_guide_knowledge", lambda: [])
 
     runtime.build_task_dialectic_crew(
         task_id="T-001",

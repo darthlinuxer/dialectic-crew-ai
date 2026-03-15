@@ -5,6 +5,7 @@ from typing import Any
 
 from crewai import Agent, Crew, Task
 
+from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.knowledge import crew_memory, vision_knowledge
 from dialectic.llm import llm_simple
 from dialectic.tools import directory_read_tool, file_read_tool, stack_validation_tool
@@ -46,7 +47,8 @@ def build_task_flow_verification_crew(
     return Crew(
         agents=[verify_agent],
         tasks=[verify_task],
-        verbose=True,
+        verbose=is_verbose(),
+        output_log_file=get_output_log_file(),
         memory=crew_memory(vision_context, "task_verify"),
         knowledge_sources=[vision_knowledge(vision_context)],
     )
@@ -70,7 +72,7 @@ def _build_agent() -> Agent:
             "imports, references, and related supporting files either line up or they do not. "
             "Use the stack-aware validation tool when it helps confirm language-specific checks."
         ),
-        verbose=True,
+        verbose=is_verbose(),
         allow_delegation=False,
         reasoning=True,
         max_reasoning_attempts=2,
