@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from pathlib import Path
+from typing import Any, Callable
 
+from dialectic.crew_verbose_config import get_output_log_file
 from dialectic.llm import llm_simple
 
 logger = logging.getLogger(__name__)
@@ -18,6 +21,25 @@ Log excerpt:
 {excerpt}
 ---
 Reply with only the 4-5 line summary, nothing else."""
+
+
+def get_step_summarizer_callback() -> Callable[[Any], None] | None:
+    """
+    Return a callback for CrewAI step_callback that prints a log summary after each step.
+
+    When CREWAI_VERBOSE is true and CREWAI_OUTPUT_LOG_FILE is set, returns a callable
+    that CrewAI invokes after each agent step; it reads the current log file and prints
+    a 4-5 line LLM summary to stderr. Returns None when no log file is configured.
+    """
+    log_path = get_output_log_file()
+    if not log_path:
+        return None
+
+    def _on_step(_step_output: Any) -> None:
+        summary = summarize_crew_log(log_path)
+        print(summary, file=sys.stderr, flush=True)
+
+    return _on_step
 
 
 def summarize_crew_log(log_path: str | Path) -> str:

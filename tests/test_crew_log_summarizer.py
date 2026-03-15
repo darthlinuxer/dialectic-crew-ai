@@ -5,7 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from dialectic.crew_log_summarizer import summarize_crew_log
+from dialectic.crew_log_summarizer import get_step_summarizer_callback, summarize_crew_log
+
+
+def test_get_step_summarizer_callback_returns_none_when_no_log_file(monkeypatch):
+    monkeypatch.setenv("CREWAI_VERBOSE", "false")
+    assert get_step_summarizer_callback() is None
+
+
+def test_get_step_summarizer_callback_returns_callable_when_log_file_set(monkeypatch, tmp_path):
+    monkeypatch.setenv("CREWAI_VERBOSE", "true")
+    monkeypatch.setenv("CREWAI_OUTPUT_LOG_FILE", str(tmp_path / "crew.log"))
+    cb = get_step_summarizer_callback()
+    assert cb is not None
+    assert callable(cb)
 
 
 def test_summarize_crew_log_file_missing():

@@ -5,6 +5,7 @@ from typing import Any
 
 from crewai import Agent, Crew, Task
 
+from dialectic.crew_log_summarizer import get_step_summarizer_callback
 from dialectic.crew_verbose_config import get_output_log_file, is_verbose
 from dialectic.knowledge import crew_memory, vision_knowledge
 from dialectic.llm import llm_simple
@@ -49,6 +50,7 @@ def build_task_flow_verification_crew(
         tasks=[verify_task],
         verbose=is_verbose(),
         output_log_file=get_output_log_file(),
+        step_callback=get_step_summarizer_callback(),
         memory=crew_memory(vision_context, "task_verify"),
         knowledge_sources=[vision_knowledge(vision_context)],
     )
