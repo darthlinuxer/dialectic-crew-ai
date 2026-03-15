@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -86,6 +87,7 @@ DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE = 8.5
 DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES = 2
 DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS = 2.0
 SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
+SELF_IMPROVE_ROADMAP_PATH = Path("internal") / "ROADMAP.md"
 _StageResultT = TypeVar("_StageResultT")
 
 
@@ -433,6 +435,49 @@ def _require_artifact(path: str, failure_reason: str) -> str:
     return require_artifact(path, failure_reason, error_cls=_CycleAbort)
 
 
+def _mark_roadmap_items_completed(
+    project_root: Path,
+    opportunities: list[ImprovementOpportunity],
+) -> list[str]:
+    """Mark successfully completed self-improve roadmap items as done."""
+    roadmap_path = project_root / SELF_IMPROVE_ROADMAP_PATH
+    if not roadmap_path.exists():
+        return []
+
+    targets = {
+        (opportunity.description or opportunity.title).strip()
+        for opportunity in opportunities
+        if (opportunity.description or opportunity.title).strip()
+    }
+    if not targets:
+        return []
+
+    updated_labels: list[str] = []
+    lines = roadmap_path.read_text(encoding="utf-8").splitlines()
+    updated_lines: list[str] = []
+    pattern = re.compile(r"^(?P<prefix>\s*-\s*)\[ \](?P<suffix>\s+)(?P<label>.+?)\s*$")
+
+    for line in lines:
+        match = pattern.match(line)
+        if match is None:
+            updated_lines.append(line)
+            continue
+
+        label = match.group("label").strip()
+        if label in targets:
+            updated_lines.append(
+                f"{match.group('prefix')}[x]{match.group('suffix')}{label}"
+            )
+            updated_labels.append(label)
+            continue
+
+        updated_lines.append(line)
+
+    if updated_labels:
+        roadmap_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+    return updated_labels
+
+
 def run_self_improve(
     max_improvements: int = 1,
     dry_run: bool = False,
@@ -449,6 +494,11 @@ def run_self_improve(
     5. Validate (tests + metrics)
     6. Pass → PR, Fail → discard branch
     """
+    if max_improvements != 1:
+        raise ValueError(
+            "self-improve currently supports exactly one opportunity per cycle"
+        )
+
     _configure_crewai_runtime()
     project_root = resolve_project_root()
     store = get_metrics_store()
@@ -538,7 +588,7 @@ def run_self_improve(
         branch_name = record.branch_name or f"self-improve/{cycle_id}"
         print(f"[resume] Loaded {len(selected)} saved opportunities.")
     else:
-        print("[2/6] Running introspection against SELF_VISION.md...")
+        print("[2/6] Running introspection against SELF_VISION.md + ROADMAP.md...")
         report = run_introspection(store=store, vision_context=VisionContext.SELF)
         record.opportunities_found = len(report.opportunities)
         record.baseline_metrics = dict(report.baseline_metrics)
@@ -864,6 +914,12 @@ def run_self_improve(
         _persist_record(store, record)
         _save_self_improve_record(project_root, record)
         return record
+
+    completed_roadmap_items = _mark_roadmap_items_completed(project_root, selected)
+    if completed_roadmap_items:
+        print("  Updated roadmap items:")
+        for item in completed_roadmap_items:
+            print(f"    - {item}")
 
     commit_message = f"chore(self-improve): apply cycle {cycle_id}"
     committed, commit_reason = _git_commit_all(project_root, commit_message)

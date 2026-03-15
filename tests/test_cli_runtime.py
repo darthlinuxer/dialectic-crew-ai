@@ -428,18 +428,33 @@ class TestCliRequirementRouting:
         monkeypatch.setattr(
             cli.sys,
             "argv",
-            ["dialectic-crew", "self-improve", "--resume", "cycle-123", "--max", "2"],
+            ["dialectic-crew", "self-improve", "--resume", "cycle-123"],
         )
 
         cli.main()
 
         assert captured == {
             "dry_run": False,
-            "max_improvements": 2,
+            "max_improvements": 1,
             "stash_dirty": False,
             "resume_cycle_id": "cycle-123",
             "list_resumable": False,
         }
+
+    def test_self_improve_rejects_max_greater_than_one(self, monkeypatch, capsys):
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "self-improve", "--max", "2"],
+        )
+
+        with pytest.raises(SystemExit):
+            cli.main()
+
+        err = capsys.readouterr().err
+        assert "only supports --max 1" in err
 
     def test_self_improve_list_resumable_passes_flag_through(self, monkeypatch):
         captured = {}

@@ -147,11 +147,12 @@ Manual overrides (the execute command handles these automatically):
            python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 
         self-improve [--dry-run] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
-      Runs one self-improvement cycle: introspect against internal/SELF_VISION.md,
+    Runs one self-improvement cycle: introspect against internal/SELF_VISION.md
+    and internal/ROADMAP.md,
       generate PRD, plan, and execute improvements, then validate with tests
       and metrics. Creates a PR for human review if all gates pass.
       --dry-run   Print the introspection report without making changes.
-      --max N     Maximum number of improvements per cycle (default: 1).
+    --max N     Maximum number of improvements per cycle (currently only 1 is supported).
             --resume CYCLE_ID
                                         Continue a previously interrupted self-improve cycle using
                                         the saved snapshot in .dialectic/self_improve/<cycle-id>.json.
@@ -165,7 +166,7 @@ Manual overrides (the execute command handles these automatically):
       If a prior run was interrupted on a `self-improve/*` branch, stale
       self-improve-only worktree changes are discarded automatically.
       Ex.: python main.py self-improve --dry-run
-           python main.py self-improve --max 2
+           python main.py self-improve --max 1
            python main.py self-improve --resume 20260310T120000
          python main.py self-improve --list-resumable
 
@@ -640,7 +641,7 @@ def self_improve_command(
         1,
         "--max",
         min=1,
-        help="Maximum number of improvements per cycle.",
+        help="Maximum number of improvements per cycle (currently only 1 is supported).",
     ),
     stash_dirty: bool = typer.Option(
         False,
@@ -663,10 +664,16 @@ def self_improve_command(
 
     Examples:
       uv run dialectic-crew self-improve --dry-run
-      uv run dialectic-crew self-improve --max 2
+      uv run dialectic-crew self-improve --max 1
       uv run dialectic-crew self-improve --resume 20260310T120000
       uv run dialectic-crew self-improve --list-resumable
     """
+    if max_improvements != 1:
+        raise typer.BadParameter(
+            "self-improve currently only supports --max 1 while end-to-end reliability is being validated.",
+            param_hint="--max",
+        )
+
     args = ["self-improve"]
     if dry_run:
         args.append("--dry-run")
@@ -676,8 +683,6 @@ def self_improve_command(
         args.append("--list-resumable")
     if resume_cycle_id:
         args.extend(["--resume", resume_cycle_id])
-    if max_improvements != 1:
-        args.extend(["--max", str(max_improvements)])
 
     _run_guarded_command(
         "self-improve",

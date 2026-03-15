@@ -152,7 +152,7 @@ uv run dialectic-crew clear-self-improve 20260310T120000 --with-linked-exec
 `self-improve` targets `internal/SELF_VISION.md` and runs:
 
 1. baseline test snapshot
-2. introspection across vision gaps, metrics, code health, and failure patterns
+2. introspection across `internal/SELF_VISION.md`, `internal/ROADMAP.md`, metrics, code health, and failure patterns
 3. dialectic prioritization of opportunities
 4. PRD generation with `VisionContext.SELF`
 5. planning with explicit PRD artifact handoff
@@ -169,8 +169,15 @@ Safety rails currently enforced by code:
 - per-agent iteration cap via `SELF_IMPROVE_MAX_ITERATIONS`
 - pytest suite timeout via `SELF_IMPROVE_TEST_TIMEOUT`
 - metrics retention gate via `MIN_METRIC_RETENTION`
+- exactly one selected opportunity per cycle (`--max 1` only) while end-to-end reliability is being validated
 - `uv run pytest` when available, with Python fallback when `uv` is absent
 - baseline and post-run validation print captured pytest output when they fail
+
+Current product-phase note:
+
+- `self-improve` intentionally processes a single opportunity per cycle for now.
+- `internal/SELF_VISION.md` remains the anti-drift alignment source.
+- `internal/ROADMAP.md` is the actionable backlog source for self-improve discovery, and successful cycles mark the completed roadmap item automatically.
 
 ## MCP and skills integration
 

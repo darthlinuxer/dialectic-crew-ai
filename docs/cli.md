@@ -159,7 +159,7 @@ uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty] [--resu
 
 1. runs baseline tests
 2. checks git availability and requires a clean worktree for real runs
-3. introspects against `internal/SELF_VISION.md`
+3. introspects against `internal/SELF_VISION.md` for anti-drift alignment and `internal/ROADMAP.md` for actionable backlog items
 4. ranks opportunities through dialectic prioritization
 5. creates an isolated git branch
 6. generates a PRD, then a plan, then executes it
@@ -172,6 +172,8 @@ execution from scratch.
 
 Use `--list-resumable` to print the saved cycle IDs, timestamps, inferred next
 stage, and last failure reason before choosing one to resume.
+
+At the current product phase, `self-improve` supports only `--max 1`. Multi-opportunity batching is intentionally disabled until the full single-opportunity cycle is proven reliable end-to-end.
 
 ### Runtime requirements
 
@@ -193,12 +195,17 @@ stage, and last failure reason before choosing one to resume.
 | `SELF_IMPROVE_TOKEN_BUDGET` | `500000` | cycle-wide token budget |
 | `SELF_IMPROVE_MAX_ITERATIONS` | `25` | per-agent iteration cap |
 | `SELF_IMPROVE_TEST_TIMEOUT` | `1800` | timeout for the full pytest validation subprocess |
+| `SELF_IMPROVE_MIN_PRD_SCORE` | `8.5` | minimum PRD score for continuation without consensus |
+| `SELF_IMPROVE_LLM_STAGE_RETRIES` | `2` | retries for transient provider/network failures |
+| `SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS` | `2.0` | base backoff for transient LLM retries |
 | `MIN_METRIC_RETENTION` | `0.95` | post-run regression gate |
 | `CREWAI_DISABLE_TELEMETRY` | `true` during self-improve | suppress CrewAI telemetry exporter requests during the cycle |
 
 `--stash-dirty` stashes tracked and untracked changes from the current branch before self-improve continues. The stash is preserved in the stash stack so it can be reviewed or restored manually later.
 
 `--resume` is for continuing a previously interrupted self-improve cycle after PRD/plan/execution errors. It reuses persisted flow IDs and execution checkpoints; it does not start a brand-new cycle.
+
+When a self-improve cycle succeeds, the completed roadmap item is marked in `internal/ROADMAP.md` before the cycle commit is created.
 
 ## `clear-runtime`
 

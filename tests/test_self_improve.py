@@ -180,6 +180,10 @@ class TestSnapshotTests:
 
 
 class TestRunSelfImprove:
+    def test_rejects_more_than_one_opportunity(self):
+        with pytest.raises(ValueError, match="exactly one opportunity"):
+            run_self_improve(max_improvements=2)
+
     def test_retries_transient_llm_timeout_during_prd_generation(
         self,
         tmp_path,
@@ -528,8 +532,10 @@ class TestRunSelfImprove:
 
     def test_creates_commit_before_pr(self, tmp_path, monkeypatch, store):
         vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
         vision.parent.mkdir(parents=True, exist_ok=True)
-        vision.write_text("- [ ] Improve PR handoff\n")
+        vision.write_text("# Anti-drift only\n")
+        roadmap.write_text("- [ ] Improve PR handoff\n")
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
@@ -585,6 +591,73 @@ class TestRunSelfImprove:
         assert commit_calls
         assert commit_calls[0][0] == str(tmp_path)
         assert commit_calls[0][1].startswith("chore(self-improve): apply cycle ")
+
+    def test_marks_selected_roadmap_items_complete_after_success(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("# Anti-drift only\n")
+        roadmap.write_text(
+            "- [ ] Improve PR handoff\n"
+            "- [ ] Keep another item pending\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-no-commit-test",
+            "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
+            "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
+            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        run_self_improve(max_improvements=1)
+
+        roadmap_text = roadmap.read_text(encoding="utf-8")
+        assert "- [x] Improve PR handoff" in roadmap_text
+        assert "- [ ] Keep another item pending" in roadmap_text
 
     def test_skips_pr_when_no_commits_ahead(self, tmp_path, monkeypatch, store):
         vision = tmp_path / "internal" / "SELF_VISION.md"

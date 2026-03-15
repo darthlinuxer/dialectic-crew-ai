@@ -2,10 +2,11 @@
 Introspection engine -- 4-lens analysis of the app's current state.
 
 Lenses:
-  1. **VISION gap** -- parses SELF_VISION.md checkboxes to find incomplete items
-  2. **Metric trends** -- queries MetricsStore for declining scores / rising retries
-  3. **Code health** -- counts TODOs, test inventory via pytest --co -q
-  4. **Past failures** -- analyses guardrail rejection patterns and failed tasks
+    1. **Roadmap / vision gap** -- parses the self roadmap (or the active vision document)
+         to find incomplete items
+    2. **Metric trends** -- queries MetricsStore for declining scores / rising retries
+    3. **Code health** -- counts TODOs, test inventory via pytest --co -q
+    4. **Past failures** -- analyses guardrail rejection patterns and failed tasks
 
 Produces an IntrospectionReport with ranked ImprovementOpportunity items.
 """
@@ -26,6 +27,7 @@ from schemas import ImprovementOpportunity, IntrospectionReport
 logger = logging.getLogger(__name__)
 
 _IMPACT_ORDER = {"high": 0, "medium": 1, "low": 2}
+_SELF_ROADMAP_PATH = Path("internal") / "ROADMAP.md"
 
 
 def _vision_gap_lens(
@@ -65,6 +67,11 @@ def _vision_gap_lens(
             )
         )
     return opportunities
+
+
+def _resolve_self_improve_backlog_path(project_root: Path) -> Path:
+    """Return the checklist source for self-improve opportunity discovery."""
+    return project_root / _SELF_ROADMAP_PATH
 
 
 def _metric_trends_lens(
@@ -185,6 +192,7 @@ def _code_health_lens(project_root: Path) -> list[ImprovementOpportunity]:
             ["uv", "run", "pytest", "--co", "-q"],
             capture_output=True,
             text=True,
+            check=False,
             timeout=30,
             cwd=str(project_root),
         )
@@ -256,7 +264,14 @@ def run_introspection(
     project_root = resolve_project_root()
 
     opportunities: list[ImprovementOpportunity] = []
-    opportunities.extend(_vision_gap_lens(vision_path))
+    if vision_context == VisionContext.SELF:
+        backlog_path = _resolve_self_improve_backlog_path(project_root)
+        if backlog_path.exists():
+            opportunities.extend(_vision_gap_lens(backlog_path))
+        else:
+            opportunities.extend(_vision_gap_lens(vision_path))
+    else:
+        opportunities.extend(_vision_gap_lens(vision_path))
     opportunities.extend(_metric_trends_lens(store, window=metric_window))
     opportunities.extend(_code_health_lens(project_root))
     opportunities.extend(_failure_patterns_lens(store))

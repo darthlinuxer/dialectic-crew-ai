@@ -62,6 +62,31 @@ class TestVisionGapLens:
         assert results[0].estimated_impact == "high"
         assert results[3].estimated_impact == "medium"
 
+    def test_run_introspection_uses_roadmap_for_self_mode(self, tmp_path, store, monkeypatch):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        vision.parent.mkdir(parents=True)
+        vision.write_text("# Anti-drift only\nNo checkboxes live here anymore.\n")
+        roadmap.write_text(textwrap.dedent("""\
+            # Roadmap
+            - [x] Completed item
+            - [ ] Move introspection checklist source to ROADMAP
+        """))
+
+        monkeypatch.setattr(
+            "dialectic.introspect.get_vision_path", lambda ctx: vision
+        )
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+
+        report = run_introspection(store=store)
+
+        assert any(
+            "Move introspection checklist source to ROADMAP" in opportunity.title
+            for opportunity in report.opportunities
+        )
+
 
 class TestMetricTrendsLens:
     def test_low_prd_scores_detected(self, store):

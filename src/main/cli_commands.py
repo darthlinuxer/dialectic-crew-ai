@@ -172,6 +172,11 @@ def cmd_self_improve(
     resume_cycle_id: str | None = None,
     list_resumable: bool = False,
 ) -> None:
+    if max_improvements != 1:
+        raise ValueError(
+            "self-improve currently only supports max_improvements=1 while end-to-end reliability is being validated"
+        )
+
     _check_vision_exists(VisionContext.SELF)
     if list_resumable:
         rows = _list_resumable_cycles(resolve_project_root())
