@@ -19,6 +19,7 @@ Two vision documents anchor the system:
 | [CLI Reference](cli.md) | Command reference for `prd`, `plan`, `execute`, `status`, `verify-story`, `verify`, `mark`, and `self-improve` |
 | [Configuration](configuration.md) | Environment variables for models, exports, metrics, MCP, hooks, and self-improve |
 | [Export System](export.md) | JSON/Markdown export behavior, validation, and rollback semantics |
+| [Skills MCP](mcp_skills.md) | Skills MCP server integration with CrewAI (stdio and streamable HTTP) |
 
 ## What the codebase currently does
 
@@ -71,3 +72,5 @@ If you're deciding where to dive in:
 - use [`agents.md`](agents.md) for MCP and model wiring
 - use [`cli.md`](cli.md) when driving the tool from the terminal
 - use [`flows.md`](flows.md) for execution behavior and routing details
+
+The `docs/plans/` directory contains historical plan artifacts (e.g. pylint remediation, codebase cleanup).

@@ -5,15 +5,15 @@ from __future__ import annotations
 import os
 import sys
 
+from dialectic import run_dialectic_flow
 from dialectic.prd_flow import get_prd_resume_state
 from dialectic.vision import VisionContext, ensure_vision_path, resolve_project_root
 from execution.dialectic_execution import run_dialectic_execution
 from execution.runner import run_execution
 from execution.status import mark_task, show_status
 from execution.verify import verify_task, verify_user_story
-from .self_improve import _list_resumable_cycles, run_self_improve
 from planning.flow import run_user_story_planning
-from dialectic import run_dialectic_flow
+from .self_improve import _list_resumable_cycles, run_self_improve
 
 
 def _check_vision_exists(context: VisionContext = VisionContext.PROJECT) -> None:
@@ -166,15 +166,17 @@ def cmd_verify_story(plan_path: str | None, prd_path: str | None) -> None:
 
 
 def cmd_self_improve(
-    dry_run: bool = False,
+    simulate: bool = False,
     max_improvements: int = 1,
     stash_dirty: bool = False,
     resume_cycle_id: str | None = None,
     list_resumable: bool = False,
 ) -> None:
+    """Run or inspect the guarded self-improve workflow from the CLI."""
     if max_improvements != 1:
         raise ValueError(
-            "self-improve currently only supports max_improvements=1 while end-to-end reliability is being validated"
+            "self-improve currently only supports max_improvements=1 while "
+            "end-to-end reliability is being validated"
         )
 
     _check_vision_exists(VisionContext.SELF)
@@ -192,15 +194,15 @@ def cmd_self_improve(
         return
 
     record = run_self_improve(
-        max_improvements=max_improvements,
-        dry_run=dry_run,
-        stash_dirty=stash_dirty,
-        resume_cycle_id=resume_cycle_id,
+        max_improvements,
+        simulate,
+        stash_dirty,
+        resume_cycle_id,
     )
     if record.pr_created:
         print("\nSelf-improvement cycle completed successfully.")
-    elif record.failure_reason == "dry_run":
-        print("\nDry run complete. No changes made.")
+    elif record.failure_reason == "simulated":
+        print("\nSimulation complete. No branch or runtime artifacts were preserved.")
     elif record.failure_reason:
         print(f"\nSelf-improvement cycle ended: {record.failure_reason}")
 

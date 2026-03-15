@@ -152,7 +152,7 @@ Manual override for edge cases and human intervention.
 ## `self-improve`
 
 ```bash
-uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
+uv run dialectic-crew self-improve [--simulate] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
 ```
 
 ### What it does
@@ -161,9 +161,11 @@ uv run dialectic-crew self-improve [--dry-run] [--max N] [--stash-dirty] [--resu
 2. checks git availability and requires a clean worktree for real runs
 3. introspects against `internal/SELF_VISION.md` for anti-drift alignment and `internal/ROADMAP.md` for actionable backlog items
 4. ranks opportunities through dialectic prioritization
-5. creates an isolated git branch
+5. creates an isolated git branch, or a disposable `self-improve/simulate` branch when `--simulate` is used
 6. generates a PRD, then a plan, then executes it
 7. validates tests and metrics, then creates a PR if `gh` is installed
+
+When `--simulate` is provided, the command still runs the full self-improve pipeline (prioritization → PRD → plan → execute → validations), but it routes runtime artifacts and persistence into a temporary directory, skips roadmap/commit/PR side effects, and discards the disposable simulate branch before returning to your original branch.
 
 When `--resume <cycle-id>` is provided, the command reloads the saved snapshot from
 `.dialectic/self_improve/<cycle-id>.json` and continues from the last completed
@@ -180,6 +182,7 @@ At the current product phase, `self-improve` supports only `--max 1`. Multi-oppo
 - `git` is required
 - the worktree must be clean
 - interrupted runs on a `self-improve/*` branch are auto-cleaned before retrying
+- `--simulate` recreates `self-improve/simulate` fresh on every run
 - on other branches, dirty worktrees abort with guidance unless `--stash-dirty` is used
 - `gh` is optional
 - resume snapshots live in `.dialectic/self_improve/`
@@ -267,6 +270,6 @@ uv run dialectic-crew execute --self
 ### Fully automated self-improvement
 
 ```bash
-uv run dialectic-crew self-improve --dry-run
+uv run dialectic-crew self-improve --simulate
 uv run dialectic-crew self-improve
 ```

@@ -45,3 +45,15 @@ def test_output_dirs_use_target_scope_when_active(tmp_path, monkeypatch):
     assert resolve_exec_output_dir(VisionContext.PROJECT) == (
         app_root / "exec_output" / "targets" / target_config.target_slug
     )
+
+
+def test_output_dirs_use_runtime_root_override(tmp_path, monkeypatch):
+    app_root = tmp_path / "app"
+    runtime_root = tmp_path / "runtime"
+    app_root.mkdir()
+    monkeypatch.setattr(output_paths, "resolve_app_root", lambda: app_root)
+    monkeypatch.setattr(output_paths, "get_active_target", lambda: None)
+    monkeypatch.setenv(output_paths.RUNTIME_ROOT_ENV_VAR, str(runtime_root))
+
+    assert resolve_prd_output_dir(VisionContext.SELF) == runtime_root / "prd_output" / "self"
+    assert resolve_exec_output_dir(VisionContext.PROJECT) == runtime_root / "exec_output" / "default"

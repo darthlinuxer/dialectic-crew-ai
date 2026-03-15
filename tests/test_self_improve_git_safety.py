@@ -12,7 +12,13 @@ from pathlib import Path
 import pytest
 
 from dialectic.metrics import MetricsStore, _reset_metrics_store
-from src.main.self_improve import _git_worktree_clean, _recover_stale_self_improve_worktree, run_self_improve
+from src.main.self_improve import (
+    SIMULATION_BRANCH_NAME,
+    _git_worktree_clean,
+    _prepare_simulation_branch,
+    _recover_stale_self_improve_worktree,
+    run_self_improve,
+)
 from src.main.git_helpers import run_cmd
 
 
@@ -102,6 +108,30 @@ class TestRecoverStaleSelfImproveWorktree:
             ["git", "reset", "--hard", "HEAD"],
             ["git", "clean", "-fd"],
         ]
+
+
+class TestPrepareSimulationBranch:
+    def test_deletes_existing_simulation_branch_before_recreating(self, tmp_path, monkeypatch):
+        deleted = []
+        created = []
+
+        monkeypatch.setattr("main.self_improve._git_current_branch", lambda cwd: "main")
+        monkeypatch.setattr("main.self_improve._git_branch_exists", lambda branch, cwd: branch == SIMULATION_BRANCH_NAME)
+        monkeypatch.setattr(
+            "main.self_improve._git_delete_branch",
+            lambda branch, cwd: (deleted.append((branch, str(cwd))) or True, f"deleted {branch}"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_branch_create",
+            lambda branch, cwd: created.append((branch, str(cwd))) or True,
+        )
+
+        prepared, branch_name = _prepare_simulation_branch(tmp_path)
+
+        assert prepared is True
+        assert branch_name == SIMULATION_BRANCH_NAME
+        assert deleted == [(SIMULATION_BRANCH_NAME, str(tmp_path))]
+        assert created == [(SIMULATION_BRANCH_NAME, str(tmp_path))]
 
 
 class TestSelfImproveWorktreePreflight:
@@ -290,31 +320,33 @@ class TestSelfImproveWorktreePreflight:
         assert introspection_called is False
         assert "Git is required" in record.failure_reason
 
-    def test_dry_run_skips_git_preflight(self, tmp_path, monkeypatch, store):
+    def test_simulate_checks_git_preflight_before_baseline_tests(self, tmp_path, monkeypatch, store):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True, exist_ok=True)
-        vision.write_text("- [ ] Dry run should skip git preflight\n")
+        vision.write_text("- [ ] Simulation should fail before baseline when git is missing\n")
+
+        baseline_called = False
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr(
-            "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
-        )
+        def fake_snapshot_tests(project_root):
+            del project_root
+            nonlocal baseline_called
+            baseline_called = True
+            return {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""}
+
+        monkeypatch.setattr("main.self_improve._snapshot_tests", fake_snapshot_tests)
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr(
             "main.self_improve.shutil.which",
             lambda name: None if name == "git" else "/usr/bin/uv",
         )
-        monkeypatch.setattr(
-            "main.self_improve._git_worktree_clean",
-            lambda cwd: (_ for _ in ()).throw(AssertionError("git worktree check should not run in dry-run")),
-        )
 
-        record = run_self_improve(dry_run=True)
+        record = run_self_improve(simulate=True)
 
-        assert record.failure_reason == "dry_run"
+        assert baseline_called is False
+        assert "Git is required" in record.failure_reason
 
     def test_self_improve_disables_crewai_telemetry_by_default(self, tmp_path, monkeypatch, store):
         monkeypatch.delenv("CREWAI_DISABLE_TELEMETRY", raising=False)

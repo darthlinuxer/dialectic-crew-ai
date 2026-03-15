@@ -37,6 +37,7 @@ At least one provider key must be configured for LLM-backed commands:
 | `PRD_OUTPUT_DIR` | `prd_output` | Export directory for PRDs and plans |
 | `DIALECTIC_PROJECT_ROOT` | auto-detected | Override project-root discovery |
 | `DIALECTIC_METRICS_DB` | `.dialectic/metrics.db` | Override runtime metrics database path |
+| `DIALECTIC_FLOW_DB` | `.dialectic/flows.db` | Override CrewAI resumable flow state database (see `src/dialectic/flow_persistence.py`) |
 
 ## Planning and execution thresholds
 

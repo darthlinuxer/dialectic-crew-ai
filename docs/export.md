@@ -28,12 +28,6 @@ flowchart TD
 
     JSON_W --> DONE2["Return [json_path]"]
     MD_W --> DONE3["Return [md_path]"]
-
-    style EXPORTER fill:#E8A838,stroke:#B8862D,color:#fff
-    style ROLLBACK fill:#E17055,stroke:#D63031,color:#fff
-    style DONE fill:#55EFC4,stroke:#00B894,color:#333
-    style DONE2 fill:#55EFC4,stroke:#00B894,color:#333
-    style DONE3 fill:#55EFC4,stroke:#00B894,color:#333
 ```
 
 ---
@@ -91,7 +85,7 @@ vision_hash: a1b2c3d4...
 
 The `vision_hash` reflects whichever vision document was active when the PRD was generated: `knowledge/VISION.md` by default, or `internal/SELF_VISION.md` when running with `--self`. If the active vision file is unavailable, the field is omitted silently.
 
-`render_markdown()` accepts an optional `vision_context` parameter (`VisionContext.USER` or `VisionContext.SELF`) that controls which vision file is hashed for the frontmatter.
+`render_markdown()` accepts an optional `vision_context` parameter (`VisionContext.PROJECT` or `VisionContext.SELF`) that controls which vision file is hashed for the frontmatter.
 
 #### Body Sections
 
@@ -101,12 +95,6 @@ graph TD
     B --> C["## User Stories"]
     C --> D["### US-001 — Title<br/>Description<br/>Acceptance Criteria<br/>Effort"]
     D --> E["## Anti-Drift Questions"]
-
-    style A fill:#4A90D9,stroke:#2C5F8A,color:#fff
-    style B fill:#74B9FF,stroke:#0984E3,color:#fff
-    style C fill:#A29BFE,stroke:#6C5CE7,color:#fff
-    style D fill:#DDA0DD,stroke:#9B59B6,color:#fff
-    style E fill:#FF7675,stroke:#D63031,color:#fff
 ```
 
 ---
@@ -131,7 +119,7 @@ Sections: Title → Score → Approach → Tasks (sorted by order) → Mitigated
 
 ## Consistency Validation
 
-The `validate_consistency()` function cross-checks the generated Markdown against the JSON and in-memory PRD. It accepts an optional `vision_context` parameter to specify which vision document should be used for the hash comparison (`VisionContext.USER` or `VisionContext.SELF`).
+The `validate_consistency()` function cross-checks the generated Markdown against the JSON and in-memory PRD. It accepts an optional `vision_context` parameter to specify which vision document should be used for the hash comparison (`VisionContext.PROJECT` or `VisionContext.SELF`).
 
 ```mermaid
 flowchart TD
@@ -151,9 +139,6 @@ flowchart TD
     C2 --> RESULT
     C3 --> RESULT
     C4 --> RESULT
-
-    style CHECK fill:#FDCB6E,stroke:#E1A517,color:#333
-    style RESULT fill:#55EFC4,stroke:#00B894,color:#333
 ```
 
 ### Checks Performed

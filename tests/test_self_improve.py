@@ -15,6 +15,7 @@ from dialectic.vision import VisionContext
 from src.main.pr_builder import create_pr
 from src.main.self_improve import (
     PROTECTED_PATHS,
+    SIMULATION_BRANCH_NAME,
     _create_pr,
     _is_transient_llm_error,
     _list_resumable_cycles,
@@ -260,7 +261,7 @@ class TestRunSelfImprove:
         assert record.plan_generated is True
         assert "Request timed out" not in record.failure_reason
 
-    def test_dry_run_no_changes(self, tmp_path, monkeypatch, store):
+    def test_simulate_runs_full_flow_without_persisting_branch_changes(self, tmp_path, monkeypatch, store):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True)
         vision.write_text("- [ ] Unfinished feature\n")
@@ -284,11 +285,89 @@ class TestRunSelfImprove:
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
 
-        record = run_self_improve(dry_run=True)
-        assert record.failure_reason == "dry_run"
-        assert record.opportunities_found >= 1
-        assert not record.prd_generated
+        prepared = []
+        cleaned = []
+        prioritized = []
+
+        monkeypatch.setattr(
+            "main.self_improve._prepare_simulation_branch",
+            lambda cwd: (prepared.append(str(cwd)) or True, SIMULATION_BRANCH_NAME),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._cleanup_simulation_branch",
+            lambda cwd: cleaned.append(str(cwd)),
+        )
+
+        def fake_prioritize(opps, **kwargs):
+            del kwargs
+            prioritized.append(len(opps))
+            return opps
+
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", fake_prioritize)
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, check_all_src=True: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not commit")),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._create_pr",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not create PRs")),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._mark_roadmap_items_completed",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not mutate roadmap")),
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-sim"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "sim-run",
+            "task_flow_ids": {"T-001": "task-flow-sim"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(simulate=True)
+
+        assert record.failure_reason == "simulated"
+        assert record.prd_generated is True
+        assert record.plan_generated is True
+        assert record.execution_attempted is True
+        assert prioritized == [record.opportunities_found]
+        assert prepared == [str(tmp_path)]
+        assert cleaned == [str(tmp_path)]
 
     def test_aborts_when_baseline_tests_fail(self, tmp_path, monkeypatch, store):
         monkeypatch.setattr(
@@ -1143,13 +1222,63 @@ class TestTokenBudgetIntegration:
         )
         return vision
 
-    def test_dry_run_no_hooks_registered(self, tmp_path, monkeypatch, store):
+    def test_simulate_does_not_leak_hooks_after_run(self, tmp_path, monkeypatch, store):
         from crewai.hooks import get_before_llm_call_hooks, clear_all_global_hooks
         clear_all_global_hooks()
         self._setup_introspection(tmp_path, monkeypatch, store)
 
-        record = run_self_improve(dry_run=True)
-        assert record.failure_reason == "dry_run"
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._prepare_simulation_branch",
+            lambda cwd: (True, SIMULATION_BRANCH_NAME),
+        )
+        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, check_all_src=True: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr("main.self_improve._git_commit_all", lambda *args, **kwargs: (False, "nothing to commit"))
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-hooks"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = "fake_prd.json"
+        mock_flow.state.prd_path_md = "fake_prd.md"
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": "fake_plan.json",
+            "plan_path_md": "fake_plan.md",
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "hook-run",
+            "task_flow_ids": {"T-001": "task-flow-hook"},
+            "output_path": "fake_exec",
+            "report_path": "fake_exec/report.json",
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(simulate=True)
+
+        assert record.failure_reason == "simulated"
         assert len(get_before_llm_call_hooks()) == 0
 
     def test_self_improve_aborts_on_budget_exceeded(self, tmp_path, monkeypatch, store):
@@ -1332,7 +1461,7 @@ class TestDialecticPrioritizationIntegration:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                record = run_self_improve(dry_run=False, max_improvements=1)
+                record = run_self_improve(simulate=False, max_improvements=1)
 
         assert record.opportunities_attempted >= 1
         assert record.failure_reason != ""

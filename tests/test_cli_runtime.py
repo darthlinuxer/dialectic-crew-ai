@@ -412,13 +412,13 @@ class TestCliRequirementRouting:
         monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
 
         def fake_cmd_self_improve(
-            dry_run=False,
+            simulate=False,
             max_improvements=1,
             stash_dirty=False,
             resume_cycle_id=None,
             list_resumable=False,
         ):
-            captured["dry_run"] = dry_run
+            captured["simulate"] = simulate
             captured["max_improvements"] = max_improvements
             captured["stash_dirty"] = stash_dirty
             captured["resume_cycle_id"] = resume_cycle_id
@@ -434,7 +434,7 @@ class TestCliRequirementRouting:
         cli.main()
 
         assert captured == {
-            "dry_run": False,
+            "simulate": False,
             "max_improvements": 1,
             "stash_dirty": False,
             "resume_cycle_id": "cycle-123",
@@ -462,13 +462,13 @@ class TestCliRequirementRouting:
         monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
 
         def fake_cmd_self_improve(
-            dry_run=False,
+            simulate=False,
             max_improvements=1,
             stash_dirty=False,
             resume_cycle_id=None,
             list_resumable=False,
         ):
-            del dry_run, max_improvements, stash_dirty
+            del simulate, max_improvements, stash_dirty
             captured["list_resumable"] = list_resumable
             captured["resume_cycle_id"] = resume_cycle_id
 

@@ -119,6 +119,12 @@ uv run pytest -m llm
 
 # Focused self-improve regressions
 uv run pytest tests/test_self_improve.py tests/test_self_improve_git_safety.py tests/test_self_improve_lineage.py -q
+
+# Repo-wide static analysis
+uv run ruff check .
+MYPYPATH=src uv run python -m mypy -p dialectic -p execution -p main -p planning -p mcp -m schemas
+PYTHONPATH=tests uv run python -m mypy --disable-error-code import-untyped -p tests
+npx --yes pyright --project pyrightconfig.json
 ```
 
 Tests marked `@pytest.mark.llm` are auto-skipped when no API key is present (see `tests/conftest.py`). The `conftest.py` provides factory helpers (`make_prd()`, `make_task()`, `make_plan()`) — call them with keyword overrides, not fixtures.

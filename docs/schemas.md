@@ -18,6 +18,7 @@ classDiagram
         +float quality_score [0.0–10.0]
         +bool consensus_reached
         +str final_validation_notes
+        +Optional~str~ vision_hash
     }
 
     class UserStory {
@@ -97,11 +98,14 @@ classDiagram
         +str plan_id
         +str plan_title
         +str run_id
+        +Optional~str~ plan_path
+        +Optional~str~ vision_hash
         +List~TaskExecutionResult~ task_results
         +bool overall_success
         +List~str~ verified_tasks
         +List~str~ failed_verification_tasks
         +Dict~str, str~ task_flow_ids
+        +Optional~str~ resumed_from_run_id
     }
 
     class ExecutionCheckpoint {
@@ -110,7 +114,11 @@ classDiagram
         +str run_id
         +str plan_path
         +str vision_context
+        +List~TaskExecutionResult~ task_results
         +Dict~str, str~ task_flow_ids
+        +Dict~str, str~ completed_outputs
+        +List~str~ failed_task_ids
+        +Optional~str~ resumed_from_run_id
     }
 
     PRDSchema --> MacroImpact
@@ -315,14 +323,6 @@ flowchart LR
     TASK -->|"executed by"| TER["TaskExecutionResult"]
     TER -->|"includes"| VR["VerificationResult"]
     TER -->|"aggregated into"| REPORT["ExecutionReport"]
-
-    style PRD fill:#6C5CE7,stroke:#4834D4,color:#fff
-    style US fill:#A29BFE,stroke:#6C5CE7,color:#fff
-    style PLAN fill:#00B894,stroke:#00896B,color:#fff
-    style TASK fill:#74B9FF,stroke:#0984E3,color:#fff
-    style TER fill:#FDCB6E,stroke:#E1A517,color:#333
-    style VR fill:#FF7675,stroke:#D63031,color:#fff
-    style REPORT fill:#55EFC4,stroke:#00B894,color:#333
 ```
 
 ---

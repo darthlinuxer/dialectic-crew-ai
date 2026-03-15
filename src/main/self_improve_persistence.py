@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Type
 
@@ -11,9 +12,20 @@ from schemas import ImprovementOpportunity, SelfImprovementRecord
 
 
 SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
+SELF_IMPROVE_STATE_DIR_ENV_VAR = "DIALECTIC_SELF_IMPROVE_STATE_DIR"
+
+
+def _resolve_state_dir(project_root: Path, state_dir: Path) -> Path:
+    """Resolve the effective snapshot directory, honoring an env override when present."""
+    raw_state_dir = os.getenv(SELF_IMPROVE_STATE_DIR_ENV_VAR, "").strip()
+    resolved_state_dir = Path(raw_state_dir).expanduser() if raw_state_dir else state_dir
+    if not resolved_state_dir.is_absolute():
+        resolved_state_dir = project_root / resolved_state_dir
+    return resolved_state_dir
 
 
 def record_prd_artifacts(record: SelfImprovementRecord, flow) -> str:
+    """Copy exported PRD artifact metadata from the flow state into the cycle record."""
     record.prd_flow_id = getattr(flow, "flow_id", "") or getattr(flow.state, "id", "") or ""
     record.prd_path_json = flow.state.prd_path_json or ""
     record.prd_path_md = flow.state.prd_path_md or ""
@@ -21,12 +33,14 @@ def record_prd_artifacts(record: SelfImprovementRecord, flow) -> str:
 
 
 def record_plan_artifacts(record: SelfImprovementRecord, plan_result: dict) -> str:
+    """Copy exported planning artifact metadata into the cycle record."""
     record.plan_path_json = plan_result.get("plan_path_json", "") or ""
     record.plan_path_md = plan_result.get("plan_path_md", "") or ""
     return record.plan_path_json
 
 
 def record_execution_artifacts(record: SelfImprovementRecord, exec_result: dict) -> None:
+    """Copy exported execution artifact metadata into the cycle record."""
     record.execution_run_id = exec_result.get("run_id", "") or ""
     record.execution_task_flow_ids = exec_result.get("task_flow_ids", {}) or {}
     record.execution_output_path = exec_result.get("output_path", "") or ""
@@ -39,7 +53,8 @@ def self_improve_record_path(
     *,
     state_dir: Path = SELF_IMPROVE_STATE_DIR,
 ) -> Path:
-    path = project_root / state_dir / f"{cycle_id}.json"
+    """Return the snapshot path for a self-improve cycle and ensure its parent exists."""
+    path = _resolve_state_dir(project_root, state_dir) / f"{cycle_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -50,6 +65,7 @@ def save_self_improve_record(
     *,
     state_dir: Path = SELF_IMPROVE_STATE_DIR,
 ) -> None:
+    """Persist a self-improve cycle snapshot to disk."""
     path = self_improve_record_path(project_root, record.cycle_id, state_dir=state_dir)
     path.write_text(record.model_dump_json(indent=2), encoding="utf-8")
 
@@ -60,6 +76,7 @@ def load_self_improve_record(
     *,
     state_dir: Path = SELF_IMPROVE_STATE_DIR,
 ) -> SelfImprovementRecord:
+    """Load a persisted self-improve cycle snapshot from disk."""
     path = self_improve_record_path(project_root, cycle_id, state_dir=state_dir)
     if not path.exists():
         raise FileNotFoundError(f"Self-improve snapshot not found: {path}")
@@ -67,6 +84,7 @@ def load_self_improve_record(
 
 
 def resolve_resume_context(record: SelfImprovementRecord) -> tuple[list[ImprovementOpportunity], dict]:
+    """Extract the saved opportunities and baseline metrics for resume handling."""
     return list(record.selected_opportunities), dict(record.baseline_metrics)
 
 
@@ -74,6 +92,7 @@ def summarize_resume_state(
     record: SelfImprovementRecord,
     last_failure_reason: str = "",
 ) -> dict[str, str | list[str]]:
+    """Summarize what a resumed cycle can reuse and which stage remains."""
     reused: list[str] = []
     if record.prd_generated and record.prd_path_json:
         reused.append(f"PRD: {record.prd_path_json}")
@@ -114,6 +133,7 @@ def list_resumable_cycles(
     *,
     state_dir: Path = SELF_IMPROVE_STATE_DIR,
 ) -> list[dict[str, str]]:
+    """List persisted self-improve cycles that can be resumed."""
     records_dir = project_root / state_dir
     if not records_dir.exists():
         return []
@@ -144,6 +164,7 @@ def require_artifact(
     *,
     error_cls: Type[Exception] = RuntimeError,
 ) -> str:
+    """Require a non-empty artifact path or raise the configured error type."""
     if not path:
         raise error_cls(failure_reason)
     return path

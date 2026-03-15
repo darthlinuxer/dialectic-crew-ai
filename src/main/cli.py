@@ -146,12 +146,13 @@ Manual overrides (the execute command handles these automatically):
       Ex.: python main.py verify T0
            python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
 
-        self-improve [--dry-run] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
+                self-improve [--simulate] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
     Runs one self-improvement cycle: introspect against internal/SELF_VISION.md
     and internal/ROADMAP.md,
       generate PRD, plan, and execute improvements, then validate with tests
       and metrics. Creates a PR for human review if all gates pass.
-      --dry-run   Print the introspection report without making changes.
+            --simulate  Run the full self-improve pipeline on a disposable branch with
+                                    temporary runtime artifacts, then clean everything up.
     --max N     Maximum number of improvements per cycle (currently only 1 is supported).
             --resume CYCLE_ID
                                         Continue a previously interrupted self-improve cycle using
@@ -165,7 +166,7 @@ Manual overrides (the execute command handles these automatically):
     exporter failures from external telemetry endpoints.
       If a prior run was interrupted on a `self-improve/*` branch, stale
       self-improve-only worktree changes are discarded automatically.
-      Ex.: python main.py self-improve --dry-run
+            Ex.: python main.py self-improve --simulate
            python main.py self-improve --max 1
            python main.py self-improve --resume 20260310T120000
          python main.py self-improve --list-resumable
@@ -632,10 +633,13 @@ def verify_command(
 
 @app.command("self-improve")
 def self_improve_command(
-    dry_run: bool = typer.Option(
+    simulate: bool = typer.Option(
         False,
-        "--dry-run",
-        help="Print the introspection report without making changes.",
+        "--simulate",
+        help=(
+            "Run the full self-improve pipeline on a disposable branch "
+            "without preserving changes."
+        ),
     ),
     max_improvements: int = typer.Option(
         1,
@@ -663,20 +667,21 @@ def self_improve_command(
     """Run the guarded self-improvement orchestration workflow.
 
     Examples:
-      uv run dialectic-crew self-improve --dry-run
+            uv run dialectic-crew self-improve --simulate
       uv run dialectic-crew self-improve --max 1
       uv run dialectic-crew self-improve --resume 20260310T120000
       uv run dialectic-crew self-improve --list-resumable
     """
     if max_improvements != 1:
         raise typer.BadParameter(
-            "self-improve currently only supports --max 1 while end-to-end reliability is being validated.",
+            "self-improve currently only supports --max 1 while "
+            "end-to-end reliability is being validated.",
             param_hint="--max",
         )
 
     args = ["self-improve"]
-    if dry_run:
-        args.append("--dry-run")
+    if simulate:
+        args.append("--simulate")
     if stash_dirty:
         args.append("--stash-dirty")
     if list_resumable:
@@ -688,7 +693,7 @@ def self_improve_command(
         "self-improve",
         args,
         lambda: cmd_self_improve(
-            dry_run=dry_run,
+            simulate=simulate,
             max_improvements=max_improvements,
             stash_dirty=stash_dirty,
             resume_cycle_id=resume_cycle_id,

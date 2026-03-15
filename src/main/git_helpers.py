@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 def command_available(command: str) -> bool:
+    """Return True when the requested executable is available on PATH."""
     return shutil.which(command) is not None
 
 
@@ -16,6 +17,7 @@ def run_cmd(
     cwd: str | Path | None = None,
     timeout: int = 120,
 ) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess command with captured output and a minimum timeout of one second."""
     safe_timeout = max(int(timeout), 1)
     return subprocess.run(
         cmd,
@@ -33,8 +35,36 @@ def git_branch_create(
     *,
     run_cmd_fn=run_cmd,
 ) -> bool:
+    """Create and switch to a new git branch."""
     result = run_cmd_fn(["git", "checkout", "-b", branch], cwd=cwd)
     return result.returncode == 0
+
+
+def git_branch_exists(
+    branch: str,
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> bool:
+    """Return True when the named local branch exists."""
+    result = run_cmd_fn(["git", "branch", "--list", branch], cwd=cwd)
+    if result.returncode != 0:
+        return False
+    return bool(result.stdout.strip())
+
+
+def git_delete_branch(
+    branch: str,
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    """Delete a local branch and return a success flag plus human-readable output."""
+    result = run_cmd_fn(["git", "branch", "-D", branch], cwd=cwd)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode == 0:
+        return True, output or f"deleted branch {branch}"
+    return False, output or f"failed to delete branch {branch}"
 
 
 def git_branch_create_from_head(
@@ -43,6 +73,7 @@ def git_branch_create_from_head(
     *,
     run_cmd_fn=run_cmd,
 ) -> tuple[bool, str]:
+    """Create a new branch from the current HEAD and report the outcome."""
     result = run_cmd_fn(["git", "checkout", "-b", branch], cwd=cwd)
     output = (result.stdout or result.stderr or "").strip()
     if result.returncode == 0:
@@ -56,8 +87,35 @@ def git_discard_branch(
     *,
     run_cmd_fn=run_cmd,
 ) -> None:
+    """Checkout the previous branch and force-delete the provided branch."""
     run_cmd_fn(["git", "checkout", "-"], cwd=cwd)
     run_cmd_fn(["git", "branch", "-D", branch], cwd=cwd)
+
+
+def git_reset_hard_head(
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    """Reset the current worktree to HEAD."""
+    result = run_cmd_fn(["git", "reset", "--hard", "HEAD"], cwd=cwd)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode == 0:
+        return True, output or "reset worktree to HEAD"
+    return False, output or "failed to reset worktree to HEAD"
+
+
+def git_clean_untracked(
+    cwd: Path,
+    *,
+    run_cmd_fn=run_cmd,
+) -> tuple[bool, str]:
+    """Remove untracked files and directories from the current worktree."""
+    result = run_cmd_fn(["git", "clean", "-fd"], cwd=cwd)
+    output = (result.stdout or result.stderr or "").strip()
+    if result.returncode == 0:
+        return True, output or "removed untracked files"
+    return False, output or "failed to clean untracked files"
 
 
 def git_current_branch(
@@ -65,6 +123,7 @@ def git_current_branch(
     *,
     run_cmd_fn=run_cmd,
 ) -> str:
+    """Return the current git branch name or an empty string on failure."""
     result = run_cmd_fn(["git", "branch", "--show-current"], cwd=cwd)
     if result.returncode != 0:
         return ""
@@ -77,6 +136,7 @@ def git_checkout_branch(
     *,
     run_cmd_fn=run_cmd,
 ) -> tuple[bool, str]:
+    """Checkout an existing branch and report the outcome."""
     result = run_cmd_fn(["git", "checkout", branch], cwd=cwd)
     output = (result.stdout or result.stderr or "").strip()
     if result.returncode == 0:
@@ -112,6 +172,7 @@ def git_stash_worktree(
     *,
     run_cmd_fn=run_cmd,
 ) -> tuple[bool, str]:
+    """Stash tracked and untracked changes with the provided message."""
     result = run_cmd_fn(
         ["git", "stash", "push", "--include-untracked", "-m", message],
         cwd=cwd,
@@ -127,6 +188,7 @@ def dirty_worktree_guidance(
     *,
     git_current_branch_fn=git_current_branch,
 ) -> str:
+    """Explain how the caller can resolve a dirty-worktree preflight failure."""
     branch = git_current_branch_fn(cwd) or "<detached HEAD>"
     return (
         f"{worktree_reason} on branch '{branch}'. "
@@ -140,6 +202,7 @@ def git_worktree_clean(
     *,
     run_cmd_fn=run_cmd,
 ) -> tuple[bool, str]:
+    """Return whether the worktree is clean plus a short status summary."""
     result = run_cmd_fn(["git", "status", "--porcelain"], cwd=cwd)
     if result.returncode != 0:
         return False, "Unable to determine git worktree status"
@@ -159,6 +222,7 @@ def git_commit_all(
     *,
     run_cmd_fn=run_cmd,
 ) -> tuple[bool, str]:
+    """Stage all changes and create a commit, reporting why it succeeded or failed."""
     add_result = run_cmd_fn(["git", "add", "-A"], cwd=cwd)
     if add_result.returncode != 0:
         reason = (add_result.stderr or add_result.stdout or "failed to stage changes").strip()
@@ -180,9 +244,14 @@ def git_has_commits_ahead(
     base_branch: str = "main",
     run_cmd_fn=run_cmd,
 ) -> tuple[bool, str]:
+    """Return whether HEAD is ahead of the base branch and a descriptive reason."""
     result = run_cmd_fn(["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=cwd)
     if result.returncode != 0:
-        reason = (result.stderr or result.stdout or f"failed to compare against {base_branch}").strip()
+        reason = (
+            result.stderr
+            or result.stdout
+            or f"failed to compare against {base_branch}"
+        ).strip()
         return False, reason
 
     ahead_count_text = result.stdout.strip() or "0"

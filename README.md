@@ -132,7 +132,7 @@ uv run dialectic-crew mark T0 completed
 ### 5. Run self-improvement
 
 ```bash
-uv run dialectic-crew self-improve --dry-run
+uv run dialectic-crew self-improve --simulate
 uv run dialectic-crew self-improve
 uv run dialectic-crew self-improve --max 3
 ```
@@ -249,32 +249,60 @@ dialectic-crew-ai/
 │   ├── dialectic/
 │   │   ├── agents.py
 │   │   ├── config.py
+│   │   ├── crew_builder.py
+│   │   ├── crew_log_summarizer.py
+│   │   ├── crew_verbose_config.py
 │   │   ├── export.py
+│   │   ├── flow_persistence.py
 │   │   ├── hooks.py
 │   │   ├── introspect.py
 │   │   ├── metrics.py
+│   │   ├── output_paths.py
 │   │   ├── prd_flow.py
 │   │   ├── prd_output.py
 │   │   ├── prioritize.py
+│   │   ├── prioritize_runtime.py
+│   │   ├── prd_runtime.py
 │   │   ├── state.py
+│   │   ├── target.py
 │   │   ├── tools.py
-│   │   └── vision.py
+│   │   ├── vision.py
+│   │   └── config/
 │   ├── execution/
 │   │   ├── dialectic_execution.py
-│   │   ├── runner.py
 │   │   ├── task_flow.py
-│   │   └── verify.py
+│   │   ├── runtime.py
+│   │   ├── verify.py
+│   │   ├── verify_runtime.py
+│   │   ├── task_verify_runtime.py
+│   │   ├── task_reimplement_runtime.py
+│   │   ├── runner.py
+│   │   ├── status.py
+│   │   ├── checkpoint.py
+│   │   ├── plan_loader.py
+│   │   ├── context_builder.py
+│   │   ├── local_verification.py
+│   │   └── config/
 │   ├── main/
 │   │   ├── cli.py
-│   │   └── self_improve.py
+│   │   ├── cli_commands.py
+│   │   ├── self_improve.py
+│   │   ├── vision_commands.py
+│   │   ├── target_commands.py
+│   │   ├── cleanup_commands.py
+│   │   └── ...
 │   ├── mcp/
 │   │   ├── skills_index.py
 │   │   ├── skills_mcp.py
 │   │   └── skills/
 │   └── planning/
-│       └── flow.py
+│       ├── flow.py
+│       ├── runtime.py
+│       └── config/
 └── tests/
 ```
+
+For the full module list and responsibilities, see [`docs/architecture.md`](docs/architecture.md).
 
 ## Tests
 

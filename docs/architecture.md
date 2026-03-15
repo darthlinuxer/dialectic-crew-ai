@@ -60,7 +60,7 @@ graph TB
         CHECK[checkpoint.py]
         CTXB[context_builder.py]
         PLANLD[plan_loader.py]
-        STATUS[task_status.py]
+        StatusMod[status.py]
     end
 
     subgraph MCP[src/mcp]
@@ -103,7 +103,7 @@ graph TB
     ORCH --> CTXB
     ORCH --> PLANLD
     ORCH --> CHECK
-    ORCH --> STATUS
+    ORCH --> StatusMod
 
     AGENTS --> SKMCP
     SKMCP --> SKIDX
@@ -210,6 +210,13 @@ flowchart LR
 | `markdown_renderers.py` | Markdown rendering helpers |
 | `mcp_config.py` | MCP configuration handling |
 | `prd_exporter.py` | PRD export formatting |
+| `crew_builder.py` | Build CrewAI crews from YAML agent/task mappings |
+| `crew_log_summarizer.py` | Summarize CrewAI verbose logs for console output |
+| `crew_verbose_config.py` | CrewAI verbose and log file configuration from environment |
+| `output_paths.py` | PRD and exec output directory resolution by vision context |
+| `repo_analyzer.py` | Repository analysis for generated vision documents |
+| `vision_generator.py` | Generates VISION.md drafts from repository analysis |
+| `target.py` | Active target checkout, registry, and vision path resolution |
 | `config/*.yaml` | Shared declarative agent/task templates for core dialectic crews |
 
 ### `src/planning/`
@@ -240,6 +247,7 @@ flowchart LR
 | `context_builder.py` | Context building for dependent tasks |
 | `plan_loader.py` | Plan loading and validation |
 | `status.py` | Task and story status management |
+| `local_verification.py` | Deterministic fallback verification for acceptance checks without LLM |
 | `config/*.yaml` | Declarative execution and verification task templates |
 
 The architecture now distinguishes two SQLite stores under `.dialectic/` by default:
@@ -266,6 +274,12 @@ The architecture now distinguishes two SQLite stores under `.dialectic/` by defa
 | `pr_builder.py` | PR creation helpers |
 | `git_helpers.py` | Git operation helpers |
 | `test_runner.py` | Test execution helpers |
+| `code_structure_validation.py` | Code structure validation for self-improve enforcement |
+| `quality_gate.py` | Quality gate checks for self-improve validation |
+| `vision_commands.py` | CLI command handlers for vision generation workflows |
+| `target_commands.py` | CLI command handlers for target project management |
+| `cleanup_commands.py` | CLI command handlers for runtime cleanup |
+| `metrics_comparison.py` | Metrics stability checks for self-improve validation |
 
 ## Key design choices
 

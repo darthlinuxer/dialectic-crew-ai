@@ -121,7 +121,7 @@ uv run dialectic-crew execute --self
 ## Automated self-improvement
 
 ```bash
-uv run dialectic-crew self-improve --dry-run
+uv run dialectic-crew self-improve --simulate
 uv run dialectic-crew self-improve
 ```
 
@@ -129,7 +129,8 @@ Current runtime behavior:
 
 - requires `git`
 - refuses to start on a dirty worktree
-- creates isolated branches
+- `--simulate` runs on a disposable `self-improve/simulate` branch with temporary runtime artifacts, then cleans it up
+- real runs create isolated long-lived self-improve branches
 - validates tests after execution
 - checks metrics for regression
 - creates a PR only when `gh` is installed
