@@ -1,5 +1,7 @@
 """Task verification logic for execution plans."""
 
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
 import json
@@ -8,15 +10,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from schemas import UserStoryExecutionPlan, PRDSchema, ImplementationTask
+from schemas import (
+    ValidationOutput,
+    UserStoryExecutionPlan,
+    PRDSchema,
+    ImplementationTask,
+)
 
 from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
 from dialectic.target import resolve_active_project_root, temporary_working_directory
 from dialectic.vision import VisionContext
-from execution.local_verification import _run_local_verification_fallback
-from execution.validation_gate import run_stack_validation_gate
-from execution.status import (
+from .local_verification import _run_local_verification_fallback
+from .status import (
     STATUS_ICONS,
     find_task,
     load_plan,
@@ -26,7 +32,8 @@ from execution.status import (
     update_task_status,
     update_user_story_status,
 )
-from execution.verify_runtime import build_verification_crew
+from .validation_gate import run_stack_validation_gate
+from .verify_runtime import build_verification_crew
 
 
 __all__ = [
@@ -87,6 +94,7 @@ def _extract_acceptance_criteria(
 # Core verification (reusable by both CLI and execution flow)
 # ---------------------------------------------------------------------------
 
+# pylint: disable=too-many-locals
 def _run_verification(
     task: ImplementationTask,
     acceptance_criteria: list[str] | None = None,
@@ -97,8 +105,6 @@ def _run_verification(
 
     Returns dict with keys: task_id, verified, score, notes.
     """
-    from schemas import ValidationOutput
-
     ctx = vision_context or VisionContext.PROJECT
     checks_to_verify = acceptance_criteria or []
     fallback = _run_local_verification_fallback(
@@ -218,6 +224,7 @@ def verify_task(
 # Verify all tasks in a user story and update story-level status
 # ---------------------------------------------------------------------------
 
+# pylint: disable=too-many-locals
 def verify_user_story(
     plan_path: str | None = None,
     prd_path: str | None = None,

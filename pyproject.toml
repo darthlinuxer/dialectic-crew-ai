@@ -42,10 +42,13 @@ dialectic-crew = "main.cli:main"
 
 [dependency-groups]
 dev = [
+    "mypy>=1.15.0",
     "pytest>=9.0.2",
     "pytest-cov",
     "pytest-rerunfailures>=15.1",
     "pytest-timeout",
+    "ruff>=0.11.0",
+    "types-jsonschema>=4.25.1.20250822",
 ]
 
 [tool.setuptools]

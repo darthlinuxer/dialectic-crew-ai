@@ -3,6 +3,7 @@
 from pathlib import Path
 from textwrap import dedent
 
+from execution import local_verification
 from execution.task_flow import (
     TaskExecutionFlow,
     _extract_generated_files,
@@ -10,6 +11,20 @@ from execution.task_flow import (
     _run_local_verification_fallback,
 )
 from schemas import ValidationOutput, VerificationResult, TaskExecutionResult
+
+
+def test_local_verification_module_docstring_scopes_supported_fallback_checks():
+    docstring = local_verification.__doc__
+    normalized_docstring = " ".join((docstring or "").split())
+
+    assert docstring is not None
+    assert "currently supported acceptance-check phrases" in normalized_docstring
+    for phrase in local_verification._SUPPORTED_FALLBACK_PHRASES:
+        assert phrase in normalized_docstring
+    assert (
+        "Future roadmap-specific phrases belong in prompt/test data until "
+        "the repo ships those artifacts"
+    ) in normalized_docstring
 
 
 def test_task_execution_flow_kickoff_runs_dialectic_and_verify(monkeypatch):
@@ -537,84 +552,6 @@ def test_local_verification_fallback_validates_schema_task_artifacts(tmp_path, m
     assert result is not None
     assert result.verified is True
     assert len(result.checks_passed) == 7
-
-
-def test_local_verification_fallback_validates_t015_determinism_artifacts(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-    (tmp_path / "governance").mkdir()
-    (tmp_path / "schemas").mkdir()
-    (tmp_path / "examples").mkdir()
-    (tmp_path / "tools").mkdir()
-
-    (tmp_path / "governance/determinism.md").write_text(
-        dedent(
-            """\
-            # Determinism & Canonicalization Policy
-
-            - Fixture selection policy: 60/30/10
-            - Pinned RNG seeds with canonical_seed provenance
-            - Offline mirror design and CI cache policies for mirrors
-            - schema_checksum is required for manifests
-            """
-        ),
-        encoding="utf-8",
-    )
-    (tmp_path / "schemas/adapter-manifest.schema.json").write_text(
-        dedent(
-            """\
-            {
-              "$schema": "http://json-schema.org/draft-07/schema#",
-              "type": "object",
-              "properties": {
-                "schema_checksum": {
-                  "type": "string",
-                  "pattern": "^[a-f0-9]{64}$"
-                },
-                "mirror_url": {
-                  "type": "string",
-                  "format": "uri"
-                }
-              },
-              "required": ["schema_checksum"]
-            }
-            """
-        ),
-        encoding="utf-8",
-    )
-    (tmp_path / "examples/example-schema.json").write_text('{"type":"object"}\n', encoding="utf-8")
-    (tmp_path / "tools/canonicalize.py").write_text(
-        '#!/usr/bin/env python3\nprint("canonical")\n',
-        encoding="utf-8",
-    )
-    (tmp_path / "examples/canonicalization-run-seed-42.md").write_text(
-        dedent(
-            """\
-            # Canonicalization run example
-
-            canonical_seed: 42
-
-            Uses examples/example-schema.json and tools/canonicalize.py.
-
-            Verify identical output across Linux x86_64 and macOS arm64.
-            Compute SHA256 over canonical bytes and compare the same hash on both platforms.
-            """
-        ),
-        encoding="utf-8",
-    )
-
-    result = _run_local_verification_fallback(
-        [
-            "governance/determinism.md exists and documents fixture policy, seeds, and mirrors",
-            "adapter_manifest.schema.json includes schema_checksum field",
-            "CI can reproduce deterministic output with pinned seed on at least two platforms",
-        ]
-    )
-
-    assert result is not None
-    assert result.verified is True
-    assert result.checks_failed == []
-    assert len(result.checks_passed) == 3
 
 
 def test_task_execution_flow_skips_verifier_when_preverified_locally(monkeypatch, tmp_path):

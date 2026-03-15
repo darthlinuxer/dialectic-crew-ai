@@ -1,5 +1,7 @@
 """Tests for execution verify/status helpers and acceptance criteria."""
 
+from pathlib import Path
+
 import pytest
 
 from execution.status import (
@@ -133,12 +135,9 @@ class TestRunVerification:
     def test_uses_local_fallback_for_deterministic_checks(self, monkeypatch, tmp_path):
         from schemas import VerificationResult
 
-        docs_dir = tmp_path / "docs" / "dil"
-        docs_dir.mkdir(parents=True)
-        (docs_dir / "adapter_sdk.md").write_text(
-            "schema_checksum\nDeterminism policy: governance/determinism.md\ncontract_schema_url\ncurl\nverify-checksum\n",
-            encoding="utf-8",
-        )
+        schema_dir = tmp_path / "schemas"
+        schema_dir.mkdir(parents=True)
+        (schema_dir / "adapter_manifest.schema.json").write_text("{}\n", encoding="utf-8")
 
         monkeypatch.setattr(
             "execution.verify.resolve_active_project_root",
@@ -161,9 +160,7 @@ class TestRunVerification:
         result = _run_verification(
             task,
             [
-                "docs/dil/adapter_sdk.md committed",
-                "SDK spec references schema_checksum and determinism policy",
-                "Examples for contract_schema_url verification included",
+                "schemas/adapter_manifest.schema.json exists",
             ],
         )
 
@@ -171,8 +168,32 @@ class TestRunVerification:
             "task_id": "T-002",
             "verified": True,
             "score": 7.5,
-            "notes": "Local fallback verification executed. | docs/dil/adapter_sdk.md: present | adapter_sdk.md references schema_checksum and determinism policy. | adapter_sdk.md includes contract_schema_url verification examples.",
+            "notes": "Local fallback verification executed. | schemas/adapter_manifest.schema.json: present",
         }
+
+    def test_ignores_unsupported_speculative_checks(self, tmp_path, monkeypatch):
+        del tmp_path
+
+        def fake_project_root() -> Path:
+            return Path.cwd()
+
+        monkeypatch.setattr(
+            "execution.verify.resolve_active_project_root",
+            fake_project_root,
+        )
+
+        class FakeCrew:
+            def kickoff(self):
+                return type("CrewResult", (), {"pydantic": None, "tasks_output": [], "raw": "not-json"})()
+
+        monkeypatch.setattr("execution.verify.build_verification_crew", lambda **kwargs: FakeCrew())
+
+        task = make_task(id="T-099", title="Speculative", description="Future roadmap artifact")
+        result = _run_verification(task, ["docs/dil/adapter_sdk.md committed"])
+
+        assert result["verified"] is False
+        assert result["score"] == 0.0
+        assert "Failed to obtain structured result" in result["notes"]
 
     def test_uses_runtime_builder_and_task_output_pydantic(self, monkeypatch):
         from schemas import ValidationOutput, VerificationResult
