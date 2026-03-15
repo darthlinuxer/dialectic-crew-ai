@@ -21,8 +21,8 @@ def _reset_singleton():
     _reset_metrics_store()
 
 
-@pytest.fixture
-def store(tmp_path):
+@pytest.fixture(name="metrics_store")
+def _metrics_store(tmp_path):
     return MetricsStore(db_path=tmp_path / "test_introspect.db")
 
 
@@ -62,7 +62,7 @@ class TestVisionGapLens:
         assert results[0].estimated_impact == "high"
         assert results[3].estimated_impact == "medium"
 
-    def test_run_introspection_uses_roadmap_for_self_mode(self, tmp_path, store, monkeypatch):
+    def test_run_introspection_uses_roadmap_for_self_mode(self, tmp_path, metrics_store, monkeypatch):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         roadmap = tmp_path / "internal" / "ROADMAP.md"
         vision.parent.mkdir(parents=True)
@@ -80,7 +80,7 @@ class TestVisionGapLens:
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
 
-        report = run_introspection(store=store)
+        report = run_introspection(store=metrics_store)
 
         assert any(
             "Move introspection checklist source to ROADMAP" in opportunity.title
@@ -89,32 +89,32 @@ class TestVisionGapLens:
 
 
 class TestMetricTrendsLens:
-    def test_low_prd_scores_detected(self, store):
+    def test_low_prd_scores_detected(self, metrics_store):
         for v in [6.0, 7.0, 7.5]:
-            store.record(MetricRecord(metric_type="prd_score", value=v))
-        results = _metric_trends_lens(store)
+            metrics_store.record(MetricRecord(metric_type="prd_score", value=v))
+        results = _metric_trends_lens(metrics_store)
         assert any(o.id == "metric-prd-score-low" for o in results)
 
-    def test_high_retries_detected(self, store):
+    def test_high_retries_detected(self, metrics_store):
         for _ in range(3):
-            store.record(MetricRecord(metric_type="prd_retry_count", value=3.0))
-        results = _metric_trends_lens(store)
+            metrics_store.record(MetricRecord(metric_type="prd_retry_count", value=3.0))
+        results = _metric_trends_lens(metrics_store)
         assert any(o.id == "metric-prd-retries-high" for o in results)
 
-    def test_guardrail_rejections_detected(self, store):
+    def test_guardrail_rejections_detected(self, metrics_store):
         for _ in range(5):
-            store.record(MetricRecord(metric_type="guardrail_reject", value=1.0))
-        results = _metric_trends_lens(store, window=10)
+            metrics_store.record(MetricRecord(metric_type="guardrail_reject", value=1.0))
+        results = _metric_trends_lens(metrics_store, window=10)
         assert any(o.id == "metric-guardrail-rejections" for o in results)
 
-    def test_healthy_metrics_no_opportunities(self, store):
+    def test_healthy_metrics_no_opportunities(self, metrics_store):
         for _ in range(5):
-            store.record(MetricRecord(metric_type="prd_score", value=9.5))
-            store.record(MetricRecord(metric_type="prd_retry_count", value=1.0))
-        assert _metric_trends_lens(store) == []
+            metrics_store.record(MetricRecord(metric_type="prd_score", value=9.5))
+            metrics_store.record(MetricRecord(metric_type="prd_retry_count", value=1.0))
+        assert _metric_trends_lens(metrics_store) == []
 
-    def test_empty_store_no_opportunities(self, store):
-        assert _metric_trends_lens(store) == []
+    def test_empty_store_no_opportunities(self, metrics_store):
+        assert _metric_trends_lens(metrics_store) == []
 
 
 class TestCodeHealthLens:
@@ -141,33 +141,33 @@ class TestCodeHealthLens:
 
 
 class TestFailurePatternsLens:
-    def test_recurring_rejections(self, store):
+    def test_recurring_rejections(self, metrics_store):
         for _ in range(5):
-            store.record(MetricRecord(
+            metrics_store.record(MetricRecord(
                 metric_type="guardrail_reject",
                 value=1.0,
                 context={"guardrail": "prd", "reason": "invalid_schema"},
             ))
-        results = _failure_patterns_lens(store)
+        results = _failure_patterns_lens(metrics_store)
         assert len(results) == 1
         assert "prd" in results[0].title
         assert results[0].category == "failure_pattern"
 
-    def test_no_rejections(self, store):
-        assert _failure_patterns_lens(store) == []
+    def test_no_rejections(self, metrics_store):
+        assert _failure_patterns_lens(metrics_store) == []
 
-    def test_below_threshold(self, store):
+    def test_below_threshold(self, metrics_store):
         for _ in range(2):
-            store.record(MetricRecord(
+            metrics_store.record(MetricRecord(
                 metric_type="guardrail_reject",
                 value=1.0,
                 context={"guardrail": "quality", "reason": "bad"},
             ))
-        assert _failure_patterns_lens(store) == []
+        assert _failure_patterns_lens(metrics_store) == []
 
 
 class TestRunIntrospection:
-    def test_produces_report(self, tmp_path, store, monkeypatch):
+    def test_produces_report(self, tmp_path, metrics_store, monkeypatch):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True)
         vision.write_text("- [ ] Unfinished feature\n- [x] Done feature\n")
@@ -179,19 +179,19 @@ class TestRunIntrospection:
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
 
-        report = run_introspection(store=store)
+        report = run_introspection(store=metrics_store)
         assert report.timestamp
         assert isinstance(report.baseline_metrics, dict)
         assert "prd_score" in report.baseline_metrics
 
-    def test_opportunities_sorted_by_impact(self, tmp_path, store, monkeypatch):
+    def test_opportunities_sorted_by_impact(self, tmp_path, metrics_store, monkeypatch):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True)
         items = "\n".join(f"- [ ] Item {i}" for i in range(5))
         vision.write_text(items)
 
         for v in [5.0, 6.0, 6.5]:
-            store.record(MetricRecord(metric_type="prd_score", value=v))
+            metrics_store.record(MetricRecord(metric_type="prd_score", value=v))
 
         monkeypatch.setattr(
             "dialectic.introspect.get_vision_path", lambda ctx: vision
@@ -200,6 +200,6 @@ class TestRunIntrospection:
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
 
-        report = run_introspection(store=store)
+        report = run_introspection(store=metrics_store)
         impacts = [o.estimated_impact for o in report.opportunities]
         assert impacts == sorted(impacts, key=lambda i: {"high": 0, "medium": 1, "low": 2}[i])
