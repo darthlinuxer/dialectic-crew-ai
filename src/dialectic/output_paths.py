@@ -1,4 +1,3 @@
-# pylint: disable=duplicate-code
 """Helpers for scoped centralized artifact directories."""
 
 from __future__ import annotations
@@ -33,15 +32,19 @@ def _scope_parts(context: VisionContext) -> tuple[str, ...]:
     return ("default",)
 
 
+def _resolve_scoped_output_dir(dirname: str, context: VisionContext) -> Path:
+    return _resolve_runtime_root() / dirname / Path(*_scope_parts(context))
+
+
 def resolve_prd_output_dir(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
     """Resolve the centralized PRD/plan artifact directory for the active scope."""
-    return _resolve_runtime_root() / "prd_output" / Path(*_scope_parts(context))
+    return _resolve_scoped_output_dir("prd_output", context)
 
 
 def resolve_exec_output_dir(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
     """Resolve the centralized execution-tracking directory for the active scope."""
-    return _resolve_runtime_root() / "exec_output" / Path(*_scope_parts(context))
+    return _resolve_scoped_output_dir("exec_output", context)

@@ -136,7 +136,7 @@ def list_resumable_cycles(
     state_dir: Path = SELF_IMPROVE_STATE_DIR,
 ) -> list[dict[str, str]]:
     """List persisted self-improve cycles that can be resumed."""
-    records_dir = project_root / state_dir
+    records_dir = _resolve_state_dir(project_root, state_dir)
     if not records_dir.exists():
         return []
 

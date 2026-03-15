@@ -106,7 +106,7 @@ uv sync && cp .env.example .env
 uv run dialectic-crew prd "Login with 2FA"
 uv run dialectic-crew plan
 uv run dialectic-crew execute
-uv run dialectic-crew self-improve --dry-run
+uv run dialectic-crew self-improve --simulate
 
 # Run tests (unit only — no API keys needed)
 uv run pytest -q
@@ -194,6 +194,7 @@ The skills library lives at `src/mcp/skills/` (also discoverable at `~/.agents/s
 19. **Treat import/export refactors as dual-surface changes** — when touching imports, package boundaries, or public exports, verify both runtime importability and editor/static-analysis resolution. Keep smoke tests like `tests/test_package_exports.py` aligned with the canonical package surface rather than patching around failures.
 19a. **Treat enum/object identity as unsafe across import surfaces** — when values may arrive from both canonical and legacy module paths, normalize them at the boundary or compare by value. Identity checks such as `is VisionContext.SELF` are only safe after normalization.
 19b. **Avoid opaque variadic helper APIs** — when adding or refactoring helpers, replace generic `**kwargs`/`**overrides` patterns with explicit typed parameters unless the function is a deliberate forwarding shim or framework-mandated adapter.
+19c. **Treat compatibility seams and env overrides as real contracts** — when refactoring CLI dispatch or runtime/persistence helpers, preserve intentionally monkeypatchable wrapper symbols until tests and callers are migrated, and make every read/write/list code path use the same environment-override resolver. In tests, set or clear the relevant env vars explicitly so ambient shell state cannot change outcomes.
 20. **When in doubt, consult the vision** — if you are unsure about how to implement something, or whether a change fits the project direction, consult `internal/SELF_VISION.md` first. If the vision does not clarify the question, consider whether the vision itself needs clarification or expansion — and if so, propose that change before proceeding with implementation.
 21. **When in doubt, consult the docs** — if you are unsure about how to use a CrewAI feature or whether it can solve a problem, consult the official CrewAI documentation first. The docs are the source of truth for how to leverage the framework effectively and avoid unnecessary custom infrastructure.
 22. **new code should be covered by tests** — when adding new features or modifying existing behavior, add tests that verify the expected outcomes. Tests should focus on behavior and edge cases rather than implementation details. Use `pytest` fixtures and parameterization to keep tests clean and maintainable.

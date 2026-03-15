@@ -122,9 +122,12 @@ class TestCliRequirementRouting:
         assert calls[:2] == ["logging", "events"]
         assert calls[-1] == "status"
 
-    def test_help_mentions_self_for_plan_command(self):
-        assert "use --self to plan against internal/SELF_VISION.md" in cli.HELP_TEXT
-        assert "python main.py plan --self --latest US-01" in cli.HELP_TEXT
+    def test_plan_help_mentions_self_mode(self):
+        result = RUNNER.invoke(cli.app, ["plan", "--help"])
+
+        assert result.exit_code == 0
+        assert "internal/SELF_VISION.md" in result.stdout
+        assert "uv run dialectic-crew plan --self --latest US-01" in result.stdout
 
     def test_prd_resume_requires_existing_persisted_flow(self, monkeypatch):
         monkeypatch.setattr(cli, "_check_api_key", lambda: True)

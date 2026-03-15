@@ -25,6 +25,7 @@ def _target_config(app_root: Path) -> TargetConfig:
 def test_prd_output_dir_defaults_to_default_scope(tmp_path, monkeypatch):
     app_root = tmp_path / "app"
     app_root.mkdir()
+    monkeypatch.delenv(output_paths.RUNTIME_ROOT_ENV_VAR, raising=False)
     monkeypatch.setattr(output_paths, "resolve_app_root", lambda: app_root)
     monkeypatch.setattr(output_paths, "get_active_target", lambda: None)
 
@@ -36,6 +37,7 @@ def test_output_dirs_use_target_scope_when_active(tmp_path, monkeypatch):
     app_root = tmp_path / "app"
     app_root.mkdir()
     target_config = _target_config(app_root)
+    monkeypatch.delenv(output_paths.RUNTIME_ROOT_ENV_VAR, raising=False)
     monkeypatch.setattr(output_paths, "resolve_app_root", lambda: app_root)
     monkeypatch.setattr(output_paths, "get_active_target", lambda: target_config)
 

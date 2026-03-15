@@ -1,7 +1,5 @@
 """Command handlers for the CLI entrypoint."""
 
-# pylint: disable=duplicate-code
-
 from __future__ import annotations
 
 import os
@@ -220,6 +218,3 @@ def cmd_self_improve(
         print(f"\nSelf-improvement cycle ended: {record.failure_reason}")
 
 
-def cmd_help(help_text: str) -> None:
-    """Print the plain-text CLI help surface."""
-    print(help_text.strip())

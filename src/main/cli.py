@@ -1,17 +1,4 @@
-"""
-Main entry point for Dialectic Crew AI.
-
-Commands:
-  python main.py prd "your feature request"   — generates PRD with dialectic
-  python main.py plan [prd.json] [US-001]      — plans execution of a user story
-  python main.py execute [plan.json|--latest]  — executes plan with auto-verify
-  python main.py status [plan.json]            — shows story + task status
-  python main.py verify-story [plan.json]      — re-verifies all tasks in a story
-  python main.py mark <id> <status>            — manual task status override
-  python main.py verify <id>                   — manual single-task re-check
-"""
-
-# pylint: disable=duplicate-code
+"""Main entry point for Dialectic Crew AI."""
 
 from __future__ import annotations
 
@@ -34,8 +21,9 @@ from dialectic.app_logging import (
 from dialectic.crewai_event_logger import register_crewai_event_logger
 from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.prd_flow import get_prd_resume_state
-from dialectic.vision import ensure_vision_path, VisionContext
+from dialectic.vision import VisionContext
 from .cli_commands import (
+    _check_vision_exists,
     cmd_execute,
     cmd_mark,
     cmd_plan,
@@ -70,126 +58,6 @@ BANNER = """
 ║                                                                   ║
 ╚═══════════════════════════════════════════════════════════════════╝
 """
-
-HELP_TEXT = """
-Usage:
-  python main.py <command> [arguments...]
-  dialectic-crew <command> [arguments...]
-
-Commands:
-
-    prd "your feature request" [--files file1.pdf file2.png ...] [--resume FLOW_ID] [--max-retries N] [--consensus-min-score SCORE]
-      Generates a PRD (Product Requirement Document) using the dialectic method
-      (thesis → antithesis → synthesis → validation). By default requires
-      knowledge/VISION.md; use --self to run against internal/SELF_VISION.md.
-      Saves to prd_output/ (JSON + Markdown).
-            Use --resume FLOW_ID to continue a persisted PRD flow.
-            Use --max-retries N to allow more dialectic rounds before stopping.
-                Use --consensus-min-score SCORE to stop early when consensus is reached
-                and the quality score is at least SCORE.
-      Use --files to attach reference documents (PDF, images, text) for agents to analyze.
-    Ex.: python main.py prd "Login with 2FA"
-               python main.py prd --resume <flow-id>
-               python main.py prd "Login with 2FA" --max-retries 8
-                    python main.py prd "Login with 2FA" --consensus-min-score 8.5
-           python main.py prd "Dashboard redesign" --files wireframe.png spec.pdf
-
-    plan [prd.json|--latest] [US-001|index]
-      Plans the execution of a user story with dialectic. Generates a plan
-      (UserStoryExecutionPlan) with tasks and score. By default uses the latest
-            PRD in prd_output/ and the first user story. By default it uses
-            knowledge/VISION.md; use --self to plan against internal/SELF_VISION.md.
-      Saves to prd_output/ (exec_<US>_<timestamp>.json and .md).
-      Ex.: python main.py plan
-                     python main.py plan --self --latest US-01
-           python main.py plan prd_output/PRD_20260308_1640.json US1
-
-    execute [plan.json|--latest] [--spec-only] [--resume-run RUN_ID]
-      Executes the plan with CrewAI and dialectic per task. Each task goes through
-      Thesis → Antithesis → Synthesis → Validation with automatic retries.
-      After all tasks finish, a post-execution verification phase checks each
-      completed task against PRD acceptance criteria and updates the user story
-      status (completed, partially_completed, or failed) automatically.
-      Use --spec-only to only generate a spec in Markdown (legacy behavior).
-     Use --resume-run RUN_ID to continue an interrupted execution from the
-     stored checkpoint in exec_output/<run_id>/checkpoint.json.
-      By default uses the most recent plan in prd_output/ (exec_*.json).
-      Saves to exec_output/<run_id>/ (report.json, outputs).
-      Ex.: python main.py execute
-           python main.py execute prd_output/exec_US1_20260308_1200.json
-         python main.py execute --resume-run 20260310_120000
-           python main.py execute --spec-only
-
-  status [plan.json|--latest]
-      Shows the status of the user story and all its tasks (pending, in_progress,
-      completed, partially_completed, failed). By default uses the most recent plan.
-      Ex.: python main.py status
-           python main.py status prd_output/exec_US1_20260308_1750.json
-
-  verify-story [plan.json] [--prd prd.json]
-      Verifies all completed tasks in the plan against PRD acceptance criteria
-      using LLM agents and updates the user story status. Useful for re-checking
-      a story after manual changes or debugging.
-      Ex.: python main.py verify-story
-           python main.py verify-story --prd prd_output/PRD_20260308_1640.json
-
-Manual overrides (the execute command handles these automatically):
-
-  mark <task_id> <status> [plan.json]
-      Manually overrides the status of a task. Useful for edge cases where a
-      human decides a task is done or needs to be reset.
-      Valid statuses: pending, in_progress, completed, failed
-      Ex.: python main.py mark T0 completed
-           python main.py mark T3 failed prd_output/exec_US1_20260308_1750.json
-
-  verify <task_id> [plan.json] [--prd prd.json]
-      Manually re-verifies a single task using an LLM agent. The execute command
-      does this automatically for all tasks; use this for targeted re-checks.
-      Ex.: python main.py verify T0
-           python main.py verify T2 --prd prd_output/PRD_20260308_1640.json
-
-                self-improve [--simulate] [--max N] [--stash-dirty] [--resume CYCLE_ID] [--list-resumable]
-    Runs one self-improvement cycle: introspect against internal/SELF_VISION.md
-    and internal/ROADMAP.md,
-      generate PRD, plan, and execute improvements, then validate with tests
-      and metrics. Creates a PR for human review if all gates pass.
-            --simulate  Run the full self-improve pipeline on a disposable branch with
-                                    temporary runtime artifacts, then clean everything up.
-    --max N     Maximum number of improvements per cycle (currently only 1 is supported).
-            --resume CYCLE_ID
-                                        Continue a previously interrupted self-improve cycle using
-                                        the saved snapshot in .dialectic/self_improve/<cycle-id>.json.
-            --list-resumable
-                                    Print saved resumable self-improve cycles and exit.
-            --stash-dirty
-                                    Stash current-branch changes before creating the
-                                    self-improve branch. The stash is left in the stash stack.
-    CrewAI telemetry is disabled automatically by the CLI to avoid noisy
-    exporter failures from external telemetry endpoints.
-      If a prior run was interrupted on a `self-improve/*` branch, stale
-      self-improve-only worktree changes are discarded automatically.
-            Ex.: python main.py self-improve --simulate
-           python main.py self-improve --max 1
-           python main.py self-improve --resume 20260310T120000
-         python main.py self-improve --list-resumable
-
-  --self (flag for prd, plan, execute)
-      Run against the app's internal vision (internal/SELF_VISION.md) instead
-      of the user's project vision (knowledge/VISION.md). Used to evolve the
-      app itself using its own dialectic pipeline.
-      Ex.: python main.py prd "Add memory support" --self
-           python main.py plan --self
-           python main.py execute --self
-
-  help, -h, --help
-      Shows this message.
-
-Requirements:
-    - knowledge/VISION.md (for prd, plan, and execute by default)
-    - internal/SELF_VISION.md (when using --self or self-improve)
-  - API key in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY)
-"""
-
 
 app = typer.Typer(
     add_completion=False,
@@ -227,15 +95,6 @@ def _extract_self_flag(args: list[str]) -> tuple[list[str], VisionContext]:
     return args, VisionContext.PROJECT
 
 
-def _check_vision_exists(context: VisionContext = VisionContext.PROJECT):
-    try:
-        ensure_vision_path(context)
-    except FileNotFoundError as exc:
-        print("  Vision document not found!")
-        print(f"  {exc}")
-        sys.exit(1)
-
-
 def _command_requires_api(sub: str, args: list[str]) -> bool:
     """Return whether the requested subcommand requires an API key."""
     if sub in {"status", "mark"}:
@@ -256,15 +115,16 @@ def _command_requires_vision(sub: str, args: list[str]) -> bool:
     return False
 
 
-def cmd_prd(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def cmd_prd(
     feature_request: str | None,
     file_paths: list[str] | None = None,
     vision_context: VisionContext = VisionContext.PROJECT,
     resume_id: str | None = None,
     max_retries: int | None = None,
     consensus_min_score: float | None = None,
-):
-    """Dispatch the PRD workflow while preserving the historical helper API."""
+    get_prd_resume_state_fn=get_prd_resume_state,
+) -> None:
+    """Forward PRD dispatch while preserving the CLI module's test seam."""
     _cmd_prd(
         feature_request,
         file_paths=file_paths,
@@ -272,7 +132,7 @@ def cmd_prd(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         resume_id=resume_id,
         max_retries=max_retries,
         consensus_min_score=consensus_min_score,
-        get_prd_resume_state_fn=get_prd_resume_state,
+        get_prd_resume_state_fn=get_prd_resume_state_fn,
     )
 
 
@@ -314,6 +174,38 @@ def _run_guarded_command(
         _check_vision_exists(vision_context)
     with log_context(phase="command_dispatch"):
         action()
+
+
+def _dispatch_prd_command(
+    feature_request: str | None,
+    *,
+    file_paths: list[str] | None,
+    vision_context: VisionContext,
+    resume_id: str | None,
+    max_retries: int | None,
+    consensus_min_score: float | None,
+) -> None:
+    """Dispatch PRD generation while preserving the historical non-resume call shape."""
+    if resume_id is not None:
+        cmd_prd(
+            feature_request,
+            file_paths=file_paths,
+            vision_context=vision_context,
+            resume_id=resume_id,
+            max_retries=max_retries,
+            consensus_min_score=consensus_min_score,
+            get_prd_resume_state_fn=get_prd_resume_state,
+        )
+        return
+
+    cmd_prd(
+        feature_request,
+        file_paths=file_paths,
+        vision_context=vision_context,
+        resume_id=resume_id,
+        max_retries=max_retries,
+        consensus_min_score=consensus_min_score,
+    )
 
 
 @app.command("prd")
@@ -391,7 +283,7 @@ def prd_command(  # pylint: disable=too-many-arguments,too-many-positional-argum
     _run_guarded_command(
         "prd",
         args,
-        lambda: cmd_prd(
+        lambda: _dispatch_prd_command(
             feature_request,
             file_paths=file_list or None,
             vision_context=vision_context,
