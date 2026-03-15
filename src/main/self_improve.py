@@ -793,7 +793,10 @@ def run_self_improve(
 
             if not is_resume:
                 if simulate:
-                    print(f"\n[3/7] Using disposable simulation branch: {branch_name}")
+                    print(
+                        "\n[3/7] Using previously prepared disposable "
+                        f"simulation branch: {branch_name}"
+                    )
                 else:
                     print(f"\n[3/7] Creating branch: {branch_name}")
                     if not _git_branch_create(branch_name, project_root):

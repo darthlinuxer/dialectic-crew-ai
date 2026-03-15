@@ -261,7 +261,13 @@ class TestRunSelfImprove:
         assert record.plan_generated is True
         assert "Request timed out" not in record.failure_reason
 
-    def test_simulate_runs_full_flow_without_persisting_branch_changes(self, tmp_path, monkeypatch, store):
+    def test_simulate_runs_full_flow_without_persisting_branch_changes(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True)
         vision.write_text("- [ ] Unfinished feature\n")
@@ -360,6 +366,7 @@ class TestRunSelfImprove:
                 with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
                     with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
                         record = run_self_improve(simulate=True)
+        out = capsys.readouterr().out
 
         assert record.failure_reason == "simulated"
         assert record.prd_generated is True
@@ -368,6 +375,10 @@ class TestRunSelfImprove:
         assert prioritized == [record.opportunities_found]
         assert prepared == [str(tmp_path)]
         assert cleaned == [str(tmp_path)]
+        assert (
+            f"[3/7] Using previously prepared disposable simulation branch: "
+            f"{SIMULATION_BRANCH_NAME}"
+        ) in out
 
     def test_aborts_when_baseline_tests_fail(self, tmp_path, monkeypatch, store):
         monkeypatch.setattr(
