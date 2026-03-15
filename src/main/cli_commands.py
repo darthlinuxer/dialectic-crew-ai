@@ -182,6 +182,7 @@ def cmd_self_improve(
     stash_dirty: bool = False,
     resume_cycle_id: str | None = None,
     list_resumable: bool = False,
+    skip_baseline_tests: bool = False,
 ) -> None:
     """Run or inspect the guarded self-improve workflow from the CLI."""
     if max_improvements != 1:
@@ -209,6 +210,7 @@ def cmd_self_improve(
         simulate,
         stash_dirty,
         resume_cycle_id,
+        skip_baseline_tests,
     )
     if record.pr_created:
         print("\nSelf-improvement cycle completed successfully.")

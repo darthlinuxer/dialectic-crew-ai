@@ -420,12 +420,14 @@ class TestCliRequirementRouting:
             stash_dirty=False,
             resume_cycle_id=None,
             list_resumable=False,
+            skip_baseline_tests=False,
         ):
             captured["simulate"] = simulate
             captured["max_improvements"] = max_improvements
             captured["stash_dirty"] = stash_dirty
             captured["resume_cycle_id"] = resume_cycle_id
             captured["list_resumable"] = list_resumable
+            captured["skip_baseline_tests"] = skip_baseline_tests
 
         monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
         monkeypatch.setattr(
@@ -442,6 +444,7 @@ class TestCliRequirementRouting:
             "stash_dirty": False,
             "resume_cycle_id": "cycle-123",
             "list_resumable": False,
+            "skip_baseline_tests": False,
         }
 
     def test_self_improve_rejects_max_greater_than_one(self, monkeypatch, capsys):
@@ -470,8 +473,9 @@ class TestCliRequirementRouting:
             stash_dirty=False,
             resume_cycle_id=None,
             list_resumable=False,
+            skip_baseline_tests=False,
         ):
-            del simulate, max_improvements, stash_dirty
+            del simulate, max_improvements, stash_dirty, skip_baseline_tests
             captured["list_resumable"] = list_resumable
             captured["resume_cycle_id"] = resume_cycle_id
 
@@ -484,6 +488,33 @@ class TestCliRequirementRouting:
             "list_resumable": True,
             "resume_cycle_id": None,
         }
+
+    def test_self_improve_skip_baseline_tests_passes_flag_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            simulate=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+            skip_baseline_tests=False,
+        ):
+            del simulate, max_improvements, stash_dirty, resume_cycle_id, list_resumable
+            captured["skip_baseline_tests"] = skip_baseline_tests
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "self-improve", "--skip-baseline-tests"],
+        )
+
+        cli.main()
+
+        assert captured == {"skip_baseline_tests": True}
 
 
 class TestVisionResolution:

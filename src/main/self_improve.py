@@ -627,6 +627,7 @@ def run_self_improve(
     simulate: bool = False,
     stash_dirty: bool = False,
     resume_cycle_id: str | None = None,
+    skip_baseline_tests: bool = False,
 ) -> SelfImprovementRecord:
     """
     Run one self-improvement cycle.
@@ -718,14 +719,20 @@ def run_self_improve(
                         print(f"  - {item}")
 
             if not is_resume:
-                print("\n[1/6] Running baseline tests...")
-                baseline_tests = _snapshot_tests(project_root)
-                if not baseline_tests["passed"]:
-                    record.failure_reason = "Baseline tests already failing -- aborting"
-                    print(f"  ABORT: {record.failure_reason}")
-                    _emit_test_failure_details(baseline_tests)
-                    _persist_record(store, record)
-                    return record
+                if skip_baseline_tests:
+                    print(
+                        "\n[preflight] Skipping baseline tests because "
+                        "--skip-baseline-tests was requested."
+                    )
+                else:
+                    print("\n[1/6] Running baseline tests...")
+                    baseline_tests = _snapshot_tests(project_root)
+                    if not baseline_tests["passed"]:
+                        record.failure_reason = "Baseline tests already failing -- aborting"
+                        print(f"  ABORT: {record.failure_reason}")
+                        _emit_test_failure_details(baseline_tests)
+                        _persist_record(store, record)
+                        return record
 
             if not simulate and not is_resume:
                 preflight_failure = _run_git_preflight(

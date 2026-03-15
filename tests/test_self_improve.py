@@ -261,6 +261,100 @@ class TestRunSelfImprove:
         assert record.plan_generated is True
         assert "Request timed out" not in record.failure_reason
 
+    def test_skip_baseline_tests_skips_baseline_in_simulation(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Skip baseline tests in simulation\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "dialectic.introspect.get_vision_path",
+            lambda ctx: vision,
+        )
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root",
+            lambda: tmp_path,
+        )
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve._prepare_simulation_branch",
+            lambda cwd: (True, SIMULATION_BRANCH_NAME),
+        )
+        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, check_all_src=True: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not commit")),
+        )
+
+        snapshot_calls: list[str] = []
+
+        def fake_snapshot(_project_root, timeout=None):
+            del timeout
+            snapshot_calls.append("called")
+            return {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""}
+
+        monkeypatch.setattr("main.self_improve._snapshot_tests", fake_snapshot)
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-sim-skip-baseline"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "sim-run-skip-baseline",
+            "task_flow_ids": {"T-001": "task-flow-sim-skip-baseline"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(
+                            simulate=True,
+                            skip_baseline_tests=True,
+                        )
+
+        out = capsys.readouterr().out
+
+        assert record.failure_reason == "simulated"
+        assert snapshot_calls == ["called"]
+        assert "[1/6] Running baseline tests..." not in out
+        assert "--skip-baseline-tests was requested" in out
+
     def test_simulate_runs_full_flow_without_persisting_branch_changes(
         self,
         tmp_path,

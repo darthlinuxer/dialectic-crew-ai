@@ -557,11 +557,17 @@ def self_improve_command(
         "--list-resumable",
         help="List resumable self-improve cycles and exit.",
     ),
+    skip_baseline_tests: bool = typer.Option(
+        False,
+        "--skip-baseline-tests",
+        help="Skip the initial baseline pytest run before self-improve proceeds.",
+    ),
 ) -> None:
     """Run the guarded self-improvement orchestration workflow.
 
     Examples:
             uv run dialectic-crew self-improve --simulate
+        uv run dialectic-crew self-improve --skip-baseline-tests
       uv run dialectic-crew self-improve --max 1
       uv run dialectic-crew self-improve --resume 20260310T120000
       uv run dialectic-crew self-improve --list-resumable
@@ -580,6 +586,8 @@ def self_improve_command(
         args.append("--stash-dirty")
     if list_resumable:
         args.append("--list-resumable")
+    if skip_baseline_tests:
+        args.append("--skip-baseline-tests")
     if resume_cycle_id:
         args.extend(["--resume", resume_cycle_id])
 
@@ -592,6 +600,7 @@ def self_improve_command(
             stash_dirty=stash_dirty,
             resume_cycle_id=resume_cycle_id,
             list_resumable=list_resumable,
+            skip_baseline_tests=skip_baseline_tests,
         ),
     )
 
