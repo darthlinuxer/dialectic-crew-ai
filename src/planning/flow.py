@@ -10,6 +10,7 @@ Uses native CrewAI features:
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Tuple
@@ -28,6 +29,14 @@ from schemas import PRDSchema, UserStory, UserStoryExecutionPlan
 
 
 logger = logging.getLogger(__name__)
+
+_AGENTIC_PLAN_PATTERN = re.compile(
+    r"\b(?:write_to_file|list_directory|search_a_files_content|stack_aware_validation|"
+    r"create_reasoning_plan|search_memory|functions\.[A-Za-z_]+)\b|"
+    r"If you want, I can|Which would be most useful next\??|operator|agent response|"
+    r"JSON tool arguments|tool invocation|Bootstrap context|Self QA|Commit message guidance",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +61,17 @@ def _plan_guardrail(result) -> Tuple[bool, Any]:
                         subject="Plan",
                     ),
                 )
+            instruction_issues = _find_agentic_instruction_issues(pydantic_obj)
+            if instruction_issues:
+                logger.warning(
+                    "agentic-plan-instructions-rejected by plan guardrail: %s",
+                    "; ".join(instruction_issues),
+                )
+                return (
+                    False,
+                    "Plan tasks must describe implementation deliverables, not agent/tool "
+                    "workflow instructions. " + "; ".join(instruction_issues),
+                )
             return (True, _guardrail_success_output(pydantic_obj))
         return (False, "Plan must include at least one implementation task (tasks list is empty)")
     return (
@@ -65,6 +85,26 @@ def _plan_guardrail(result) -> Tuple[bool, Any]:
 def _guardrail_success_output(validated_model: BaseModel) -> str:
     """Serialize structured guardrail output for CrewAI TaskOutput compatibility."""
     return validated_model.model_dump_json()
+
+
+def _find_agentic_instruction_issues(plan: UserStoryExecutionPlan) -> list[str]:
+    issues: list[str] = []
+    for task in plan.tasks:
+        haystacks = {
+            "title": task.title,
+            "description": task.description,
+            "verification_notes": task.verification_notes,
+        }
+        for field_name, raw_text in haystacks.items():
+            if not raw_text:
+                continue
+            match = _AGENTIC_PLAN_PATTERN.search(raw_text)
+            if match:
+                issues.append(
+                    f"{task.id} {field_name} contains agent/tool workflow text ({match.group(0)!r})"
+                )
+                break
+    return issues
 
 
 class _PlanningPRDMetadata(BaseModel):

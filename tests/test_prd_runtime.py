@@ -60,7 +60,96 @@ def test_build_prd_crew_uses_yaml_templates(monkeypatch):
     assert captured_tasks[3]["output_pydantic"].__name__ == "PRDSchema"
     assert captured_tasks[3]["guardrail"].__name__ == "_prd_guardrail"
     assert captured_crew["knowledge_sources"] == ["vision:self", "feedback-source"]
+    assert captured_crew["memory"].startswith("memory:self:prd/")
     assert captured_crew["planning"] is False
+
+
+def test_build_prd_crew_strips_interactive_tools_from_agents(monkeypatch):
+    """Prevent PRD agents from returning raw tool-call outputs as final answers."""
+
+    captured_crew = {}
+
+    class FakeTask:  # pylint: disable=too-few-public-methods
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeCrew:  # pylint: disable=too-few-public-methods
+        def __init__(self, **kwargs):
+            captured_crew.update(kwargs)
+
+    class FakeAgent:  # pylint: disable=too-few-public-methods
+        def __init__(self, label):
+            self.label = label
+            self.tools = [f"tool:{label}"]
+            self.mcps = [f"mcp:{label}"]
+            self.mcp_servers = [f"server:{label}"]
+
+    monkeypatch.setattr(prd_runtime, "Task", FakeTask)
+    monkeypatch.setattr(prd_runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(prd_runtime, "create_visionario", lambda ctx: FakeAgent("visionario"))
+    monkeypatch.setattr(prd_runtime, "create_critico_socratico", lambda ctx: FakeAgent("critico"))
+    monkeypatch.setattr(prd_runtime, "create_sintetizador", lambda ctx: FakeAgent("sint"))
+    monkeypatch.setattr(prd_runtime, "create_validador_macro", lambda ctx: FakeAgent("val"))
+    monkeypatch.setattr(prd_runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(prd_runtime, "vision_knowledge", lambda ctx: "vision")
+
+    prd_runtime.build_prd_crew(
+        feature_objective="Prevent PRD tool-call leakage",
+        vision_context=VisionContext.SELF,
+        retry_feedback_block="",
+        retry_feedback_sources=[],
+    )
+
+    for agent in captured_crew["agents"]:
+        assert agent.tools == []
+        assert agent.mcps == []
+        assert agent.mcp_servers == []
+
+
+def test_prd_memory_namespace_is_feature_scoped():
+    first = prd_runtime._prd_memory_namespace("Ship resilient PRD validation")
+    second = prd_runtime._prd_memory_namespace("Ship resilient PRD validation")
+    third = prd_runtime._prd_memory_namespace("A different feature entirely")
+
+    assert first == second
+    assert first.startswith("prd/")
+    assert third.startswith("prd/")
+    assert first != third
+
+
+def test_build_prd_crew_uses_explicit_memory_namespace_override(monkeypatch):
+    captured_crew = {}
+
+    class FakeTask:  # pylint: disable=too-few-public-methods
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeCrew:  # pylint: disable=too-few-public-methods
+        def __init__(self, **kwargs):
+            captured_crew.update(kwargs)
+
+    monkeypatch.setattr(prd_runtime, "Task", FakeTask)
+    monkeypatch.setattr(prd_runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(prd_runtime, "create_visionario", lambda ctx: "visionario")
+    monkeypatch.setattr(prd_runtime, "create_critico_socratico", lambda ctx: "critico")
+    monkeypatch.setattr(prd_runtime, "create_sintetizador", lambda ctx: "sint")
+    monkeypatch.setattr(prd_runtime, "create_validador_macro", lambda ctx: "val")
+    monkeypatch.setattr(
+        prd_runtime,
+        "crew_memory",
+        lambda ctx, namespace: f"memory:{ctx.value}:{namespace}",
+    )
+    monkeypatch.setattr(prd_runtime, "vision_knowledge", lambda ctx: "vision")
+
+    prd_runtime.build_prd_crew(
+        feature_objective="Explicit namespace",
+        vision_context=VisionContext.SELF,
+        retry_feedback_block="",
+        retry_feedback_sources=[],
+        memory_namespace="prd/test-flow-id",
+    )
+
+    assert captured_crew["memory"] == "memory:self:prd/test-flow-id"
 
 
 def test_build_prd_crew_includes_exact_vision_path_in_prompts(monkeypatch):

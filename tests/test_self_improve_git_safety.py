@@ -105,6 +105,16 @@ class TestRecoverStaleSelfImproveWorktree:
 
 
 class TestSelfImproveWorktreePreflight:
+    def test_factory_workspace_dir_is_gitignored(self):
+        gitignore_path = Path(__file__).resolve().parents[1] / ".gitignore"
+        entries = {
+            line.strip()
+            for line in gitignore_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+        assert ".factory/" in entries
+
     def test_aborts_when_worktree_is_dirty(self, tmp_path, monkeypatch, store):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True, exist_ok=True)

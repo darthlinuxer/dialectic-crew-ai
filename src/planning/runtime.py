@@ -7,7 +7,6 @@ from crewai import Crew, Process, Task
 
 from dialectic.agents import build_agent_from_config
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
-from dialectic.llm import llm_planning
 from dialectic.yaml_config import (
     load_yaml_config,
     render_yaml_config,
@@ -82,8 +81,7 @@ def build_planning_crew(
         process=Process.sequential,
         verbose=True,
         memory=crew_memory(vision_context, "planning"),
-        planning=True,
-        planning_llm=llm_planning,
+        planning=False,
         knowledge_sources=[vision_knowledge(vision_context), *(retry_feedback_sources or [])],
     )
 

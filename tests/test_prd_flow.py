@@ -282,11 +282,12 @@ def test_prd_guardrail_rejects_unknown_story_dependencies():
     assert "unknown dependenc" in payload.lower()
 
 
-def test_dialectic_flow_uses_method_refs_for_retry_listener_wiring():
+def test_dialectic_flow_uses_explicit_retry_label_listener_wiring():
     source = inspect.getsource(prd_flow.DialecticFlow)
 
-    assert '@listen(or_(iniciar_dialetica, fazer_retry))' in source
-    assert '@listen(or_("iniciar_dialetica", "fazer_retry"))' not in source
+    assert '@router(iniciar_dialetica)' in source
+    assert '@listen("rodar_rodada")' in source
+    assert '@listen("retry")' not in source
 
 
 def test_dialectic_flow_validator_uses_full_dialectic_context():
@@ -317,6 +318,7 @@ def test_dialectic_flow_uses_shared_prd_extractor_after_kickoff():
 
 def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     prd = _make_prd()
+    captured_kwargs = {}
 
     class FakeHookScope:
         def __init__(self, **kwargs):
@@ -333,7 +335,11 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
             del kwargs
             return SimpleNamespace(pydantic=prd)
 
-    monkeypatch.setattr(prd_flow, "build_prd_crew", lambda **kwargs: FakeCrew())
+    def fake_build_prd_crew(**kwargs):
+        captured_kwargs.update(kwargs)
+        return FakeCrew()
+
+    monkeypatch.setattr(prd_flow, "build_prd_crew", fake_build_prd_crew)
     monkeypatch.setattr(prd_flow, "HookScope", FakeHookScope)
 
     flow = prd_flow.DialecticFlow()
@@ -350,6 +356,7 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     assert flow.state.quality_score == prd.quality_score
     assert flow.state.consensus_reached is True
     assert flow.state.final_validation_notes == prd.final_validation_notes
+    assert captured_kwargs["memory_namespace"] == f"prd/{flow.flow_id}"
 
 
 def test_avaliar_approves_when_consensus_floor_is_met():
@@ -378,7 +385,7 @@ def test_avaliar_retries_when_consensus_floor_is_not_met(capsys):
     next_step = cast(Any, getattr(prd_flow.DialecticFlow, "avaliar"))(flow)
 
     captured = capsys.readouterr()
-    assert next_step == "retry"
+    assert next_step == "rodar_rodada"
     assert flow.state.current_phase == "dialectic"
     assert flow.state.retry_count == 2
     assert "Consensus reached, but score 8.4 is below consensus floor 8.5" in captured.out

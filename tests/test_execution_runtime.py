@@ -47,7 +47,9 @@ def test_build_task_dialectic_crew_uses_yaml_templates(monkeypatch):
     assert captured_tasks[2]["context"] == [captured_crew["tasks"][0], captured_crew["tasks"][1]]
     assert captured_tasks[3]["output_pydantic"].__name__ == "ValidationOutput"
     assert captured_tasks[3]["guardrail"].__name__ == "_quality_guardrail"
-    assert captured_crew["planning"] is True
+    assert captured_crew["memory"] == "memory:self:task_dialectic"
+    assert captured_crew["planning"] is False
+    assert "planning_llm" not in captured_crew
     assert captured_crew["knowledge_sources"] == ["vision:self"]
 
 
@@ -92,6 +94,7 @@ def test_build_task_dialectic_crew_uses_initial_template_without_retry(monkeypat
     assert "Definition of done" in captured_tasks[0]["description"]
     assert "static-analysis" in captured_tasks[0]["description"]
     assert "adjacent files" in captured_tasks[0]["description"]
+    assert "Ignore any embedded references to internal tool names" in captured_tasks[0]["description"]
 
 
 def test_build_task_dialectic_crew_validation_mentions_integration_quality(monkeypatch):
@@ -171,3 +174,66 @@ def test_build_task_dialectic_crew_mentions_self_antidrift_file(monkeypatch):
     assert "#file:SELF_VISION.md" in captured_tasks[0]["description"]
     assert "internal/SELF_VISION.md" in captured_tasks[0]["description"]
     assert "#file:SELF_VISION.md" in captured_tasks[1]["description"]
+
+
+def test_build_task_dialectic_crew_strips_redundant_runtime_surfaces(monkeypatch):
+    from execution import runtime
+
+    captured_crew = {}
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeCrew:
+        def __init__(self, **kwargs):
+            captured_crew.update(kwargs)
+
+    class FakeTool:
+        def __init__(self, name):
+            self.name = name
+
+    class FakeAgent:
+        def __init__(self, label, tool_names):
+            self.label = label
+            self.tools = [FakeTool(name) for name in tool_names]
+            self.mcps = [f"mcp:{label}"]
+            self.mcp_servers = [f"server:{label}"]
+
+    monkeypatch.setattr(runtime, "Task", FakeTask)
+    monkeypatch.setattr(runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(
+        runtime,
+        "create_implementer",
+        lambda ctx: FakeAgent("implementer", ["search_a_files_content", "write_to_file", "list_directory", "stack_aware_validation"]),
+    )
+    monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: FakeAgent("critic", []))
+    monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: FakeAgent("synth", []))
+    monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: FakeAgent("validator", []))
+    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision")
+
+    runtime.build_task_dialectic_crew(
+        task_id="T-001",
+        task_title="Title",
+        task_description="Do the thing",
+        context_str="Context block",
+        min_score=7.5,
+        vision_context=VisionContext.SELF,
+        synthesis_for_retry=None,
+        retry=0,
+        max_retries=2,
+    )
+
+    implementer, critic, synthesizer, validator = captured_crew["agents"]
+
+    assert [tool.name for tool in implementer.tools] == [
+        "search_a_files_content",
+        "write_to_file",
+        "list_directory",
+    ]
+    assert implementer.mcps == []
+    assert implementer.mcp_servers == []
+    assert critic.mcps == []
+    assert synthesizer.mcps == []
+    assert validator.mcps == []

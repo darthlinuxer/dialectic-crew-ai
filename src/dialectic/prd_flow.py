@@ -18,7 +18,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from crewai.flow import Flow, listen, or_, router, start
+from crewai.flow import Flow, listen, router, start
 from crewai.flow.persistence import SQLiteFlowPersistence, persist
 from pydantic import ValidationError
 
@@ -64,6 +64,44 @@ def _resolved_output_dir(vision_context: VisionContext) -> Path:
 class DialecticFlow(Flow[DialecticState]):
     """Dialectic flow with automatic retry and state persistence"""
 
+    def _route_after_evaluation(self) -> str:
+        if self.state.quality_score >= 9.0:
+            self.state.current_phase = "save"
+            print(f"APPROVED! Quality score: {self.state.quality_score}")
+            return "aprovar"
+
+        consensus_min_score = self.state.consensus_min_score
+        if (
+            consensus_min_score is not None
+            and self.state.consensus_reached
+            and self.state.quality_score >= consensus_min_score
+        ):
+            self.state.current_phase = "save"
+            print(
+                "APPROVED via consensus threshold! "
+                f"Score: {self.state.quality_score} / floor: {consensus_min_score}"
+            )
+            return "aprovar"
+
+        if self.state.retry_count >= self.state.max_retries:
+            self.state.current_phase = "save"
+            print(f"Max retries reached. Finishing with score: {self.state.quality_score}")
+            return "aprovar"
+
+        self.state.retry_count += 1
+        self.state.current_phase = "dialectic"
+        if consensus_min_score is not None and self.state.consensus_reached:
+            print(
+                "Consensus reached, but score "
+                f"{self.state.quality_score} is below consensus floor {consensus_min_score}; "
+                "continuing refinement."
+            )
+        print(f"Rejected. Retry #{self.state.retry_count}")
+        notes = self.state.final_validation_notes
+        notes_str = notes[:200] if isinstance(notes, str) else str(notes)[:200]
+        print(f"   What is missing: {notes_str}...")
+        return "rodar_rodada"
+
     @start()
     def iniciar_dialetica(self):
         bind_log_context(
@@ -72,7 +110,6 @@ class DialecticFlow(Flow[DialecticState]):
             vision_context=self.state.vision_context,
         )
         logger.info("PRD dialectic flow started")
-        phase = self.state.current_phase
         print(f"\n{'='*60}")
         print("STARTING DIALECTIC FLOW")
         print(f"{'='*60}")
@@ -81,22 +118,19 @@ class DialecticFlow(Flow[DialecticState]):
         print(f"Max retries: {self.state.max_retries}")
         print(f"{'='*60}\n")
 
+    @router(iniciar_dialetica)
+    def route_from_start(self):
+        phase = self.state.current_phase
         if phase == "evaluate":
-            return "avaliar"
+            return self._route_after_evaluation()
         if phase in {"save", "completed"}:
+            self.state.current_phase = "save"
             return "aprovar"
 
         self.state.current_phase = "dialectic"
         return "rodar_rodada"
 
-    # Router outputs remain string labels because CrewAI emits route names here,
-    # not method references.
-    @listen("retry")
-    def fazer_retry(self):
-        self.state.current_phase = "dialectic"
-        return "rodar_rodada"
-
-    @listen(or_(iniciar_dialetica, fazer_retry))
+    @listen("rodar_rodada")
     def rodar_rodada_dialetica(self):
         with log_context(
             flow_id=self.flow_id,
@@ -119,6 +153,7 @@ class DialecticFlow(Flow[DialecticState]):
                 vision_context=vision_context,
                 retry_feedback_block=retry_feedback_block,
                 retry_feedback_sources=retry_feedback_sources,
+                memory_namespace=f"prd/{self.flow_id}",
             )
 
             kickoff_kwargs: dict[str, Any] = {
@@ -213,40 +248,7 @@ class DialecticFlow(Flow[DialecticState]):
     def avaliar(self):
         bind_log_context(flow_id=self.flow_id, phase="evaluate")
         logger.info("Evaluating PRD dialectic round", extra={"retry": self.state.retry_count})
-        if self.state.quality_score >= 9.0:
-            self.state.current_phase = "save"
-            print(f"APPROVED! Quality score: {self.state.quality_score}")
-            return "aprovar"
-        consensus_min_score = self.state.consensus_min_score
-        if (
-            consensus_min_score is not None
-            and self.state.consensus_reached
-            and self.state.quality_score >= consensus_min_score
-        ):
-            self.state.current_phase = "save"
-            print(
-                "APPROVED via consensus threshold! "
-                f"Score: {self.state.quality_score} / floor: {consensus_min_score}"
-            )
-            return "aprovar"
-        if self.state.retry_count >= self.state.max_retries:
-            self.state.current_phase = "save"
-            print(f"Max retries reached. Finishing with score: {self.state.quality_score}")
-            return "aprovar"
-
-        self.state.retry_count += 1
-        self.state.current_phase = "dialectic"
-        if consensus_min_score is not None and self.state.consensus_reached:
-            print(
-                "Consensus reached, but score "
-                f"{self.state.quality_score} is below consensus floor {consensus_min_score}; "
-                "continuing refinement."
-            )
-        print(f"Rejected. Retry #{self.state.retry_count}")
-        notes = self.state.final_validation_notes
-        notes_str = notes[:200] if isinstance(notes, str) else str(notes)[:200]
-        print(f"   What is missing: {notes_str}...")
-        return "retry"
+        return self._route_after_evaluation()
 
     # Router outputs remain string labels because CrewAI emits route names here,
     # not method references.

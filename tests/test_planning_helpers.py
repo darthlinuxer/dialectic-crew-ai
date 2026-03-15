@@ -18,6 +18,10 @@ planning_prd_metadata = cast(Any, planning_flow.__dict__["_PlanningPRDMetadata"]
 plan_guardrail = cast(Any, planning_flow.__dict__["_plan_guardrail"])
 ensure_acceptance_checks = cast(Any, planning_flow.__dict__["_ensure_acceptance_checks"])
 find_latest_prd = cast(Any, planning_flow.__dict__["_find_latest_prd"])
+find_agentic_instruction_issues = cast(
+    Any,
+    planning_flow.__dict__["_find_agentic_instruction_issues"],
+)
 
 
 class TestNormalizeUsRef:
@@ -228,6 +232,29 @@ class TestPlanGuardrail:
         assert ok is False
         assert "dependency-graph-rejected by plan guardrail" in caplog.text
 
+    def test_rejects_task_descriptions_with_agent_tool_workflow_text(self):
+        plan = UserStoryExecutionPlan(
+            user_story_id="US-001",
+            user_story_title="Story",
+            approach_summary="approach",
+            tasks=[
+                make_task(
+                    description=(
+                        "Bootstrap context, run list_directory {\"directory\":\"./\"}, "
+                        "then write_to_file and output implementation summary in agent response."
+                    )
+                )
+            ],
+            quality_score=9.0,
+            final_validation_notes="ok",
+        )
+
+        ok, payload = plan_guardrail(self._make_result(plan))
+
+        assert ok is False
+        assert "implementation deliverables" in payload.lower()
+        assert "T-001 description contains agent/tool workflow text" in payload
+
 
 class TestEnsureAcceptanceChecks:
     def test_adds_fallback_checks_when_missing(self):
@@ -262,6 +289,29 @@ class TestEnsureAcceptanceChecks:
         normalized = ensure_acceptance_checks(plan, us)
 
         assert normalized.tasks[0].acceptance_checks == ["file exists"]
+
+
+class TestAgenticInstructionFiltering:
+    def test_finds_tool_workflow_in_task_fields(self):
+        plan = UserStoryExecutionPlan(
+            user_story_id="US-001",
+            user_story_title="Story",
+            approach_summary="approach",
+            tasks=[
+                make_task(
+                    id="T-007",
+                    description="Use write_to_file to create the schema and ask Which would be most useful next?",
+                )
+            ],
+            quality_score=8.5,
+            final_validation_notes="ok",
+        )
+
+        issues = find_agentic_instruction_issues(plan)
+
+        assert issues
+        assert "T-007" in issues[0]
+        assert "write_to_file" in issues[0]
 
 
 class TestPlanningRetryFeedback:
