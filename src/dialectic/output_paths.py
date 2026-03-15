@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from dialectic.target import get_active_target
-from dialectic.vision import VisionContext, resolve_app_root
+from dialectic.vision import VisionContext, normalize_vision_context, resolve_app_root
 
 
 def _scope_parts(context: VisionContext) -> tuple[str, ...]:
-    if context is VisionContext.SELF:
+    if normalize_vision_context(context) is VisionContext.SELF:
         return ("self",)
     active_target = get_active_target()
     if active_target is not None:

@@ -6,7 +6,8 @@ import hashlib
 from pathlib import Path
 from typing import Any, Mapping
 
-from crewai import Crew, Process, Task
+import crewai
+from crewai import Crew, Task
 
 from dialectic.agents import (
     create_critico_socratico,
@@ -14,19 +15,17 @@ from dialectic.agents import (
     create_validador_macro,
     create_visionario,
 )
-from dialectic.crew_log_summarizer import get_step_summarizer_callback
-from dialectic.crew_verbose_config import get_output_log_file, is_verbose
+from dialectic.crew_builder import (
+    build_dialectic_sequential_crew,
+    build_task_from_agent_mapping,
+)
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.vision import VisionContext
-from dialectic.yaml_config import (
-    load_yaml_config,
-    render_yaml_config,
-    resolve_guardrail,
-    resolve_output_schema,
-)
+from dialectic.yaml_config import load_yaml_config
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_prd.yaml"
+Process = crewai.Process
 
 
 def _prd_memory_namespace(feature_objective: str) -> str:
@@ -56,24 +55,17 @@ def build_prd_crew(
     agents = _build_agents(vision_context)
     tasks = _build_prd_tasks(task_templates, placeholders, agents)
     knowledge_sources = [vision_knowledge(vision_context), *retry_feedback_sources]
-    return Crew(
-        agents=[
-            agents["visionario"],
-            agents["critico_socratico"],
-            agents["sintetizador"],
-            agents["validador_macro"],
-        ],
+    return build_dialectic_sequential_crew(
+        crew_factory=Crew,
+        agents_by_name=agents,
+        thesis_agent_name="visionario",
         tasks=tasks,
-        process=Process.sequential,
-        verbose=is_verbose(),
-        output_log_file=get_output_log_file(),
-        step_callback=get_step_summarizer_callback(),
+        knowledge_sources=knowledge_sources,
         memory=crew_memory(
             vision_context,
             memory_namespace or _prd_memory_namespace(feature_objective),
         ),
         planning=False,
-        knowledge_sources=knowledge_sources,
     )
 
 
@@ -90,7 +82,9 @@ def _build_agents(vision_context: VisionContext) -> dict[str, Any]:
 
     return {
         "visionario": _disable_interactive_agent_io(create_visionario(vision_context)),
-        "critico_socratico": _disable_interactive_agent_io(create_critico_socratico(vision_context)),
+        "critico_socratico": _disable_interactive_agent_io(
+            create_critico_socratico(vision_context)
+        ),
         "sintetizador": _disable_interactive_agent_io(create_sintetizador(vision_context)),
         "validador_macro": _disable_interactive_agent_io(create_validador_macro(vision_context)),
     }
@@ -103,42 +97,31 @@ def _build_prd_tasks(
 ) -> list[Task]:
     """Build the ordered PRD thesis-to-validation task chain."""
 
-    task_vision = _build_task(task_templates["prd_thesis"], placeholders, agents)
-    task_critica = _build_task(
+    task_vision = build_task_from_agent_mapping(
+        task_templates["prd_thesis"],
+        placeholders,
+        agents,
+        task_factory=Task,
+    )
+    task_critica = build_task_from_agent_mapping(
         task_templates["prd_antithesis"],
         placeholders,
         agents,
         context=[task_vision],
+        task_factory=Task,
     )
-    task_sintese = _build_task(
+    task_sintese = build_task_from_agent_mapping(
         task_templates["prd_synthesis"],
         placeholders,
         agents,
         context=[task_vision, task_critica],
+        task_factory=Task,
     )
-    task_validacao = _build_task(
+    task_validacao = build_task_from_agent_mapping(
         task_templates["prd_validation"],
         placeholders,
         agents,
         context=[task_vision, task_critica, task_sintese],
+        task_factory=Task,
     )
     return [task_vision, task_critica, task_sintese, task_validacao]
-
-
-def _build_task(
-    template: dict[str, Any],
-    placeholders: dict[str, Any],
-    agents: Mapping[str, Any],
-    **overrides: Any,
-) -> Task:
-    config = dict(render_yaml_config(template, placeholders))
-    agent_name = config.pop("agent")
-    output_schema = config.pop("output_schema", None)
-    guardrail = config.pop("guardrail", None)
-    if output_schema:
-        config["output_pydantic"] = resolve_output_schema(output_schema)
-    if guardrail:
-        config["guardrail"] = resolve_guardrail(guardrail)
-    config["agent"] = agents[agent_name]
-    config.update(overrides)
-    return Task(**config)

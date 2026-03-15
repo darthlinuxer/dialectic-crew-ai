@@ -2,9 +2,6 @@
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import subprocess
-
-import pytest
 
 from src.main.quality_gate import (
     QualityCheckResult,

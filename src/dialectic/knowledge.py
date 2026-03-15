@@ -12,6 +12,7 @@ from dialectic.vision import (
     VisionContext,
     _VISION_PATHS,
     get_vision_path,
+    normalize_vision_context,
     prepare_vision_runtime,
     resolve_project_root,
 )
@@ -19,7 +20,8 @@ from dialectic.vision import (
 
 def vision_label(vision_paths: dict[VisionContext, Path], context: VisionContext) -> str:
     """Return the human-readable vision document name for prompts."""
-    return vision_paths[context].name
+    normalized_context = normalize_vision_context(context)
+    return vision_paths[normalized_context].name
 
 
 def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
@@ -29,7 +31,8 @@ def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
 
 def vision_path_label(vision_paths: dict[VisionContext, Path], context: VisionContext) -> str:
     """Return the repo-relative vision path for prompt rendering."""
-    return vision_paths[context].as_posix()
+    normalized_context = normalize_vision_context(context)
+    return vision_paths[normalized_context].as_posix()
 
 
 def _vision_path(context: VisionContext = VisionContext.PROJECT) -> str:
@@ -50,8 +53,9 @@ def vision_knowledge_source(
     knowledge_source_cls=TextFileKnowledgeSource,
 ):
     """Create a knowledge source for the active vision document."""
-    prepare_vision_runtime_fn(context)
-    vision_path = get_vision_path_fn(context)
+    normalized_context = normalize_vision_context(context)
+    prepare_vision_runtime_fn(normalized_context)
+    vision_path = get_vision_path_fn(normalized_context)
     return knowledge_source_cls(file_paths=[vision_path])
 
 
@@ -79,14 +83,15 @@ def crew_memory_store(
     memory_cls=Memory,
 ) -> Memory:
     """Return a Memory instance isolated by vision context and crew namespace."""
+    normalized_context = normalize_vision_context(context)
     safe_namespace = namespace.strip("/") or "shared"
-    if context is VisionContext.PROJECT:
+    if normalized_context is VisionContext.PROJECT:
         safe_namespace = target_memory_namespace(safe_namespace)
     storage_dir = (
         resolve_project_root_fn()
         / ".crewai"
         / "memory"
-        / context.value
+        / normalized_context.value
         / safe_namespace
     )
     storage_dir.mkdir(parents=True, exist_ok=True)

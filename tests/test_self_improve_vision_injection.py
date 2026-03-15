@@ -1,16 +1,22 @@
 """Tests to verify SELF_VISION.md is injected as knowledge for self-improve flows."""
 
+import inspect
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from src.dialectic.knowledge import (
+from dialectic.knowledge import (
     _STYLE_GUIDE_PATHS,
     style_guide_knowledge,
     vision_knowledge,
 )
-from src.dialectic.vision import VisionContext
+from dialectic.vision import VisionContext
+from execution import runtime as execution_runtime
+
+
+def _legacy_src_vision_context(name: str):
+    """Load VisionContext from the legacy src.* import surface for regression tests."""
+    module = __import__("src.dialectic.vision", fromlist=["VisionContext"])
+    return getattr(module.VisionContext, name)
 
 
 class TestVisionKnowledgeInjection:
@@ -36,6 +42,7 @@ class TestVisionKnowledgeInjection:
         mock_prepare.assert_called_once_with(VisionContext.SELF)
         mock_get_path.assert_called_once_with(VisionContext.SELF)
         mock_source_cls.assert_called_once_with(file_paths=[expected_path])
+        assert result is mock_source_cls.return_value
 
     @patch("dialectic.knowledge.prepare_vision_runtime")
     @patch("dialectic.knowledge.get_vision_path")
@@ -57,6 +64,7 @@ class TestVisionKnowledgeInjection:
         mock_prepare.assert_called_once_with(VisionContext.PROJECT)
         mock_get_path.assert_called_once_with(VisionContext.PROJECT)
         mock_source_cls.assert_called_once_with(file_paths=[expected_path])
+        assert result is mock_source_cls.return_value
 
 
 class TestStyleGuideKnowledge:
@@ -119,17 +127,15 @@ class TestExecutionRuntimeStyleGuideInjection:
     def test_self_context_includes_style_guides(
         self,
         mock_config,
-        mock_impl,
-        mock_crit,
-        mock_sint,
-        mock_val,
-        mock_memory,
+        _mock_impl,
+        _mock_crit,
+        _mock_sint,
+        _mock_val,
+        _mock_memory,
         mock_vision_knowledge,
         mock_style_knowledge,
     ):
         """build_task_dialectic_crew should include style guides for SELF context."""
-        from execution.runtime import build_task_dialectic_crew
-
         mock_config.return_value = {
             "execute_task_thesis": {"agent": "implementer", "description": "test"},
             "execute_task_antithesis": {"agent": "critico_socratico", "description": "test"},
@@ -139,14 +145,17 @@ class TestExecutionRuntimeStyleGuideInjection:
         mock_vision_knowledge.return_value = MagicMock()
         mock_style_knowledge.return_value = [MagicMock(), MagicMock()]
 
-        with patch("execution.runtime.Crew") as mock_crew:
-            build_task_dialectic_crew(
+        with (
+            patch("execution.runtime.Task", side_effect=lambda **kwargs: kwargs),
+            patch("execution.runtime.Crew") as mock_crew,
+        ):
+            execution_runtime.build_task_dialectic_crew(
                 task_id="T1",
                 task_title="Test Task",
                 task_description="Test description",
                 context_str="Context",
                 min_score=7.5,
-                vision_context=VisionContext.SELF,
+                vision_context=_legacy_src_vision_context("SELF"),
                 synthesis_for_retry=None,
                 retry=0,
                 max_retries=3,
@@ -168,17 +177,15 @@ class TestExecutionRuntimeStyleGuideInjection:
     def test_project_context_excludes_style_guides(
         self,
         mock_config,
-        mock_impl,
-        mock_crit,
-        mock_sint,
-        mock_val,
-        mock_memory,
+        _mock_impl,
+        _mock_crit,
+        _mock_sint,
+        _mock_val,
+        _mock_memory,
         mock_vision_knowledge,
         mock_style_knowledge,
     ):
         """build_task_dialectic_crew should NOT include style guides for PROJECT context."""
-        from execution.runtime import build_task_dialectic_crew
-
         mock_config.return_value = {
             "execute_task_thesis": {"agent": "implementer", "description": "test"},
             "execute_task_antithesis": {"agent": "critico_socratico", "description": "test"},
@@ -187,14 +194,17 @@ class TestExecutionRuntimeStyleGuideInjection:
         }
         mock_vision_knowledge.return_value = MagicMock()
 
-        with patch("execution.runtime.Crew") as mock_crew:
-            build_task_dialectic_crew(
+        with (
+            patch("execution.runtime.Task", side_effect=lambda **kwargs: kwargs),
+            patch("execution.runtime.Crew") as mock_crew,
+        ):
+            execution_runtime.build_task_dialectic_crew(
                 task_id="T1",
                 task_title="Test Task",
                 task_description="Test description",
                 context_str="Context",
                 min_score=7.5,
-                vision_context=VisionContext.PROJECT,
+                vision_context=_legacy_src_vision_context("PROJECT"),
                 synthesis_for_retry=None,
                 retry=0,
                 max_retries=3,
@@ -205,16 +215,13 @@ class TestExecutionRuntimeStyleGuideInjection:
             knowledge_sources = call_kwargs.get("knowledge_sources", [])
             assert len(knowledge_sources) == 1  # vision only
 
+def test_self_improve_uses_self_vision_context():
+    """self_improve.py should pass VisionContext.SELF to all stages."""
+    self_improve = __import__("main", fromlist=["self_improve"]).self_improve
+    source = inspect.getsource(self_improve)
 
-class TestSelfImproveVisionContext:
-    """Verify self-improve uses VisionContext.SELF throughout the flow."""
-
-    def test_self_improve_uses_self_vision_context(self):
-        """self_improve.py should pass VisionContext.SELF to all stages."""
-        import inspect
-        from main import self_improve
-
-        source = inspect.getsource(self_improve)
-
-        assert "VisionContext.SELF" in source
-        assert "vision_context=VisionContext.SELF" in source or "vision_context: VisionContext.SELF" in source
+    assert "VisionContext.SELF" in source
+    assert (
+        "vision_context=VisionContext.SELF" in source
+        or "vision_context: VisionContext.SELF" in source
+    )

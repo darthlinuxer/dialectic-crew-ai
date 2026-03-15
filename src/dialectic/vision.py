@@ -22,6 +22,20 @@ class VisionContext(str, Enum):
     SELF = "self"
 
 
+def normalize_vision_context(
+    context: VisionContext | str | Enum = VisionContext.PROJECT,
+) -> VisionContext:
+    """Coerce compatible enum/string values into the canonical VisionContext."""
+    if isinstance(context, VisionContext):
+        return context
+
+    raw_value = getattr(context, "value", context)
+    try:
+        return VisionContext(str(raw_value))
+    except ValueError as exc:
+        raise ValueError(f"Unsupported vision context: {context!r}") from exc
+
+
 _VISION_PATHS: dict[VisionContext, Path] = {
     VisionContext.PROJECT: Path("knowledge") / "VISION.md",
     VisionContext.SELF: Path("internal") / "SELF_VISION.md",
@@ -87,22 +101,24 @@ def get_vision_path(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
     """Return the absolute vision path for the requested context."""
-    if context is VisionContext.PROJECT:
+    normalized_context = normalize_vision_context(context)
+    if normalized_context is VisionContext.PROJECT:
         from dialectic.target import (  # pylint: disable=import-outside-toplevel
             resolve_project_vision_path,
         )
 
         return resolve_project_vision_path()
-    return resolve_app_root() / _VISION_PATHS[context]
+    return resolve_app_root() / _VISION_PATHS[normalized_context]
 
 
 def ensure_vision_path(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
     """Ensure the requested vision path exists and return it."""
-    vision_path = get_vision_path(context)
+    normalized_context = normalize_vision_context(context)
+    vision_path = get_vision_path(normalized_context)
     if not vision_path.exists():
-        if context is VisionContext.PROJECT:
+        if normalized_context is VisionContext.PROJECT:
             from dialectic.target import (  # pylint: disable=import-outside-toplevel
                 get_active_target,
             )
@@ -114,7 +130,7 @@ def ensure_vision_path(
                     f"{vision_path}. Run `dialectic-crew make-vision` for the active target "
                     "or `dialectic-crew clear-target` to return to the default project vision."
                 )
-        label = _VISION_PATHS[context]
+        label = _VISION_PATHS[normalized_context]
         raise FileNotFoundError(
             f"{label} not found. Expected at: {vision_path}"
         )
@@ -125,7 +141,7 @@ def prepare_vision_runtime(
     context: VisionContext = VisionContext.PROJECT,
 ) -> Path:
     """Prepare the active vision path without mutating the process working directory."""
-    return ensure_vision_path(context)
+    return ensure_vision_path(normalize_vision_context(context))
 
 
 def get_vision_hash(
@@ -133,7 +149,9 @@ def get_vision_hash(
 ) -> str | None:
     """Return a stable content hash for the requested vision document."""
     try:
-        content = ensure_vision_path(context).read_text(encoding="utf-8")
+        content = ensure_vision_path(normalize_vision_context(context)).read_text(
+            encoding="utf-8"
+        )
     except OSError:
         return None
     return hashlib.sha256(content.encode("utf-8")).hexdigest()

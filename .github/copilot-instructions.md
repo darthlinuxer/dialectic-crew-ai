@@ -62,6 +62,22 @@ PRD generation, execution, and self-improve all support persistence/resume behav
 ### Runtime defaults are intentional
 CrewAI telemetry is disabled by default and tracing prompts are suppressed unless explicitly enabled. Do not re-enable noisy runtime behavior casually.
 
+### Import surfaces require value-based thinking
+This repository still has multiple import surfaces in active use: canonical packages such as `dialectic.*`, `execution.*`, and `main.*`, plus legacy/bootstrap paths such as `src.*` and the root `main.py` shim.
+
+- Prefer canonical imports in production code and in most tests.
+- Do not rely on enum or object identity across import surfaces. For `VisionContext` and similar values, normalize or compare by value before branching or performing dictionary lookups.
+- If a regression test intentionally probes a legacy import surface, keep that probe tightly scoped and verify the canonical package surface still passes static analysis.
+- Do not use dynamic imports as a blanket workaround for packaging issues; fix the package surface when possible, and only use narrowly scoped compatibility probes when the test is explicitly guarding legacy behavior.
+
+### Prefer explicit typed parameters over catch-all kwargs
+For project code, prefer explicit named parameters with concrete types over `*args`, `**kwargs`, or generic `**overrides` bags.
+
+- Internal helpers should accept the specific fields they use instead of collecting arbitrary keyword overrides and unpacking them later.
+- If a helper needs optional fields, model them explicitly with typed optional parameters or a small typed value object.
+- Variadic forwarding is acceptable only for thin compatibility shims, framework-required adapter hooks, or transparent pass-through wrappers where the dynamic signature is intentional and documented.
+- Do not introduce `**kwargs` merely to avoid updating call sites; keep call contracts visible to readers, type checkers, and static analysis.
+
 ## Current capabilities to preserve
 
 - CLI commands already support core workflows: `prd`, `plan`, `execute`, `status`, `mark`, `verify`, `verify-story`, `self-improve`, and `help`.
@@ -170,6 +186,8 @@ The skills library lives at `src/mcp/skills/` (also discoverable at `~/.agents/s
 17. **Do not use dynamic imports to hide package/export problems** — if a test or module only works with `import_module(...)` or similar runtime indirection, prefer fixing the package surface instead (for example: canonical import path, missing `__init__.py`, or explicit package exports). Static tooling, runtime imports, and editor diagnostics must agree on the import contract.
 18. **Use authoritative final verification** — for final sign-off, prefer a fresh foreground command with a clear exit result. Do not rely on ambiguous background-terminal output, stale shared-shell state, or partially interrupted command logs.
 19. **Treat import/export refactors as dual-surface changes** — when touching imports, package boundaries, or public exports, verify both runtime importability and editor/static-analysis resolution. Keep smoke tests like `tests/test_package_exports.py` aligned with the canonical package surface rather than patching around failures.
+19a. **Treat enum/object identity as unsafe across import surfaces** — when values may arrive from both canonical and legacy module paths, normalize them at the boundary or compare by value. Identity checks such as `is VisionContext.SELF` are only safe after normalization.
+19b. **Avoid opaque variadic helper APIs** — when adding or refactoring helpers, replace generic `**kwargs`/`**overrides` patterns with explicit typed parameters unless the function is a deliberate forwarding shim or framework-mandated adapter.
 20. **When in doubt, consult the vision** — if you are unsure about how to implement something, or whether a change fits the project direction, consult `internal/SELF_VISION.md` first. If the vision does not clarify the question, consider whether the vision itself needs clarification or expansion — and if so, propose that change before proceeding with implementation.
 21. **When in doubt, consult the docs** — if you are unsure about how to use a CrewAI feature or whether it can solve a problem, consult the official CrewAI documentation first. The docs are the source of truth for how to leverage the framework effectively and avoid unnecessary custom infrastructure.
 22. **new code should be covered by tests** — when adding new features or modifying existing behavior, add tests that verify the expected outcomes. Tests should focus on behavior and edge cases rather than implementation details. Use `pytest` fixtures and parameterization to keep tests clean and maintainable.

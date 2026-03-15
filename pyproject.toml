@@ -43,6 +43,7 @@ dialectic-crew = "main.cli:main"
 [dependency-groups]
 dev = [
     "mypy>=1.15.0",
+    "pylint>=3.3.0",
     "pytest>=9.0.2",
     "pytest-cov",
     "pytest-rerunfailures>=15.1",

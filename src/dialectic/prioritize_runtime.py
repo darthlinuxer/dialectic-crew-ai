@@ -1,28 +1,35 @@
+"""Build the dialectic prioritization crew for improvement opportunities."""
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
-from crewai import Agent, Crew, Process, Task
+import crewai
+from crewai import Agent, Crew, Task
 
-from dialectic.crew_log_summarizer import get_step_summarizer_callback
-from dialectic.crew_verbose_config import get_output_log_file, is_verbose
+from dialectic.crew_builder import (
+    build_sequential_crew,
+    build_task_from_agent_mapping,
+)
 from dialectic.knowledge import _vision_label, vision_knowledge
 from dialectic.llm import llm_simple
 from dialectic.vision import VisionContext
-from dialectic.yaml_config import (
-    load_yaml_config,
-    render_yaml_config,
-    resolve_guardrail,
-    resolve_output_schema,
-)
+from dialectic.yaml_config import load_yaml_config, render_yaml_config
 
 
 _AGENTS_CONFIG_PATH = Path(__file__).with_name("config") / "agents_prioritize.yaml"
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_prioritize.yaml"
+Process = crewai.Process
 
 
-def build_prioritization_crew(*, opp_text: str, opp_ids_str: str, vision_context: VisionContext) -> Crew:
+def build_prioritization_crew(
+    *,
+    opp_text: str,
+    opp_ids_str: str,
+    vision_context: VisionContext,
+) -> Crew:
+    """Build the analyst/critic/ranker crew used for opportunity prioritization."""
     vision_label = _vision_label(vision_context)
     placeholders = {
         "opp_text": opp_text,
@@ -41,28 +48,32 @@ def build_prioritization_crew(*, opp_text: str, opp_ids_str: str, vision_context
         "prioritize_ranker": ranker,
     }
 
-    task_analysis = _build_task(task_templates["prioritize_analysis"], placeholders, agents)
-    task_critique = _build_task(
+    task_analysis = build_task_from_agent_mapping(
+        task_templates["prioritize_analysis"],
+        placeholders,
+        agents,
+        task_factory=Task,
+    )
+    task_critique = build_task_from_agent_mapping(
         task_templates["prioritize_critique"],
         placeholders,
         agents,
         context=[task_analysis],
+        task_factory=Task,
     )
-    task_rank = _build_task(
+    task_rank = build_task_from_agent_mapping(
         task_templates["prioritize_rank"],
         placeholders,
         agents,
         context=[task_analysis, task_critique],
+        task_factory=Task,
     )
 
     tasks = [task_analysis, task_critique, task_rank]
-    return Crew(
+    return build_sequential_crew(
+        crew_factory=Crew,
         agents=[analyst, critic, ranker],
         tasks=tasks,
-        process=Process.sequential,
-        verbose=is_verbose(),
-        output_log_file=get_output_log_file(),
-        step_callback=get_step_summarizer_callback(),
         knowledge_sources=[vision_knowledge(vision_context)],
     )
 
@@ -71,22 +82,3 @@ def _build_agent(template: dict[str, Any], placeholders: dict[str, Any]) -> Agen
     config = dict(render_yaml_config(template, placeholders))
     config["llm"] = llm_simple
     return Agent(**config)
-
-
-def _build_task(
-    template: dict[str, Any],
-    placeholders: dict[str, Any],
-    agents: Mapping[str, Any],
-    **overrides: Any,
-) -> Task:
-    config = dict(render_yaml_config(template, placeholders))
-    agent_name = config.pop("agent")
-    output_schema = config.pop("output_schema", None)
-    guardrail = config.pop("guardrail", None)
-    if output_schema:
-        config["output_pydantic"] = resolve_output_schema(output_schema)
-    if guardrail:
-        config["guardrail"] = resolve_guardrail(guardrail)
-    config["agent"] = agents[agent_name]
-    config.update(overrides)
-    return Task(**config)

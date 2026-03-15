@@ -1,28 +1,34 @@
+"""Build the task reimplementation crew used after verification failures."""
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
-from crewai import Agent, Crew, Process, Task
+from crewai import Agent, Crew, Task
 
 from dialectic.agents import create_validador_macro
-from dialectic.crew_log_summarizer import get_step_summarizer_callback
-from dialectic.crew_verbose_config import get_output_log_file, is_verbose
-from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
-from dialectic.llm import llm_complex
-from dialectic.tools import directory_read_tool, file_read_tool, file_write_tool, stack_validation_tool
-from dialectic.vision import VisionContext
-from dialectic.yaml_config import (
-    load_yaml_config,
-    render_yaml_config,
-    resolve_guardrail,
-    resolve_output_schema,
+from dialectic.crew_builder import build_sequential_crew, build_task_from_agent
+from dialectic.crew_verbose_config import is_verbose
+from dialectic.knowledge import (
+    _vision_label,
+    _vision_path,
+    crew_memory,
+    vision_knowledge,
 )
+from dialectic.llm import llm_complex
+from dialectic.tools import (
+    directory_read_tool,
+    file_read_tool,
+    file_write_tool,
+    stack_validation_tool,
+)
+from dialectic.vision import VisionContext
+from dialectic.yaml_config import load_yaml_config
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_taskflow_reimplement.yaml"
 
 
+# pylint: disable=too-many-arguments
 def build_task_flow_reimplementation_crew(
     *,
     task_id: str,
@@ -34,6 +40,7 @@ def build_task_flow_reimplementation_crew(
     min_score: float,
     vision_context: VisionContext,
 ) -> Crew:
+    """Build the repair-and-revalidate crew for a failed implementation task."""
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
     placeholders = {
         "task_id": task_id,
@@ -51,40 +58,44 @@ def build_task_flow_reimplementation_crew(
     reimpl_agent = _build_agent()
     reval_agent = create_validador_macro(vision_context)
 
-    task_fix = _build_task(
+    task_fix = build_task_from_agent(
         task_templates["reimplement_task_fix"],
         placeholders,
         reimpl_agent,
+        task_factory=Task,
     )
-    task_revalidate = _build_task(
+    task_revalidate = build_task_from_agent(
         task_templates["reimplement_task_validate"],
         placeholders,
         reval_agent,
         context=[task_fix],
+        task_factory=Task,
     )
 
-    return Crew(
+    return build_sequential_crew(
+        crew_factory=Crew,
         agents=[reimpl_agent, reval_agent],
         tasks=[task_fix, task_revalidate],
-        process=Process.sequential,
-        verbose=is_verbose(),
-        output_log_file=get_output_log_file(),
-        step_callback=get_step_summarizer_callback(),
-        memory=crew_memory(vision_context, "task_reimplement"),
         knowledge_sources=[vision_knowledge(vision_context)],
+        memory=crew_memory(vision_context, "task_reimplement"),
     )
 
 
 def _render_failed_checks(failed_checks: list[str]) -> str:
+    """Render failed verification checks for inclusion in the repair prompt."""
     if not failed_checks:
         return "N/A"
     return "\n".join(f"- {check}" for check in failed_checks)
 
 
 def _build_agent() -> Agent:
+    """Create the specialized implementer agent used during task repair."""
     return Agent(
         role="Independent Implementer",
-        goal="Fix failed implementation by addressing the root cause behind the checks that did not pass",
+        goal=(
+            "Fix failed implementation by addressing the root cause behind "
+            "the checks that did not pass"
+        ),
         backstory=(
             "You are an implementer focused on fixing the root cause of specific gaps. "
             "Read existing files, identify whether the problem is in imports, references, "
@@ -96,23 +107,10 @@ def _build_agent() -> Agent:
         reasoning=True,
         max_reasoning_attempts=2,
         llm=llm_complex,
-        tools=[file_read_tool, file_write_tool, directory_read_tool, stack_validation_tool],
+        tools=[
+            file_read_tool,
+            file_write_tool,
+            directory_read_tool,
+            stack_validation_tool,
+        ],
     )
-
-
-def _build_task(
-    template: dict[str, Any],
-    placeholders: dict[str, Any],
-    agent: Any,
-    **overrides: Any,
-) -> Task:
-    config = dict(render_yaml_config(template, placeholders))
-    output_schema = config.pop("output_schema", None)
-    guardrail = config.pop("guardrail", None)
-    if output_schema:
-        config["output_pydantic"] = resolve_output_schema(output_schema)
-    if guardrail:
-        config["guardrail"] = resolve_guardrail(guardrail)
-    config["agent"] = agent
-    config.update(overrides)
-    return Task(**config)

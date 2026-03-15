@@ -1,21 +1,20 @@
+"""Build the user-story planning crew and its dialectic task chain."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping
 
-from crewai import Crew, Process, Task
+from crewai import Crew, Task
 
 from dialectic.agents import build_agent_from_config
-from dialectic.crew_log_summarizer import get_step_summarizer_callback
-from dialectic.crew_verbose_config import get_output_log_file, is_verbose
+from dialectic.crew_builder import (
+    build_named_sequential_crew,
+    build_task_from_agent_mapping,
+)
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
 from dialectic.llm import llm_planning
-from dialectic.yaml_config import (
-    load_yaml_config,
-    render_yaml_config,
-    resolve_guardrail,
-    resolve_output_schema,
-)
+from dialectic.yaml_config import load_yaml_config, render_yaml_config
 from dialectic.vision import VisionContext
 
 
@@ -31,6 +30,7 @@ def _disable_interactive_agent_io(agent: Any) -> Any:
     return agent
 
 
+# pylint: disable=too-many-arguments
 def build_planning_crew(
     *,
     feature_context: str,
@@ -41,6 +41,7 @@ def build_planning_crew(
     retry_feedback_block: str = "",
     retry_feedback_sources: list[Any] | None = None,
 ) -> Crew:
+    """Build the dialectic planning crew for a single user story."""
     agent_templates = load_yaml_config(_AGENTS_CONFIG_PATH)
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
     placeholders = {
@@ -54,79 +55,83 @@ def build_planning_crew(
         "retry_feedback_block": retry_feedback_block,
     }
 
-    vis = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_visionary"], placeholders)
+    agents = _build_planning_agents(agent_templates, placeholders)
+    tasks = _build_planning_tasks(task_templates, placeholders, agents)
+    return build_named_sequential_crew(
+        crew_factory=Crew,
+        agents_by_name=agents,
+        agent_names=(
+            "planning_visionary",
+            "planning_critic",
+            "planning_synthesizer",
+            "planning_validator",
+        ),
+        tasks=tasks,
+        knowledge_sources=[vision_knowledge(vision_context), *(retry_feedback_sources or [])],
+        memory=crew_memory(vision_context, "planning"),
+        planning=True,
+        planning_llm=llm_planning,
     )
-    crit = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_critic"], placeholders)
-    )
-    sint = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_synthesizer"], placeholders)
-    )
-    val = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_validator"], placeholders)
-    )
-    agents = {
-        "planning_visionary": vis,
-        "planning_critic": crit,
-        "planning_synthesizer": sint,
-        "planning_validator": val,
+
+
+def _build_planning_agents(
+    agent_templates: Mapping[str, dict[str, Any]],
+    placeholders: dict[str, Any],
+) -> dict[str, Any]:
+    """Create and sanitize the planning crew agents in execution order."""
+    return {
+        "planning_visionary": _disable_interactive_agent_io(
+            _build_agent(agent_templates["planning_visionary"], placeholders)
+        ),
+        "planning_critic": _disable_interactive_agent_io(
+            _build_agent(agent_templates["planning_critic"], placeholders)
+        ),
+        "planning_synthesizer": _disable_interactive_agent_io(
+            _build_agent(agent_templates["planning_synthesizer"], placeholders)
+        ),
+        "planning_validator": _disable_interactive_agent_io(
+            _build_agent(agent_templates["planning_validator"], placeholders)
+        ),
     }
 
-    task_tese = _build_task(task_templates["thesis_plan"], placeholders, agents)
-    task_antitese = _build_task(
+
+def _build_planning_tasks(
+    task_templates: Mapping[str, dict[str, Any]],
+    placeholders: dict[str, Any],
+    agents: Mapping[str, Any],
+) -> list[Task]:
+    """Build the ordered planning thesis-to-validation task chain."""
+    task_tese = build_task_from_agent_mapping(
+        task_templates["thesis_plan"],
+        placeholders,
+        agents,
+        task_factory=Task,
+    )
+    task_antitese = build_task_from_agent_mapping(
         task_templates["antithesis_plan"],
         placeholders,
         agents,
         context=[task_tese],
+        task_factory=Task,
     )
-    task_sintese = _build_task(
+    task_sintese = build_task_from_agent_mapping(
         task_templates["synthesis_plan"],
         placeholders,
         agents,
         context=[task_tese, task_antitese],
+        task_factory=Task,
     )
-    task_validacao = _build_task(
+    task_validacao = build_task_from_agent_mapping(
         task_templates["validation_plan"],
         placeholders,
         agents,
         context=[task_tese, task_antitese, task_sintese],
+        task_factory=Task,
     )
-
-    tasks = [task_tese, task_antitese, task_sintese, task_validacao]
-    return Crew(
-        agents=[vis, crit, sint, val],
-        tasks=tasks,
-        process=Process.sequential,
-        verbose=is_verbose(),
-        output_log_file=get_output_log_file(),
-        step_callback=get_step_summarizer_callback(),
-        memory=crew_memory(vision_context, "planning"),
-        planning=True,
-        planning_llm=llm_planning,
-        knowledge_sources=[vision_knowledge(vision_context), *(retry_feedback_sources or [])],
-    )
+    return [task_tese, task_antitese, task_sintese, task_validacao]
 
 
 def _build_agent(template: dict[str, Any], placeholders: dict[str, Any]):
+    """Render and instantiate a planning agent from its YAML template."""
     config = render_yaml_config(template, placeholders)
     return build_agent_from_config(config)
-
-
-def _build_task(
-    template: dict[str, Any],
-    placeholders: dict[str, Any],
-    agents: Mapping[str, Any],
-    **overrides: Any,
-) -> Task:
-    config = dict(render_yaml_config(template, placeholders))
-    agent_name = config.pop("agent")
-    output_schema = config.pop("output_schema", None)
-    guardrail = config.pop("guardrail", None)
-    if output_schema:
-        config["output_pydantic"] = resolve_output_schema(output_schema)
-    if guardrail:
-        config["guardrail"] = resolve_guardrail(guardrail)
-    config["agent"] = agents[agent_name]
-    config.update(overrides)
-    return Task(**config)

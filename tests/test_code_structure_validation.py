@@ -1,10 +1,5 @@
 """Tests for the code structure validation module."""
 
-import tempfile
-from pathlib import Path
-
-import pytest
-
 from src.main.code_structure_validation import (
     MAX_FILE_LINES,
     MAX_PUBLIC_METHODS,

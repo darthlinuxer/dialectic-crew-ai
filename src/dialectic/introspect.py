@@ -21,7 +21,12 @@ from pathlib import Path
 from typing import Literal
 
 from dialectic.metrics import MetricsStore, get_metrics_store
-from dialectic.vision import VisionContext, get_vision_path, resolve_project_root
+from dialectic.vision import (
+    VisionContext,
+    get_vision_path,
+    normalize_vision_context,
+    resolve_project_root,
+)
 from schemas import ImprovementOpportunity, IntrospectionReport
 
 logger = logging.getLogger(__name__)
@@ -260,6 +265,7 @@ def run_introspection(
     if store is None:
         store = get_metrics_store()
 
+    vision_context = normalize_vision_context(vision_context)
     vision_path = get_vision_path(vision_context)
     project_root = resolve_project_root()
 
