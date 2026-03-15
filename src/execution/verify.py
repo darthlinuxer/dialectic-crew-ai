@@ -14,6 +14,7 @@ from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_flow import OUTPUT_DIR as PRD_OUTPUT_DIR
 from dialectic.target import resolve_active_project_root, temporary_working_directory
 from dialectic.vision import VisionContext
+from execution.local_verification import _run_local_verification_fallback
 from execution.validation_gate import run_stack_validation_gate
 from execution.status import (
     STATUS_ICONS,
@@ -99,9 +100,29 @@ def _run_verification(
     from schemas import ValidationOutput
 
     ctx = vision_context or VisionContext.PROJECT
+    checks_to_verify = acceptance_criteria or []
+    fallback = _run_local_verification_fallback(
+        checks_to_verify,
+        resolve_active_project_root(),
+    )
+    if fallback is not None:
+        verified = fallback.verified
+        notes = fallback.notes
+        if verified:
+            gate = run_stack_validation_gate("story")
+            verified = gate.verified
+            notes = _join_notes(notes, gate.notes)
+        score = DEFAULT_VERIFICATION_SCORE if verified else 0.0
+        return {
+            "task_id": task.id,
+            "verified": verified,
+            "score": score,
+            "notes": notes,
+        }
+
     crew = build_verification_crew(
         task=task,
-        acceptance_criteria=acceptance_criteria,
+        acceptance_criteria=checks_to_verify,
         vision_context=ctx,
     )
     with temporary_working_directory(resolve_active_project_root()):

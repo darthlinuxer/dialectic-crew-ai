@@ -64,6 +64,11 @@ from .self_improve_persistence import (
 )
 from .pr_builder import build_pr_body, create_pr, print_report
 from .metrics_comparison import metrics_stable
+from .quality_gate import run_quality_gate, print_quality_gate_result
+from .code_structure_validation import (
+    validate_code_structure,
+    print_structure_validation_result,
+)
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
 logger = logging.getLogger(__name__)
@@ -809,7 +814,35 @@ def run_self_improve(
 
     print(f"\n  Token usage: {record.total_tokens} tokens, ${record.estimated_cost:.4f}")
 
-    print("\n[7/7] Validating: running tests...")
+    print("\n[7a/9] Validating: running code quality checks...")
+    quality_result = run_quality_gate(project_root)
+    if not quality_result.passed:
+        record.failure_reason = f"Quality gate failed: {quality_result.summary}"
+        print(f"  FAIL: {record.failure_reason}")
+        print_quality_gate_result(quality_result)
+        _git_discard_branch(branch_name, project_root)
+        _persist_record(store, record)
+        _save_self_improve_record(project_root, record)
+        return record
+    print(f"  Quality gate passed: {quality_result.summary}")
+
+    print("\n[7b/9] Validating: code structure (SOLID, deep modules)...")
+    structure_result = validate_code_structure(project_root, check_all_src=True)
+    if not structure_result.passed:
+        record.failure_reason = f"Structure validation failed: {structure_result.summary}"
+        print(f"  FAIL: {record.failure_reason}")
+        print_structure_validation_result(structure_result)
+        _git_discard_branch(branch_name, project_root)
+        _persist_record(store, record)
+        _save_self_improve_record(project_root, record)
+        return record
+    if structure_result.violations:
+        print(f"  Structure validation: {structure_result.summary}")
+        print_structure_validation_result(structure_result)
+    else:
+        print("  Structure validation passed.")
+
+    print("\n[8/9] Validating: running tests...")
     post_tests = _snapshot_tests(project_root)
     record.tests_passed = post_tests["passed"]
     if not record.tests_passed:
@@ -821,7 +854,7 @@ def run_self_improve(
         _save_self_improve_record(project_root, record)
         return record
 
-    print("Validating: checking metrics stability...")
+    print("[9/9] Validating: checking metrics stability...")
     stable, reason = _metrics_stable(store, record.baseline_metrics or report.baseline_metrics)
     record.metrics_stable = stable
     if not stable:

@@ -130,6 +130,50 @@ class TestLoadPrdForPlan:
 
 
 class TestRunVerification:
+    def test_uses_local_fallback_for_deterministic_checks(self, monkeypatch, tmp_path):
+        from schemas import VerificationResult
+
+        docs_dir = tmp_path / "docs" / "dil"
+        docs_dir.mkdir(parents=True)
+        (docs_dir / "adapter_sdk.md").write_text(
+            "schema_checksum\nDeterminism policy: governance/determinism.md\ncontract_schema_url\ncurl\nverify-checksum\n",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            "execution.verify.resolve_active_project_root",
+            lambda: tmp_path,
+        )
+        monkeypatch.setattr(
+            "execution.verify.build_verification_crew",
+            lambda **kwargs: pytest.fail("LLM verifier should not run for deterministic fallback"),
+        )
+        monkeypatch.setattr(
+            "execution.verify.run_stack_validation_gate",
+            lambda profile: VerificationResult(
+                verified=True,
+                checks_passed=["stack validation: pytest"],
+                notes="",
+            ),
+        )
+
+        task = make_task(id="T-002", title="Adapter SDK", description="Write adapter SDK doc")
+        result = _run_verification(
+            task,
+            [
+                "docs/dil/adapter_sdk.md committed",
+                "SDK spec references schema_checksum and determinism policy",
+                "Examples for contract_schema_url verification included",
+            ],
+        )
+
+        assert result == {
+            "task_id": "T-002",
+            "verified": True,
+            "score": 7.5,
+            "notes": "Local fallback verification executed. | docs/dil/adapter_sdk.md: present | adapter_sdk.md references schema_checksum and determinism policy. | adapter_sdk.md includes contract_schema_url verification examples.",
+        }
+
     def test_uses_runtime_builder_and_task_output_pydantic(self, monkeypatch):
         from schemas import ValidationOutput, VerificationResult
 

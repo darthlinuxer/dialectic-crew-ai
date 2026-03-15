@@ -158,7 +158,7 @@ The skills library lives at `src/mcp/skills/` (also discoverable at `~/.agents/s
 5. **Apply SOLID and established design patterns** where they simplify the design. Prefer composition, explicit interfaces/protocols, and narrow responsibilities over large multipurpose classes.
 6. **Keep classes small and cohesive** — aim to keep classes under roughly 400 lines when practical. If a class starts turning into a novella, split responsibilities before it becomes literature.
 7. **Prefer one class per file** unless colocating multiple tiny, tightly coupled classes is clearly the cleaner design.
-8. **Use CrewAI-native solutions first** — before adding custom abstractions, confirm that Flows, Crews, Tasks, Knowledge, Memory, Hooks, MCP adapters, or Event Listeners do not already solve the problem.
+8. **IMPORTANT!!!****Use CrewAI-native solutions first** — before adding custom abstractions, confirm that Flows, Crews, Tasks, Knowledge, Memory, Hooks, MCP adapters, Event Listeners or other CrewAI-native components do not already solve the problem.
 9. **Test files** go in `tests/` and follow `test_<module>.py` naming. No global LLM mocking — mock per-test as needed.
 10. **Metrics**: use `emit(metric_type, value, **context)` from `dialectic.metrics`. Never catch or suppress metric errors at the call site.
 11. **Protected paths in self-improve**: if adding safety-critical files, add them to the `frozenset` in `self_improve.py`.

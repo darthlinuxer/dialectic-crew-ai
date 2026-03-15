@@ -107,3 +107,28 @@ def crew_memory(
         resolve_project_root_fn=resolve_project_root_fn or resolve_project_root,
         memory_cls=memory_cls or Memory,
     )
+
+
+_STYLE_GUIDE_PATHS = [
+    Path("src/mcp/skills/senior-software-developer/reference/python-style.md"),
+    Path("src/mcp/skills/senior-software-developer/reference/python-patterns.md"),
+    Path("src/mcp/skills/senior-software-developer/reference/python-testing.md"),
+]
+
+
+def style_guide_knowledge(
+    *,
+    resolve_project_root_fn=None,
+    knowledge_source_cls=None,
+) -> list:
+    """Create knowledge sources for Python style guides (for self-improve context)."""
+    root_fn = resolve_project_root_fn or resolve_project_root
+    source_cls = knowledge_source_cls or TextFileKnowledgeSource
+    app_root = root_fn()
+
+    sources = []
+    for rel_path in _STYLE_GUIDE_PATHS:
+        full_path = app_root / rel_path
+        if full_path.exists():
+            sources.append(source_cls(file_paths=[full_path]))
+    return sources

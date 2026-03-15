@@ -11,7 +11,13 @@ from dialectic.agents import (
     create_sintetizador,
     create_validador_macro,
 )
-from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
+from dialectic.knowledge import (
+    _vision_label,
+    _vision_path,
+    crew_memory,
+    style_guide_knowledge,
+    vision_knowledge,
+)
 from dialectic.llm import llm_planning
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
@@ -96,6 +102,11 @@ def build_task_dialectic_crew(
     )
 
     tasks = [task_impl, task_critica, task_sintese, task_val]
+
+    knowledge_sources = [vision_knowledge(vision_context)]
+    if vision_context is VisionContext.SELF:
+        knowledge_sources.extend(style_guide_knowledge())
+
     return Crew(
         agents=[impl, crit, sint, val],
         tasks=tasks,
@@ -104,7 +115,7 @@ def build_task_dialectic_crew(
         memory=crew_memory(vision_context, "task_dialectic"),
         planning=True,
         planning_llm=llm_planning,
-        knowledge_sources=[vision_knowledge(vision_context)],
+        knowledge_sources=knowledge_sources,
     )
 
 
