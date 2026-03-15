@@ -9,7 +9,7 @@ Usage:
 """
 
 # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches
-# pylint: disable=too-many-statements,too-many-nested-blocks
+# pylint: disable=too-many-statements,too-many-nested-blocks,too-many-lines
 
 from __future__ import annotations
 
@@ -825,7 +825,10 @@ def run_self_improve(
                                     _persist_record(store, record)
                                     _save_self_improve_record(project_root, record)
                                     return record
-                                print(f"  Recreated recorded branch from {current_branch}: {branch_name}")
+                                print(
+                                    "  Recreated recorded branch from "
+                                    f"{current_branch}: {branch_name}"
+                                )
                             else:
                                 record.failure_reason = (
                                     f"Failed to resume on branch '{branch_name}': {switch_reason}"

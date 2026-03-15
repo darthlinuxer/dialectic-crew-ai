@@ -83,7 +83,9 @@ def load_self_improve_record(
     return SelfImprovementRecord.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def resolve_resume_context(record: SelfImprovementRecord) -> tuple[list[ImprovementOpportunity], dict]:
+def resolve_resume_context(
+    record: SelfImprovementRecord,
+) -> tuple[list[ImprovementOpportunity], dict]:
     """Extract the saved opportunities and baseline metrics for resume handling."""
     return list(record.selected_opportunities), dict(record.baseline_metrics)
 

@@ -11,6 +11,8 @@ Commands:
   python main.py verify <id>                   — manual single-task re-check
 """
 
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
 import logging
@@ -750,14 +752,31 @@ def make_vision_command(
 
 
 @app.command("clear-runtime")
+# pylint: disable=too-many-arguments,too-many-positional-arguments
 def clear_runtime_command(
     logs: bool = typer.Option(False, "--logs", help="Clear application log files."),
     metrics: bool = typer.Option(False, "--metrics", help="Clear the metrics database."),
     flows: bool = typer.Option(False, "--flows", help="Clear the CrewAI flow database."),
-    prd: bool = typer.Option(False, "--prd", help="Clear centralized PRD and plan artifacts."),
-    exec_output: bool = typer.Option(False, "--exec", help="Clear centralized execution artifacts."),
-    all_scopes: bool = typer.Option(False, "--all", help="Clear all runtime artifact categories."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview matching runtime artifacts without deleting them."),
+    prd: bool = typer.Option(
+        False,
+        "--prd",
+        help="Clear centralized PRD and plan artifacts.",
+    ),
+    exec_output: bool = typer.Option(
+        False,
+        "--exec",
+        help="Clear centralized execution artifacts.",
+    ),
+    all_scopes: bool = typer.Option(
+        False,
+        "--all",
+        help="Clear all runtime artifact categories.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview matching runtime artifacts without deleting them.",
+    ),
 ) -> None:
     """Clear selected centralized runtime artifacts."""
     if all_scopes:
@@ -779,8 +798,16 @@ def clear_self_improve_command(
         metavar="[CYCLE_ID]",
         help="Optional self-improve cycle ID to clear.",
     ),
-    clear_all: bool = typer.Option(False, "--all", help="Clear all persisted self-improve snapshots."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview self-improve cleanup without deleting files."),
+    clear_all: bool = typer.Option(
+        False,
+        "--all",
+        help="Clear all persisted self-improve snapshots.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview self-improve cleanup without deleting files.",
+    ),
     with_linked_exec: bool = typer.Option(
         False,
         "--with-linked-exec",

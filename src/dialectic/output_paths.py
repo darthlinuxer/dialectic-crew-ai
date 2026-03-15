@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """Helpers for scoped centralized artifact directories."""
 
 from __future__ import annotations

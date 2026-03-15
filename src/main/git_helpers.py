@@ -233,7 +233,10 @@ def git_commit_all(
     normalized_output = output.lower()
     if commit_result.returncode == 0:
         return True, output or "created commit"
-    if "nothing to commit" in normalized_output or "no changes added to commit" in normalized_output:
+    if (
+        "nothing to commit" in normalized_output
+        or "no changes added to commit" in normalized_output
+    ):
         return False, "nothing to commit"
     return False, output or "failed to create commit"
 

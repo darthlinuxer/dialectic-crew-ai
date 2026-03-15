@@ -1,5 +1,7 @@
 """Command handlers for the CLI entrypoint."""
 
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
 import os
@@ -34,6 +36,8 @@ def cmd_prd(
     consensus_min_score: float | None = None,
     get_prd_resume_state_fn=get_prd_resume_state,
 ) -> None:
+    # pylint: disable=too-many-arguments,too-many-positional-arguments
+    """Generate or resume a PRD flow from the CLI surface."""
     if not resume_id and not feature_request:
         print("Provide the feature: python main.py prd 'your feature here'")
         sys.exit(1)
@@ -63,7 +67,10 @@ def cmd_prd(
             "rerun with '--consensus-min-score SCORE' to allow consensus-aware early stopping."
         )
     if not result["consensus_reached"] and result["quality_score"] < 9.0:
-        print("Hint: try a higher retry budget with '--max-retries N' to give the dialectic more rounds.")
+        print(
+            "Hint: try a higher retry budget with '--max-retries N' "
+            "to give the dialectic more rounds."
+        )
     print("=" * 60)
 
 
@@ -72,6 +79,7 @@ def cmd_plan(
     us_ref: str | None,
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> None:
+    """Generate a user-story execution plan from a PRD artifact."""
     if prd_path == "--latest":
         prd_path = None
     if prd_path and not os.path.exists(prd_path):
@@ -87,6 +95,7 @@ def cmd_execute(
     vision_context: VisionContext = VisionContext.PROJECT,
     resume_run_id: str | None = None,
 ) -> None:
+    """Execute an approved plan or generate a spec-only artifact."""
     try:
         if spec_only:
             result = run_execution(plan_path=plan_path or "--latest")
@@ -118,6 +127,7 @@ def cmd_execute(
 
 
 def cmd_status(plan_path: str | None) -> None:
+    """Show execution status for the requested plan."""
     try:
         show_status(plan_path)
     except FileNotFoundError as exc:
@@ -126,6 +136,7 @@ def cmd_status(plan_path: str | None) -> None:
 
 
 def cmd_mark(task_id: str, status: str, plan_path: str | None) -> None:
+    """Update the status of an execution task."""
     valid = ("pending", "in_progress", "completed", "failed")
     if status not in valid:
         print(f"  Invalid status: '{status}'. Use: {', '.join(valid)}")
@@ -138,6 +149,7 @@ def cmd_mark(task_id: str, status: str, plan_path: str | None) -> None:
 
 
 def cmd_verify(task_id: str, plan_path: str | None, prd_path: str | None) -> None:
+    """Run targeted verification for a single task."""
     try:
         result = verify_task(task_id, plan_path, prd_path)
         if result["verified"]:
@@ -150,6 +162,7 @@ def cmd_verify(task_id: str, plan_path: str | None, prd_path: str | None) -> Non
 
 
 def cmd_verify_story(plan_path: str | None, prd_path: str | None) -> None:
+    """Run verification across all tasks for a user story."""
     try:
         result = verify_user_story(plan_path, prd_path)
         status = result["story_status"]
@@ -208,4 +221,5 @@ def cmd_self_improve(
 
 
 def cmd_help(help_text: str) -> None:
+    """Print the plain-text CLI help surface."""
     print(help_text.strip())
