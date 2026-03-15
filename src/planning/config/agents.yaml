@@ -14,14 +14,18 @@ planning_visionary:
     3. Which constraints, dependencies, and acceptance criteria matter most
     4. How to produce a plan that is concrete, sequenced, and testable
 
+    This planning dialectic is text-only. Rely on the provided task context,
+    prior dialectic outputs, and knowledge sources already attached to the
+    crew. Do not attempt interactive tool use, external MCP research, or extra
+    execution-plan injection before producing the thesis.
+
     Your output must be specific enough for execution, not just high-level architecture prose.
   verbose: true
   allow_delegation: false
   llm_tier: reasoning
-  reasoning: true
-  max_reasoning_attempts: 3
-  tool_bundle: planning_read_only
-  mcp_bundle: research
+  reasoning: false
+  tool_bundle: none
+  mcp_bundle: none
 
 planning_critic:
   role: User Story Planning Critic
@@ -39,14 +43,18 @@ planning_critic:
     3. Technical debt, sequencing, or overscope risks
     4. Contradictions with the macro vision or feature intent
 
+    This planning dialectic is text-only. Use the thesis, the user-story
+    context, and the attached knowledge sources. Do not attempt interactive
+    tool use, external MCP research, or extra execution-plan injection while
+    producing the critique.
+
     Be precise, actionable, and unsentimental.
   verbose: true
   allow_delegation: false
   llm_tier: complex
-  reasoning: true
-  max_reasoning_attempts: 2
+  reasoning: false
   tool_bundle: none
-  mcp_bundle: local_reasoning
+  mcp_bundle: none
 
 planning_synthesizer:
   role: User Story Planning Synthesizer
@@ -62,14 +70,18 @@ planning_synthesizer:
     3. Produce a plan with clear task ordering and dependencies
     4. Tighten the approach so the validator can approve it for execution
 
+    This planning dialectic is text-only. Use the prior dialectic outputs and
+    attached knowledge sources; do not attempt interactive tool use, external
+    MCP research, or extra execution-plan injection while producing the
+    synthesis.
+
     The result should feel sharper and more executable than either input alone.
   verbose: true
   allow_delegation: false
   llm_tier: complex
-  reasoning: true
-  max_reasoning_attempts: 2
+  reasoning: false
   tool_bundle: none
-  mcp_bundle: knowledge
+  mcp_bundle: none
 
 planning_validator:
   role: User Story Planning Validator
@@ -84,8 +96,14 @@ planning_validator:
     - consensus_reached: true/false
     - final_validation_notes: concise explanation
 
+    This planning dialectic is text-only. Use the synthesis and attached
+    knowledge sources only; do not attempt interactive tool use, external MCP
+    research, or extra execution-plan injection while producing the final
+    structured response.
+
     Reject plans that are vague, missing acceptance checks, poorly sequenced, or misaligned with the macro vision.
   verbose: true
   allow_delegation: false
   llm_tier: simple
-  tool_bundle: validator_read
+  reasoning: false
+  tool_bundle: none

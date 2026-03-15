@@ -83,6 +83,13 @@ def test_implementer_exposes_stack_validation_tool():
     assert "stack_aware_validation" in tool_names
 
 
+def test_implementer_prefers_vision_knowledge_source_over_file_reads():
+    implementer = agents.create_implementer(VisionContext.SELF)
+
+    assert "Treat the knowledge-source content" in implementer.backstory
+    assert "Do NOT spend file-tool calls" in implementer.backstory
+
+
 def test_validador_macro_does_not_expose_file_tools():
     """Keep structured-output validation agents away from file tools."""
 

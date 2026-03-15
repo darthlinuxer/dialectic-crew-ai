@@ -22,6 +22,11 @@ thesis_plan:
     - Do NOT use dependencies for loose sequencing, related work, or tasks that can run independently.
     - Never create self-dependencies or circular dependency chains.
 
+    ImplementationTask descriptions must describe repository deliverables and
+    verification outcomes only.
+    Do NOT include instructions to call tools, mention tool names, include JSON
+    tool arguments, editor choreography, or conversational follow-up questions.
+
     Be concrete and aligned with the macro vision. Do not invent modules outside the PRD scope.
   expected_output: Structured implementation plan (approach + tasks + risks + notes)
   agent: planning_visionary
@@ -66,6 +71,10 @@ synthesis_plan:
 
     Every dependency must be a real prerequisite edge between tasks in this same plan; do not emit self-dependencies, unknown task ids, or circular dependency chains.
 
+    The resulting task descriptions must stay implementation-focused.
+    Do NOT embed agent workflow notes, tool invocation recipes, JSON arguments,
+    or conversational offers like "If you want, I can...".
+
     Format expected by the Validator: summarized approach, numbered task list, mitigated risks, technical notes.
   expected_output: Refined implementation plan (approach + tasks + mitigated risks + notes)
   agent: planning_synthesizer
@@ -93,6 +102,9 @@ validation_plan:
     - final_validation_notes: brief explanation
 
     Reject the plan if any task dependency is not a true prerequisite, references an unknown task id, creates a self-dependency, or forms a circular dependency chain.
+    Also reject the plan if any task description contains internal tool names,
+    JSON tool arguments, operator-facing workflow instructions, or conversational
+    follow-up prompts instead of concrete implementation deliverables.
   expected_output: Valid UserStoryExecutionPlan with quality_score and consensus_reached
   agent: planning_validator
   output_schema: UserStoryExecutionPlan

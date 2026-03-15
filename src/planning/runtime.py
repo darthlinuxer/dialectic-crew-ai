@@ -7,7 +7,6 @@ from crewai import Crew, Process, Task
 
 from dialectic.agents import build_agent_from_config
 from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
-from dialectic.llm import llm_planning
 from dialectic.yaml_config import (
     load_yaml_config,
     render_yaml_config,
@@ -19,14 +18,6 @@ from dialectic.vision import VisionContext
 
 _AGENTS_CONFIG_PATH = Path(__file__).with_name("config") / "agents.yaml"
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks.yaml"
-
-
-def _disable_interactive_agent_io(agent: Any) -> Any:
-    """Keep planning agents focused on context + knowledge, not ad-hoc tool calls."""
-    for attr in ("tools", "mcps", "mcp_servers"):
-        if hasattr(agent, attr):
-            setattr(agent, attr, [])
-    return agent
 
 
 def build_planning_crew(
@@ -52,18 +43,10 @@ def build_planning_crew(
         "retry_feedback_block": retry_feedback_block,
     }
 
-    vis = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_visionary"], placeholders)
-    )
-    crit = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_critic"], placeholders)
-    )
-    sint = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_synthesizer"], placeholders)
-    )
-    val = _disable_interactive_agent_io(
-        _build_agent(agent_templates["planning_validator"], placeholders)
-    )
+    vis = _build_agent(agent_templates["planning_visionary"], placeholders)
+    crit = _build_agent(agent_templates["planning_critic"], placeholders)
+    sint = _build_agent(agent_templates["planning_synthesizer"], placeholders)
+    val = _build_agent(agent_templates["planning_validator"], placeholders)
     agents = {
         "planning_visionary": vis,
         "planning_critic": crit,
@@ -98,8 +81,7 @@ def build_planning_crew(
         process=Process.sequential,
         verbose=True,
         memory=crew_memory(vision_context, "planning"),
-        planning=True,
-        planning_llm=llm_planning,
+        planning=False,
         knowledge_sources=[vision_knowledge(vision_context), *(retry_feedback_sources or [])],
     )
 

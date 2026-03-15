@@ -1,7 +1,7 @@
 # pyright: reportPrivateUsage=none
 
-from tests.conftest import make_prd
 from dialectic.tool_bundles import TOOL_BUNDLES
+from tests.conftest import make_prd
 from dialectic.vision import VisionContext
 
 
@@ -63,8 +63,9 @@ def test_build_planning_crew_uses_yaml_templates(monkeypatch):
         "agent:User Story Planning Synthesizer:SELF_VISION.md",
         "agent:User Story Planning Validator:SELF_VISION.md",
     ]
-    assert captured_crew["planning"] is True
-    assert captured_crew["planning_llm"] is runtime.llm_planning
+    assert captured_crew["planning"] is False
+    assert "planning_llm" not in captured_crew
+    assert captured_crew["memory"] == "memory:self:planning"
     assert captured_crew["knowledge_sources"] == ["knowledge:self"]
 
 
@@ -143,6 +144,41 @@ def test_build_planning_crew_appends_retry_feedback_sources(monkeypatch):
     assert captured_crew["knowledge_sources"] == ["vision-source", "feedback-source"]
 
 
+def test_build_planning_crew_enables_crewai_memory(monkeypatch):
+    from planning import runtime
+
+    captured_crew = {}
+
+    class FakeTask:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeCrew:
+        def __init__(self, **kwargs):
+            captured_crew.update(kwargs)
+
+    monkeypatch.setattr(runtime, "Task", FakeTask)
+    monkeypatch.setattr(runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(runtime, "_build_agent", lambda template, placeholders: template["role"])
+    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}")
+    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision-source")
+
+    prd = make_prd()
+    us = prd.user_stories[0]
+
+    runtime.build_planning_crew(
+        feature_context="feature",
+        us=us,
+        us_context="story",
+        vision_context=VisionContext.SELF,
+        min_plan_score=7.5,
+        retry_feedback_block="",
+        retry_feedback_sources=None,
+    )
+
+    assert captured_crew["memory"] == "memory:self:planning"
+
+
 def test_build_planning_crew_strips_interactive_tools_from_agents(monkeypatch):
     from planning import runtime
 
@@ -162,7 +198,6 @@ def test_build_planning_crew_strips_interactive_tools_from_agents(monkeypatch):
             self.tools = [f"tool:{label}"]
             self.mcps = [f"mcp:{label}"]
             self.mcp_servers = [f"server:{label}"]
-
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
     monkeypatch.setattr(
@@ -187,9 +222,9 @@ def test_build_planning_crew_strips_interactive_tools_from_agents(monkeypatch):
     )
 
     for agent in captured_crew["agents"]:
-        assert agent.tools == []
-        assert agent.mcps == []
-        assert agent.mcp_servers == []
+        assert agent.tools == [f"tool:{agent.label}"]
+        assert agent.mcps == [f"mcp:{agent.label}"]
+        assert agent.mcp_servers == [f"server:{agent.label}"]
 
 
 def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
@@ -265,7 +300,7 @@ def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
     }
 
 
-def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
+def test_planning_visionary_yaml_disables_interactive_surfaces(monkeypatch):
     from planning import runtime
     build_agent = getattr(runtime, "_build_agent")
     agents_config_path = getattr(runtime, "_AGENTS_CONFIG_PATH")
@@ -295,7 +330,56 @@ def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
     )
 
     assert agent == "agent"
-    assert captured["tool_bundle"] == "planning_read_only"
+    assert captured["tool_bundle"] == "none"
+    assert captured["mcp_bundle"] == "none"
+    assert captured["reasoning"] is False
+
+
+def test_planning_validator_yaml_disables_interactive_surfaces(monkeypatch):
+    from planning import runtime
+    build_agent = getattr(runtime, "_build_agent")
+    agents_config_path = getattr(runtime, "_AGENTS_CONFIG_PATH")
+
+    captured = {}
+
+    def fake_build_agent_from_config(config):
+        captured.update(config)
+        return "agent"
+
+    monkeypatch.setattr(runtime, "build_agent_from_config", fake_build_agent_from_config)
+
+    agent_templates = runtime.load_yaml_config(agents_config_path)
+
+    agent = build_agent(
+        agent_templates["planning_validator"],
+        {
+            "vision_label": "SELF_VISION.md",
+            "vision_path": "internal/SELF_VISION.md",
+            "us_title": "US1",
+            "feature_context": "Feature ABC",
+            "us_context": "Story context",
+            "us_id": "US-01",
+            "min_plan_score": 7.5,
+            "retry_feedback_block": "",
+        },
+    )
+
+    assert agent == "agent"
+    assert captured["tool_bundle"] == "none"
+
+
+def test_planning_text_roles_disable_reasoning_injection():
+    from planning import runtime
+
+    agent_templates = runtime.load_yaml_config(getattr(runtime, "_AGENTS_CONFIG_PATH"))
+
+    for agent_name in [
+        "planning_visionary",
+        "planning_critic",
+        "planning_synthesizer",
+        "planning_validator",
+    ]:
+        assert agent_templates[agent_name]["reasoning"] is False
 
 
 def test_planning_bundle_avoids_recursive_directory_context():
