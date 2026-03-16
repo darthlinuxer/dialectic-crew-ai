@@ -105,6 +105,7 @@ class DialecticFlow(Flow[DialecticState]):
 
     @start()
     def iniciar_dialetica(self):
+        """Start the PRD dialectic flow, initializing logging and printing flow metadata."""
         bind_log_context(
             flow_id=self.flow_id,
             phase="start",
@@ -157,11 +158,7 @@ class DialecticFlow(Flow[DialecticState]):
                 memory_namespace=f"prd/{self.flow_id}",
             )
 
-            kickoff_kwargs: dict[str, Any] = {
-                "inputs": {
-                    "feature_objective": self.state.feature_objective,
-                },
-            }
+            kickoff_kwargs: dict[str, Any] = {}
 
             if _HAS_FILES and self.state.file_paths:
                 input_files = {}

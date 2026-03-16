@@ -359,6 +359,53 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     assert captured_kwargs["memory_namespace"] == f"prd/{flow.flow_id}"
 
 
+def test_rodar_rodada_dialetica_allows_literal_braces_in_feature_objective(monkeypatch):
+    prd = _make_prd()
+    kickoff_kwargs: list[dict[str, Any]] = []
+
+    class FakeHookScope:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def __enter__(self):
+            return SimpleNamespace(total_tokens=0, budget=0)
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeCrew:
+        def kickoff(self, **kwargs):
+            kickoff_kwargs.append(kwargs)
+            if "inputs" in kwargs:
+                raise RuntimeError(
+                    "Template variable 'run_id' not found in inputs dictionary"
+                )
+            return SimpleNamespace(pydantic=prd)
+
+    monkeypatch.setattr(prd_flow, "build_prd_crew", lambda **kwargs: FakeCrew())
+    monkeypatch.setattr(prd_flow, "HookScope", FakeHookScope)
+    monkeypatch.setattr(
+        prd_flow,
+        "run_crew_kickoff",
+        lambda crew, **kwargs: crew.kickoff(**kwargs),
+    )
+
+    flow = prd_flow.DialecticFlow()
+    flow.state.feature_objective = (
+        "Ship trace API support for /runs/{run_id}/trace without breaking PRD generation"
+    )
+    flow.state.vision_context = prd_flow.VisionContext.SELF.value
+    flow.state.retry_count = 0
+    flow.state.final_validation_notes = ""
+    flow.state.file_paths = []
+
+    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "rodar_rodada_dialetica"))(flow)
+
+    assert next_step == "avaliar"
+    assert kickoff_kwargs == [{}]
+    assert flow.state.prd_data["feature_name"] == prd.feature_name
+
+
 def test_avaliar_approves_when_consensus_floor_is_met():
     flow = prd_flow.DialecticFlow()
     flow.state.quality_score = 8.6
