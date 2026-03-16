@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import TypedDict
 
 from dialectic import run_dialectic_flow
 from dialectic.prd_flow import get_prd_resume_state
@@ -12,9 +13,9 @@ from execution.dialectic_execution import run_dialectic_execution
 from execution.runner import run_execution
 from execution.status import mark_task, show_status
 from execution.verify import verify_task, verify_user_story
-from typing import TypedDict
 from planning.flow import run_user_story_planning
-from .self_improve import _list_resumable_cycles, run_self_improve
+
+from ..self_improve import _list_resumable_cycles, run_self_improve
 
 
 class PrdFlowKwargs(TypedDict):
@@ -257,6 +258,7 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
     elif record.failure_reason:
         print(f"\nSelf-improvement cycle ended: {record.failure_reason}")
 
+
 __all__ = [
     "_build_prd_flow_kwargs",
     "_check_vision_exists",
@@ -269,8 +271,3 @@ __all__ = [
     "cmd_verify",
     "cmd_verify_story",
 ]
-
-
-
-
-

@@ -10,7 +10,7 @@ Dialectic Crew AI uses CrewAI flows for PRD generation and per-task execution, p
 | User-story planning | orchestrated crew loop | `src/planning/flow.py` |
 | Task execution | CrewAI Flow | `src/execution/task_flow.py` |
 | Execution coordinator | orchestrator | `src/execution/dialectic_execution.py` |
-| Self-improvement | orchestrator | `src/main/self_improve.py` |
+| Self-improvement | orchestrator | `src/main/self_improve/orchestrator.py` |
 
 ## 1. PRD generation flow
 
@@ -97,7 +97,7 @@ Responsibilities:
 
 ## 5. Self-improvement orchestrator
 
-**Source:** `src/main/self_improve.py`
+**Source:** `src/main/self_improve/orchestrator.py`
 
 ```mermaid
 flowchart LR

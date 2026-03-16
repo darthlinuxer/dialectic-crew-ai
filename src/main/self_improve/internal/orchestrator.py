@@ -1,11 +1,9 @@
 """
-Self-improvement orchestrator.
+Internal self-improvement orchestrator implementation.
 
-Wires introspection + existing PRD/plan/execute commands + safety gates
-into a semi-autonomous improvement cycle with a human PR gate.
-
-Usage:
-    dialectic-crew self-improve [--simulate] [--max N]
+The public package surface lives at `src/main/self_improve/` and forwards into
+this module so callers keep a small, stable import surface while the internals
+remain decomposable.
 """
 
 # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches
@@ -17,49 +15,54 @@ import json
 import logging
 import os
 import re
-import shutil
-import subprocess
 import sys
-import time
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Callable, Literal, TypeVar
+from typing import Literal
 
 from dialectic.hooks import HookScope
 from dialectic.introspect import run_introspection
-from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.metrics import MetricsStore, emit, get_metrics_store
 from dialectic.prioritize import dialectic_prioritize
 from dialectic.vision import VisionContext, resolve_project_root
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
-from .git_helpers import (
-    git_branch_exists,
+
+from ..code_structure import print_structure_validation_result, validate_code_structure
+from ..git_helpers import (
     dirty_worktree_guidance,
     git_branch_create,
     git_branch_create_from_head,
+    git_branch_exists,
     git_checkout_branch,
+    git_clean_untracked,
     git_commit_all,
     git_current_branch,
     git_delete_branch,
     git_discard_branch,
-    git_clean_untracked,
     git_has_commits_ahead,
     git_reset_hard_head,
     git_stash_worktree,
     git_worktree_clean,
     recover_stale_self_improve_worktree,
-    run_cmd,
 )
-from .test_runner import (
-    emit_test_failure_details,
-    pytest_command,
-    self_improve_test_timeout,
-    snapshot_tests,
+from ..llm_retries import _run_with_transient_llm_retries
+from ..metrics import metrics_stable
+from ..paths import (
+    FLOW_DB_ENV_VAR,
+    METRICS_DB_ENV_VAR,
+    MIN_METRIC_RETENTION,
+    PROTECTED_PATHS,
+    RUNTIME_ROOT_ENV_VAR,
+    SELF_IMPROVE_ROADMAP_PATH,
+    SELF_IMPROVE_STATE_DIR,
+    SELF_IMPROVE_STATE_DIR_ENV_VAR,
+    SIMULATED_CYCLE_RESULT,
+    SIMULATION_BRANCH_NAME,
 )
-from .self_improve_persistence import (
+from ..persistence import (
     list_resumable_cycles,
     load_self_improve_record,
     record_execution_artifacts,
@@ -71,192 +74,20 @@ from .self_improve_persistence import (
     self_improve_record_path,
     summarize_resume_state,
 )
-from .pr_builder import build_pr_body, create_pr, print_report
-from .metrics_comparison import metrics_stable
-from .quality_gate import run_quality_gate, print_quality_gate_result
-from .code_structure_validation import (
-    validate_code_structure,
-    print_structure_validation_result,
+from ..pr_builder import build_pr_body, create_pr, print_report
+from ..quality_gate import print_quality_gate_result, run_quality_gate
+from ..runtime import (
+    _command_available,
+    _configure_crewai_runtime,
+    _run_cmd,
+    _self_improve_prd_min_score,
+    _self_improve_test_timeout,
 )
+from ..test_runner import emit_test_failure_details, pytest_command, snapshot_tests
 
 logger = logging.getLogger(__name__)
 
-PROTECTED_PATHS = frozenset({
-    "internal/SELF_VISION.md",
-    "src/main/self_improve.py",
-    "src/dialectic/metrics.py",
-    "src/dialectic/introspect.py",
-})
-
-MIN_METRIC_RETENTION = float(os.getenv("MIN_METRIC_RETENTION", "0.95"))
-DEFAULT_SELF_IMPROVE_TEST_TIMEOUT = 1800
-DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE = 8.5
-DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES = 2
-DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS = 2.0
-SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
-SELF_IMPROVE_ROADMAP_PATH = Path("internal") / "ROADMAP.md"
-SIMULATION_BRANCH_NAME = "self-improve/simulate"
-SIMULATED_CYCLE_RESULT = "simulated"
-RUNTIME_ROOT_ENV_VAR = "DIALECTIC_RUNTIME_ROOT"
-FLOW_DB_ENV_VAR = "DIALECTIC_FLOW_DB"
-METRICS_DB_ENV_VAR = "DIALECTIC_METRICS_DB"
-SELF_IMPROVE_STATE_DIR_ENV_VAR = "DIALECTIC_SELF_IMPROVE_STATE_DIR"
-_StageResultT = TypeVar("_StageResultT")
 _ArtifactKind = Literal["prd", "plan"]
-
-
-def _configure_crewai_runtime() -> None:
-    """Apply runtime defaults that keep self-improve runs deterministic."""
-    configure_crewai_runtime()
-
-
-def _command_available(command: str) -> bool:
-    return shutil.which(command) is not None
-
-
-def _run_cmd(
-    cmd: list[str],
-    cwd: str | Path | None = None,
-    timeout: int = 120,
-) -> subprocess.CompletedProcess[str]:
-    return run_cmd(cmd, cwd=cwd, timeout=timeout)
-
-
-def _self_improve_test_timeout() -> int:
-    """Return the pytest timeout used by self-improvement validation."""
-    return self_improve_test_timeout(
-        os.getenv("SELF_IMPROVE_TEST_TIMEOUT"),
-        default_timeout=DEFAULT_SELF_IMPROVE_TEST_TIMEOUT,
-        logger=logger,
-    )
-
-
-def _self_improve_prd_min_score() -> float:
-    """Return the minimum PRD score that allows self-improve to continue."""
-    raw_value = os.getenv("SELF_IMPROVE_MIN_PRD_SCORE")
-    if raw_value in {None, ""}:
-        return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
-    assert raw_value is not None
-    try:
-        score = float(raw_value)
-    except ValueError:
-        logger.warning(
-            "Invalid SELF_IMPROVE_MIN_PRD_SCORE=%r; using default %s",
-            raw_value,
-            DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE,
-        )
-        return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
-    if not 0.0 <= score <= 10.0:
-        logger.warning(
-            "Out-of-range SELF_IMPROVE_MIN_PRD_SCORE=%r; using default %s",
-            raw_value,
-            DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE,
-        )
-        return DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE
-    return score
-
-
-def _self_improve_llm_stage_retries() -> int:
-    """Return how many extra attempts self-improve should make on transient LLM failures."""
-    raw_value = os.getenv("SELF_IMPROVE_LLM_STAGE_RETRIES")
-    if raw_value in {None, ""}:
-        return DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES
-    assert raw_value is not None
-    try:
-        retries = int(raw_value)
-    except ValueError:
-        logger.warning(
-            "Invalid SELF_IMPROVE_LLM_STAGE_RETRIES=%r; using default %s",
-            raw_value,
-            DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES,
-        )
-        return DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES
-    if retries < 0:
-        logger.warning(
-            "Negative SELF_IMPROVE_LLM_STAGE_RETRIES=%r; using default %s",
-            raw_value,
-            DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES,
-        )
-        return DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES
-    return retries
-
-
-def _self_improve_llm_retry_backoff_seconds() -> float:
-    """Return the base backoff between transient LLM retry attempts."""
-    raw_value = os.getenv("SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS")
-    if raw_value in {None, ""}:
-        return DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS
-    assert raw_value is not None
-    try:
-        seconds = float(raw_value)
-    except ValueError:
-        logger.warning(
-            "Invalid SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS=%r; using default %s",
-            raw_value,
-            DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS,
-        )
-        return DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS
-    if seconds < 0:
-        logger.warning(
-            "Negative SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS=%r; using default %s",
-            raw_value,
-            DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS,
-        )
-        return DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS
-    return seconds
-
-
-def _is_transient_llm_error(exc: Exception) -> bool:
-    """Return True when the exception looks like a transient provider/network failure."""
-    message = str(exc).lower()
-    transient_markers = (
-        "request timed out",
-        "timed out",
-        "timeout",
-        "failed to connect to openai api",
-        "connection error",
-        "api connection error",
-        "temporarily unavailable",
-        "service unavailable",
-        "rate limit",
-        "too many requests",
-        "server disconnected",
-    )
-    return any(marker in message for marker in transient_markers)
-
-
-def _run_with_transient_llm_retries(
-    stage_name: str,
-    operation: Callable[[], _StageResultT],
-) -> _StageResultT:
-    """Retry a self-improve stage when transient LLM/provider failures occur."""
-    max_attempts = _self_improve_llm_stage_retries() + 1
-    backoff_seconds = _self_improve_llm_retry_backoff_seconds()
-
-    for attempt in range(1, max_attempts + 1):
-        try:
-            return operation()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            if not _is_transient_llm_error(exc) or attempt >= max_attempts:
-                raise
-
-            wait_seconds = backoff_seconds * attempt
-            logger.warning(
-                "Transient LLM failure during %s (attempt %s/%s): %s",
-                stage_name,
-                attempt,
-                max_attempts,
-                exc,
-            )
-            print(
-                f"  Transient LLM failure during {stage_name} "
-                f"(attempt {attempt}/{max_attempts}): {exc}"
-            )
-            print(f"  Retrying {stage_name} in {wait_seconds:.1f}s...")
-            if wait_seconds > 0:
-                time.sleep(wait_seconds)
-
-    raise RuntimeError(f"Retry loop exited unexpectedly for {stage_name}")
 
 
 def _kickoff_prd_flow(
@@ -296,7 +127,6 @@ def _run_execution_stage(
 
 
 def _load_starting_artifact(artifact_path: str) -> tuple[_ArtifactKind, str]:
-    """Classify an explicit self-improve artifact path as a PRD or execution plan."""
     path = Path(artifact_path).expanduser()
     if not path.exists():
         raise FileNotFoundError(f"Self-improve artifact not found: {path}")
@@ -327,7 +157,6 @@ def _make_artifact_opportunity(
     kind: _ArtifactKind,
     artifact_path: str,
 ) -> ImprovementOpportunity:
-    """Create a synthetic opportunity when self-improve starts from an existing artifact."""
     label = "PRD" if kind == "prd" else "plan"
     return ImprovementOpportunity(
         id=f"artifact:{kind}",
@@ -343,7 +172,6 @@ def _make_artifact_opportunity(
 
 
 def _collect_touched_files(project_root: Path) -> list[str]:
-    """Return a best-effort list of touched files for reporting."""
     if not _command_available("git") or not (project_root / ".git").exists():
         return []
 
@@ -366,7 +194,6 @@ def _print_simulation_report(
     *,
     artifact_path: str | None = None,
 ) -> None:
-    """Print a deterministic summary of what a simulation run produced."""
     print("\nSimulation report")
     print(f"{'=' * 60}")
     if selected:
@@ -410,7 +237,6 @@ def _print_simulation_report(
 
 
 def _snapshot_tests(project_root: Path, timeout: int | None = None) -> dict:
-    """Run pytest and return pass/fail summary."""
     return snapshot_tests(
         project_root,
         timeout=timeout,
@@ -421,7 +247,6 @@ def _snapshot_tests(project_root: Path, timeout: int | None = None) -> dict:
 
 
 def _pytest_command() -> list[str]:
-    """Prefer uv-managed pytest, then fall back to the active Python environment."""
     return pytest_command(
         command_available_fn=_command_available,
         python_executable=sys.executable,
@@ -429,7 +254,6 @@ def _pytest_command() -> list[str]:
 
 
 def _emit_test_failure_details(snapshot: dict, prefix: str = "  ") -> None:
-    """Print concise diagnostics for a failing pytest snapshot."""
     emit_test_failure_details(snapshot, prefix=prefix)
 
 
@@ -438,7 +262,6 @@ def _metrics_stable(
     baseline: dict,
     retention: float = MIN_METRIC_RETENTION,
 ) -> tuple[bool, str]:
-    """Compare current metrics against baseline; no metric may drop by more than (1 - retention)."""
     return metrics_stable(store, baseline, retention)
 
 
@@ -583,7 +406,6 @@ def _mark_roadmap_items_completed(
     project_root: Path,
     opportunities: list[ImprovementOpportunity],
 ) -> list[str]:
-    """Mark successfully completed self-improve roadmap items as done."""
     roadmap_path = project_root / SELF_IMPROVE_ROADMAP_PATH
     if not roadmap_path.exists():
         return []
@@ -624,7 +446,6 @@ def _mark_roadmap_items_completed(
 
 @contextmanager
 def _temporary_environment(overrides: dict[str, str]):
-    """Temporarily apply environment variable overrides for a bounded scope."""
     previous_values = {key: os.environ.get(key) for key in overrides}
     try:
         for key, value in overrides.items():
@@ -640,7 +461,6 @@ def _temporary_environment(overrides: dict[str, str]):
 
 @contextmanager
 def _simulation_runtime_environment():
-    """Redirect runtime artifacts and caches to a temporary directory."""
     with TemporaryDirectory(prefix="dialectic-self-improve-sim-") as temp_dir:
         runtime_root = Path(temp_dir)
         pytest_addopts_parts = [os.getenv("PYTEST_ADDOPTS", "").strip(), "-p no:cacheprovider"]
@@ -665,7 +485,6 @@ def _run_git_preflight(
     stash_dirty: bool,
     step_label: str,
 ) -> str | None:
-    """Validate git availability and worktree cleanliness before self-improve starts."""
     print(step_label)
     if not _command_available("git"):
         return (
@@ -697,7 +516,6 @@ def _run_git_preflight(
 
 
 def _prepare_simulation_branch(project_root: Path) -> tuple[bool, str]:
-    """Recreate the disposable simulation branch from the current HEAD."""
     current_branch = _git_current_branch(project_root)
     if current_branch == SIMULATION_BRANCH_NAME:
         reset_ok, reset_reason = _git_reset_hard_head(project_root)
@@ -720,7 +538,6 @@ def _prepare_simulation_branch(project_root: Path) -> tuple[bool, str]:
 
 
 def _cleanup_simulation_branch(project_root: Path) -> None:
-    """Discard the disposable simulation branch and return to the caller's branch."""
     current_branch = _git_current_branch(project_root)
     if current_branch == SIMULATION_BRANCH_NAME:
         reset_ok, reset_reason = _git_reset_hard_head(project_root)
@@ -748,16 +565,6 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     artifact_path: str | None = None,
     next_roadmap_item: bool = False,
 ) -> SelfImprovementRecord:
-    """
-    Run one self-improvement cycle.
-
-    1. Snapshot baseline
-    2. Introspect against SELF_VISION.md
-    3. If simulate: run the full pipeline on a disposable branch with temporary runtime state
-    4. Create branch, generate PRD → plan → execute (VisionContext.SELF)
-    5. Validate (tests + metrics)
-    6. Pass → PR, or clean up and report for simulation
-    """
     if max_improvements != 1:
         raise ValueError(
             "self-improve currently supports exactly one opportunity per cycle"

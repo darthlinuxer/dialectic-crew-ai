@@ -281,7 +281,7 @@ def _run_pyright(
 
         return QualityCheckResult(
             tool="pyright",
-            passed=True,  # pyright is warn-only
+            passed=True,
             error_count=error_count,
             warning_count=warning_count,
             output=result.stdout[:1000],
@@ -290,7 +290,7 @@ def _run_pyright(
     except subprocess.TimeoutExpired:
         return QualityCheckResult(
             tool="pyright",
-            passed=True,  # warn-only
+            passed=True,
             error_count=0,
             warning_count=1,
             output="Timeout expired",
@@ -303,16 +303,7 @@ def run_quality_gate(
     target_path: str = "src/",
     include_pyright: bool = True,
 ) -> QualityGateResult:
-    """Run all quality checks and return aggregated result.
-
-    Args:
-        project_root: Root directory of the project.
-        target_path: Relative path to check (default: src/).
-        include_pyright: Whether to run pyright (warn-only).
-
-    Returns:
-        QualityGateResult with all check results.
-    """
+    """Run all quality checks and return aggregated result."""
     result = QualityGateResult(passed=True)
 
     logger.info("Running ruff lint check...")
@@ -345,3 +336,12 @@ def print_quality_gate_result(
                 print(f"{prefix}  {error}")
             if len(check.errors) > 5:
                 print(f"{prefix}  ... and {len(check.errors) - 5} more")
+
+__all__ = [
+    "DEFAULT_QUALITY_GATE_TIMEOUT",
+    "QualityCheckResult",
+    "QualityGateResult",
+    "print_quality_gate_result",
+    "run_quality_gate",
+]
+

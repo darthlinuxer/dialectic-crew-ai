@@ -22,7 +22,7 @@ from dialectic.crewai_event_logger import register_crewai_event_logger
 from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.prd_flow import get_prd_resume_state
 from dialectic.vision import VisionContext
-from .cli_commands import (
+from .commands import (
     _build_prd_flow_kwargs,
     _check_vision_exists,
     cmd_execute,
@@ -34,14 +34,14 @@ from .cli_commands import (
     cmd_verify,
     cmd_verify_story,
 )
-from .target_commands import (
+from ..targets import (
     cmd_clear_target,
     cmd_get_target,
     cmd_list_targets,
     cmd_set_target,
 )
-from .cleanup_commands import cmd_clear_runtime, cmd_clear_self_improve
-from .vision_commands import cmd_make_vision
+from ..cleanup import cmd_clear_runtime, cmd_clear_self_improve
+from ..vision import cmd_make_vision
 
 load_dotenv()
 
@@ -77,7 +77,7 @@ def _print_banner() -> None:
     print(BANNER)
 
 
-def _check_api_key():
+def _check_api_key() -> bool:
     has = bool(
         os.getenv("OPENAI_API_KEY")
         or os.getenv("ANTHROPIC_API_KEY")
@@ -140,7 +140,7 @@ def cmd_prd(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     )
 
 
-def cmd_help():
+def cmd_help() -> None:
     """Print the unified modern help guide for the CLI."""
     command = get_command(app)
     context = click.Context(command, info_name="dialectic-crew")
@@ -197,11 +197,7 @@ def _dispatch_prd_command(  # pylint: disable=too-many-arguments,too-many-positi
         max_retries,
         consensus_min_score,
     )
-    cmd_prd(
-        feature_request,
-        **flow_kwargs,
-        get_prd_resume_state_fn=get_prd_resume_state,
-    )
+    cmd_prd(feature_request, **flow_kwargs)
 
 
 @app.command("prd")
@@ -260,25 +256,26 @@ def prd_command(  # pylint: disable=too-many-arguments,too-many-positional-argum
         print(f"  File(s) not found: {', '.join(invalid)}")
         raise SystemExit(1)
 
-    feature_request = " ".join(feature_request_parts or []).strip() or None
-    args = ["prd"]
-    if self_mode:
-        args.append("--self")
+    feature_request = " ".join(feature_request_parts) if feature_request_parts else None
     if resume_id:
-        args.extend(["--resume", resume_id])
-    if max_retries is not None:
-        args.extend(["--max-retries", str(max_retries)])
-    if consensus_min_score is not None:
-        args.extend(["--consensus-min-score", str(consensus_min_score)])
-    if file_list:
-        for path in file_list:
-            args.extend(["--files", path])
-    if feature_request:
-        args.extend(feature_request.split())
+        _run_guarded_command(
+            "prd",
+            sys.argv[1:],
+            lambda: cmd_prd(
+                feature_request,
+                file_paths=file_list or None,
+                vision_context=vision_context,
+                resume_id=resume_id,
+                max_retries=max_retries,
+                consensus_min_score=consensus_min_score,
+            ),
+            vision_context=vision_context,
+        )
+        return
 
     _run_guarded_command(
         "prd",
-        args,
+        sys.argv[1:],
         lambda: _dispatch_prd_command(
             feature_request,
             file_paths=file_list or None,
@@ -428,12 +425,7 @@ def status_command(
         help="Execution plan path; defaults to the latest plan.",
     ),
 ) -> None:
-    """Show the current status for a plan and its tasks.
-
-    Examples:
-      uv run dialectic-crew status
-      uv run dialectic-crew status prd_output/exec_US-01_20260313_125038.json
-    """
+    """Show the current status for a plan and its tasks."""
     _run_guarded_command("status", ["status"], lambda: cmd_status(plan_path))
 
 
@@ -451,12 +443,7 @@ def verify_story_command(
         help="Optional PRD path to verify against.",
     ),
 ) -> None:
-    """Re-verify a story's completed tasks against PRD acceptance criteria.
-
-    Examples:
-      uv run dialectic-crew verify-story
-      uv run dialectic-crew verify-story --prd prd_output/PRD_20260308_1640.json
-    """
+    """Re-verify a story's completed tasks against PRD acceptance criteria."""
     args = ["verify-story"]
     if prd_path:
         args.extend(["--prd", prd_path])
@@ -477,12 +464,7 @@ def mark_command(
         help="Optional execution plan path.",
     ),
 ) -> None:
-    """Manually override a task status for an execution plan.
-
-    Examples:
-      uv run dialectic-crew mark T0 completed
-      uv run dialectic-crew mark T3 failed prd_output/exec_US-01_20260313_125038.json
-    """
+    """Manually override a task status for an execution plan."""
     _run_guarded_command(
         "mark",
         ["mark", task_id, status],
@@ -505,12 +487,7 @@ def verify_command(
         help="Optional PRD path to verify against.",
     ),
 ) -> None:
-    """Re-run verification for a single implementation task.
-
-    Examples:
-      uv run dialectic-crew verify T0
-      uv run dialectic-crew verify T2 --prd prd_output/PRD_20260308_1640.json
-    """
+    """Re-run verification for a single implementation task."""
     args = ["verify", task_id]
     if prd_path:
         args.extend(["--prd", prd_path])
@@ -572,12 +549,12 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
     """Run the guarded self-improvement orchestration workflow.
 
     Examples:
-            uv run dialectic-crew self-improve --simulate
-        uv run dialectic-crew self-improve --skip-baseline-tests
-            uv run dialectic-crew self-improve --next-roadmap-item
+      uv run dialectic-crew self-improve --simulate
+      uv run dialectic-crew self-improve --skip-baseline-tests
+      uv run dialectic-crew self-improve --next-roadmap-item
       uv run dialectic-crew self-improve --max 1
-            uv run dialectic-crew self-improve prd_output/PRD_20260308_1640.json
-            uv run dialectic-crew self-improve prd_output/exec_US-01_20260313_125038.json
+      uv run dialectic-crew self-improve prd_output/PRD_20260308_1640.json
+      uv run dialectic-crew self-improve prd_output/exec_US-01_20260313_125038.json
       uv run dialectic-crew self-improve --resume 20260310T120000
       uv run dialectic-crew self-improve --list-resumable
     """
@@ -622,7 +599,11 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
 
 @app.command("set-target")
 def set_target_command(
-    path: str = typer.Argument(..., metavar="PATH", help="Path to a local git repository."),
+    path: str = typer.Argument(
+        ...,
+        metavar="PATH",
+        help="Path to a local git repository.",
+    ),
 ) -> None:
     """Set the active target repository for project-mode workflows."""
     cmd_set_target(path)
@@ -668,8 +649,7 @@ def make_vision_command(
 
 
 @app.command("clear-runtime")
-# pylint: disable=too-many-arguments,too-many-positional-arguments
-def clear_runtime_command(
+def clear_runtime_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     logs: bool = typer.Option(False, "--logs", help="Clear application log files."),
     metrics: bool = typer.Option(False, "--metrics", help="Clear the metrics database."),
     flows: bool = typer.Option(False, "--flows", help="Clear the CrewAI flow database."),
@@ -749,9 +729,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     """Bootstrap logging/runtime configuration and dispatch the Typer app."""
     configure_application_logging()
     register_crewai_event_logger()
+    os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
     args = list(argv) if argv is not None else sys.argv[1:]
     sub = args[0].lower() if args else "startup"
-    with log_context(command=sub, phase="bootstrap", correlation_id=new_correlation_id()):
+    with log_context(
+        command=sub,
+        phase="bootstrap",
+        correlation_id=new_correlation_id(),
+    ):
         configure_crewai_runtime()
         logger.debug("CLI bootstrap initialized")
         if not args:
@@ -759,7 +744,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             print("Usage: python main.py <command> [arguments...]")
             print("       python main.py help   to see all commands.\n")
             logger.warning("CLI invoked without arguments")
-            sys.exit(1)
+            raise SystemExit(1)
 
         _print_banner()
         normalized_args = _normalize_legacy_args(args)
@@ -780,5 +765,3 @@ def main(argv: Sequence[str] | None = None) -> None:
             raise SystemExit(exc.exit_code) from exc
 
 
-if __name__ == "__main__":
-    main()

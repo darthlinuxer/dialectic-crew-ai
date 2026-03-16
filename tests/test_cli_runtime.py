@@ -140,7 +140,7 @@ class TestCliRequirementRouting:
             cli.main()
 
     def test_cmd_prd_requires_feature_when_not_resuming(self, monkeypatch):
-        monkeypatch.setattr("src.main.cli_commands.run_dialectic_flow", lambda *args, **kwargs: None)
+        monkeypatch.setattr("src.main.cli.commands.run_dialectic_flow", lambda *args, **kwargs: None)
 
         with pytest.raises(SystemExit):
             cli.cmd_prd(None, resume_id=None)
@@ -170,7 +170,7 @@ class TestCliRequirementRouting:
                 "consensus_reached": False,
             }
 
-        monkeypatch.setattr("src.main.cli_commands.run_dialectic_flow", fake_run_dialectic_flow)
+        monkeypatch.setattr("src.main.cli.commands.run_dialectic_flow", fake_run_dialectic_flow)
 
         cli.cmd_prd("Ship resilient PRD validation", max_retries=6)
 
@@ -201,7 +201,7 @@ class TestCliRequirementRouting:
                 "consensus_reached": True,
             }
 
-        monkeypatch.setattr("src.main.cli_commands.run_dialectic_flow", fake_run_dialectic_flow)
+        monkeypatch.setattr("src.main.cli.commands.run_dialectic_flow", fake_run_dialectic_flow)
 
         cli.cmd_prd("Ship resilient PRD validation", consensus_min_score=8.5)
 

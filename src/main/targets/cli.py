@@ -76,3 +76,4 @@ def cmd_list_targets() -> None:
             f"  {marker} {target_config.repo_name:<12} [{status}] "
             f"{target_config.target_path}  VISION: {has_vision}"
         )
+

@@ -1,7 +1,7 @@
 """CLI and self-improvement entry points for Dialectic Crew AI."""
 
-from . import cleanup_commands
-from . import vision_commands
+from . import cleanup
+from . import vision
 
 
 def cli_main(*args, **kwargs):
@@ -20,4 +20,4 @@ def run_self_improve(*args, **kwargs):
     return _run_self_improve(*args, **kwargs)
 
 
-__all__ = ["cli_main", "run_self_improve", "vision_commands", "cleanup_commands"]
+__all__ = ["cli_main", "run_self_improve", "vision", "cleanup"]

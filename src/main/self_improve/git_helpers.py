@@ -266,3 +266,24 @@ def git_has_commits_ahead(
     if ahead_count > 0:
         return True, f"{ahead_count} commit(s) ahead of {base_branch}"
     return False, f"no commits ahead of {base_branch}"
+
+__all__ = [
+    "command_available",
+    "dirty_worktree_guidance",
+    "git_branch_create",
+    "git_branch_create_from_head",
+    "git_branch_exists",
+    "git_checkout_branch",
+    "git_clean_untracked",
+    "git_commit_all",
+    "git_current_branch",
+    "git_delete_branch",
+    "git_discard_branch",
+    "git_has_commits_ahead",
+    "git_reset_hard_head",
+    "git_stash_worktree",
+    "git_worktree_clean",
+    "recover_stale_self_improve_worktree",
+    "run_cmd",
+]
+

@@ -6,7 +6,7 @@ This document describes the current architecture of Dialectic Crew AI as shipped
 
 ```mermaid
 graph TB
-    subgraph CLI[src/main/cli.py]
+    subgraph CLI[src/main/cli/entrypoint.py]
         PRD[prd]
         PLAN[plan]
         EXEC[execute]
@@ -267,19 +267,19 @@ The architecture now distinguishes two SQLite stores under `.dialectic/` by defa
 
 | File | Responsibility |
 |---|---|
-| `cli.py` | Main CLI entry point with all command definitions |
-| `cli_commands.py` | Helper functions for CLI commands |
-| `self_improve.py` | Self-improvement orchestration workflow |
-| `self_improve_persistence.py` | Persistence for self-improvement cycles |
-| `pr_builder.py` | PR creation helpers |
-| `git_helpers.py` | Git operation helpers |
-| `test_runner.py` | Test execution helpers |
-| `code_structure_validation.py` | Code structure validation for self-improve enforcement |
-| `quality_gate.py` | Quality gate checks for self-improve validation |
-| `vision_commands.py` | CLI command handlers for vision generation workflows |
-| `target_commands.py` | CLI command handlers for target project management |
-| `cleanup_commands.py` | CLI command handlers for runtime cleanup |
-| `metrics_comparison.py` | Metrics stability checks for self-improve validation |
+| `cli/entrypoint.py` | Main CLI entry point with all command definitions |
+| `cli/commands.py` | Helper functions and runtime dispatch for CLI commands |
+| `self_improve/` | Self-improvement package surface and extracted helpers |
+| `self_improve/persistence.py` | Persistence for self-improvement cycles |
+| `self_improve/pr_builder.py` | PR creation helpers |
+| `self_improve/git_helpers.py` | Git operation helpers |
+| `self_improve/test_runner.py` | Test execution helpers |
+| `self_improve/code_structure.py` | Code structure validation for self-improve enforcement |
+| `self_improve/quality_gate.py` | Quality gate checks for self-improve validation |
+| `vision/cli.py` | CLI command handlers for vision generation workflows |
+| `targets/cli.py` | CLI command handlers for target project management |
+| `cleanup/cli.py` | CLI command handlers for runtime cleanup |
+| `self_improve/metrics.py` | Metrics stability checks for self-improve validation |
 
 ## Key design choices
 
@@ -418,7 +418,7 @@ flowchart LR
 
 ## Self-improve architecture
 
-`src/main/self_improve.py` is an orchestrator, not a CrewAI Flow class. It composes existing subsystems.
+`src/main/self_improve/orchestrator.py` is an orchestrator, not a CrewAI Flow class. It composes existing subsystems.
 
 ```mermaid
 flowchart TD

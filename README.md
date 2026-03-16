@@ -284,12 +284,12 @@ dialectic-crew-ai/
 │   │   ├── local_verification.py
 │   │   └── config/
 │   ├── main/
-│   │   ├── cli.py
+│   │   ├── cli/
 │   │   ├── cli_commands.py
-│   │   ├── self_improve.py
-│   │   ├── vision_commands.py
-│   │   ├── target_commands.py
-│   │   ├── cleanup_commands.py
+│   │   ├── self_improve/
+│   │   ├── vision/
+│   │   ├── targets/
+│   │   ├── cleanup/
 │   │   └── ...
 │   ├── mcp/
 │   │   ├── skills_index.py

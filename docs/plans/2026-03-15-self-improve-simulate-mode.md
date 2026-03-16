@@ -15,8 +15,8 @@
 ### Task 1: Replace the CLI flag surface
 
 **Files:**
-- Modify: `src/main/cli.py`
-- Modify: `src/main/cli_commands.py`
+- Modify: `src/main/cli/entrypoint.py`
+- Modify: `src/main/cli/commands.py`
 - Test: `tests/test_cli_runtime.py`
 
 **Step 1:** Replace `--dry-run` with `--simulate` in the Typer command, help text, and CLI passthrough.
@@ -31,23 +31,23 @@
 
 **Files:**
 - Modify: `src/dialectic/output_paths.py`
-- Modify: `src/main/self_improve_persistence.py`
-- Modify: `src/main/self_improve.py`
+- Modify: `src/main/self_improve/persistence.py`
+- Modify: `src/main/self_improve/orchestrator.py`
 - Test: `tests/test_self_improve.py`
 
 **Step 1:** Introduce a runtime-root override for centralized PRD/exec artifact paths.
 
 **Step 2:** Introduce a self-improve snapshot path override so simulation snapshots live outside the repo.
 
-**Step 3:** Add a temporary simulation-runtime context in `self_improve.py` that redirects artifact and persistence paths to a temp directory.
+**Step 3:** Add a temporary simulation-runtime context in `src/main/self_improve/orchestrator.py` that redirects artifact and persistence paths to a temp directory.
 
 **Step 4:** Run focused tests covering path redirection and simulation completion messaging.
 
 ### Task 3: Add disposable simulate-branch orchestration
 
 **Files:**
-- Modify: `src/main/git_helpers.py`
-- Modify: `src/main/self_improve.py`
+- Modify: `src/main/self_improve/git_helpers.py`
+- Modify: `src/main/self_improve/orchestrator.py`
 - Test: `tests/test_self_improve.py`
 - Test: `tests/test_self_improve_git_safety.py`
 

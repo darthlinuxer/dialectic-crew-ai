@@ -7,7 +7,7 @@ from pathlib import Path
 
 import src.main.cli as cli
 import pytest
-from src.main import target_commands
+from src.main.targets import cli as target_commands
 from dialectic.target import TargetConfig
 from typer.testing import CliRunner
 

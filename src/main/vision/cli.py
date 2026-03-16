@@ -53,3 +53,4 @@ def cmd_make_vision(*, output_path: str | None, self_mode: bool = False) -> None
     destination.write_text(rendered, encoding="utf-8")
     print(f"Vision saved: {destination}")
     print(f"Analyzed repository: {repo_root}")
+

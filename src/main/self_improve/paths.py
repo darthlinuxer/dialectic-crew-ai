@@ -1,0 +1,47 @@
+"""Constants used by the self-improve orchestrator."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+PROTECTED_PATHS = frozenset(
+    {
+        "internal/SELF_VISION.md",
+        "src/main/self_improve/orchestrator.py",
+        "src/dialectic/metrics.py",
+        "src/dialectic/introspect.py",
+    }
+)
+
+MIN_METRIC_RETENTION = float(os.getenv("MIN_METRIC_RETENTION", "0.95"))
+DEFAULT_SELF_IMPROVE_TEST_TIMEOUT = 1800
+DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE = 8.5
+DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES = 2
+DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS = 2.0
+SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
+SELF_IMPROVE_ROADMAP_PATH = Path("internal") / "ROADMAP.md"
+SIMULATION_BRANCH_NAME = "self-improve/simulate"
+SIMULATED_CYCLE_RESULT = "simulated"
+RUNTIME_ROOT_ENV_VAR = "DIALECTIC_RUNTIME_ROOT"
+FLOW_DB_ENV_VAR = "DIALECTIC_FLOW_DB"
+METRICS_DB_ENV_VAR = "DIALECTIC_METRICS_DB"
+SELF_IMPROVE_STATE_DIR_ENV_VAR = "DIALECTIC_SELF_IMPROVE_STATE_DIR"
+
+__all__ = [
+    "PROTECTED_PATHS",
+    "MIN_METRIC_RETENTION",
+    "DEFAULT_SELF_IMPROVE_TEST_TIMEOUT",
+    "DEFAULT_SELF_IMPROVE_PRD_MIN_SCORE",
+    "DEFAULT_SELF_IMPROVE_LLM_STAGE_RETRIES",
+    "DEFAULT_SELF_IMPROVE_LLM_RETRY_BACKOFF_SECONDS",
+    "SELF_IMPROVE_STATE_DIR",
+    "SELF_IMPROVE_ROADMAP_PATH",
+    "SIMULATION_BRANCH_NAME",
+    "SIMULATED_CYCLE_RESULT",
+    "RUNTIME_ROOT_ENV_VAR",
+    "FLOW_DB_ENV_VAR",
+    "METRICS_DB_ENV_VAR",
+    "SELF_IMPROVE_STATE_DIR_ENV_VAR",
+]
+

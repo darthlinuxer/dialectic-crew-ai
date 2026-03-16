@@ -10,7 +10,7 @@ from schemas import SelfImprovementRecord
 
 from dialectic.vision import resolve_app_root
 
-from .self_improve_persistence import SELF_IMPROVE_STATE_DIR
+from ..self_improve.persistence import SELF_IMPROVE_STATE_DIR
 
 
 def _remove_path(path: Path) -> bool:
@@ -82,7 +82,10 @@ def cmd_clear_runtime(
         for path in removed:
             print(_describe_action(path, dry_run=dry_run))
     else:
-        print("No matching runtime artifacts found." if not dry_run else "No matching runtime artifacts would be removed.")
+        if dry_run:
+            print("No matching runtime artifacts would be removed.")
+        else:
+            print("No matching runtime artifacts found.")
 
 
 def _linked_paths(app_root: Path, record: SelfImprovementRecord) -> list[Path]:
@@ -126,7 +129,9 @@ def cmd_clear_self_improve(
         print(f"Self-improve snapshot not found: {snapshot}")
         sys.exit(1)
 
-    record = SelfImprovementRecord.model_validate_json(snapshot.read_text(encoding="utf-8"))
+    record = SelfImprovementRecord.model_validate_json(
+        snapshot.read_text(encoding="utf-8")
+    )
     linked_paths = _linked_paths(app_root, record) if with_linked_exec else []
     if dry_run:
         print(f"Would remove self-improve snapshot: {snapshot}")
@@ -138,3 +143,4 @@ def cmd_clear_self_improve(
         _remove_path(path)
     _remove_path(snapshot)
     print(f"Removed self-improve snapshot: {snapshot}")
+

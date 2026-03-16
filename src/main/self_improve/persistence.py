@@ -171,3 +171,19 @@ def require_artifact(
     if not path:
         raise error_cls(failure_reason)
     return path
+
+__all__ = [
+    "SELF_IMPROVE_STATE_DIR",
+    "SELF_IMPROVE_STATE_DIR_ENV_VAR",
+    "list_resumable_cycles",
+    "load_self_improve_record",
+    "record_execution_artifacts",
+    "record_plan_artifacts",
+    "record_prd_artifacts",
+    "require_artifact",
+    "resolve_resume_context",
+    "save_self_improve_record",
+    "self_improve_record_path",
+    "summarize_resume_state",
+]
+

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Bootstrap: adds src/ to path and delegates to the real CLI."""
+# pylint: disable=wrong-import-position,consider-using-from-import
+
 import os
 import sys
 
@@ -13,10 +15,10 @@ sys.path.insert(0, SRC_DIR)
 # shim that exposes the real implementation from src/main/.
 __path__ = [MAIN_PACKAGE_DIR]
 
-from src.main import cli as cli  # noqa: E402
-from src.main import git_helpers as git_helpers  # noqa: E402
-from src.main import pr_builder as pr_builder  # noqa: E402
-from src.main import self_improve as self_improve  # noqa: E402
+import src.main.cli as cli  # noqa: E402
+import src.main.self_improve as self_improve  # noqa: E402
+import src.main.self_improve.git_helpers as git_helpers  # noqa: E402
+import src.main.self_improve.pr_builder as pr_builder  # noqa: E402
 from src.main import cli_main, run_self_improve  # noqa: E402
 from src.main.cli import main  # noqa: E402
 

@@ -9,7 +9,7 @@ import pytest
 import src.main.cli as cli
 from dialectic.repo_analyzer import RepoAnalysis
 from dialectic.target import TargetConfig
-from src.main import vision_commands
+from src.main.vision import cli as vision_commands
 from typer.testing import CliRunner
 
 

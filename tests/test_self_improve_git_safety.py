@@ -19,7 +19,7 @@ from src.main.self_improve import (
     _recover_stale_self_improve_worktree,
     run_self_improve,
 )
-from src.main.git_helpers import run_cmd
+from src.main.self_improve.git_helpers import run_cmd
 
 
 @pytest.fixture(autouse=True)
@@ -73,7 +73,10 @@ class TestRunCmd:
             captured["cwd"] = cwd
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-        monkeypatch.setattr("main.git_helpers.subprocess.run", fake_subprocess_run)
+        monkeypatch.setattr(
+            "src.main.self_improve.git_helpers.subprocess.run",
+            fake_subprocess_run,
+        )
 
         run_cmd(["git", "status"], cwd=Path("."), timeout=0)
 

@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.main.quality_gate import (
+from src.main.self_improve.quality_gate import (
     QualityCheckResult,
     QualityGateResult,
     _run_mypy,
@@ -50,22 +50,22 @@ class TestQualityGateResult:
 
 
 class TestRuffCheck:
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_ruff_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_ruff_check(Path("/tmp"))
         assert result.passed is True
         assert "not available" in result.output
 
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_target_path_missing(self, mock_available):
         mock_available.return_value = True
         result = _run_ruff_check(Path("/nonexistent"), "src/")
         assert result.passed is True
         assert "does not exist" in result.output
 
-    @patch("src.main.quality_gate._run_cmd")
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_ruff_passes(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
@@ -74,8 +74,8 @@ class TestRuffCheck:
         assert result.passed is True
         assert result.error_count == 0
 
-    @patch("src.main.quality_gate._run_cmd")
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_ruff_fails_with_errors(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(
@@ -91,14 +91,14 @@ class TestRuffCheck:
 
 
 class TestRuffFormatCheck:
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_ruff_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_ruff_format_check(Path("/tmp"))
         assert result.passed is True
 
-    @patch("src.main.quality_gate._run_cmd")
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_format_passes(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -106,8 +106,8 @@ class TestRuffFormatCheck:
             result = _run_ruff_format_check(Path("/tmp"), "src/")
         assert result.passed is True
 
-    @patch("src.main.quality_gate._run_cmd")
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_format_fails(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(
@@ -121,14 +121,14 @@ class TestRuffFormatCheck:
 
 
 class TestMypyCheck:
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_mypy_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_mypy(Path("/tmp"))
         assert result.passed is True
 
-    @patch("src.main.quality_gate._run_cmd")
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_mypy_passes(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
@@ -137,8 +137,8 @@ class TestMypyCheck:
         assert result.passed is True
         assert result.error_count == 0
 
-    @patch("src.main.quality_gate._run_cmd")
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_mypy_fails(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(
@@ -153,14 +153,14 @@ class TestMypyCheck:
 
 
 class TestPyrightCheck:
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_pyright_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_pyright(Path("/tmp"))
         assert result.passed is True  # pyright is warn-only
 
-    @patch("src.main.quality_gate._run_cmd")
-    @patch("src.main.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate._command_available")
     def test_pyright_always_passes(self, mock_available, mock_run):
         """Pyright is warn-only, so it should always pass."""
         mock_available.return_value = True
@@ -176,10 +176,10 @@ class TestPyrightCheck:
 
 
 class TestRunQualityGate:
-    @patch("src.main.quality_gate._run_pyright")
-    @patch("src.main.quality_gate._run_mypy")
-    @patch("src.main.quality_gate._run_ruff_format_check")
-    @patch("src.main.quality_gate._run_ruff_check")
+    @patch("src.main.self_improve.quality_gate._run_pyright")
+    @patch("src.main.self_improve.quality_gate._run_mypy")
+    @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
+    @patch("src.main.self_improve.quality_gate._run_ruff_check")
     def test_all_checks_pass(
         self, mock_ruff, mock_format, mock_mypy, mock_pyright
     ):
@@ -192,10 +192,10 @@ class TestRunQualityGate:
         assert result.passed is True
         assert len(result.checks) == 4
 
-    @patch("src.main.quality_gate._run_pyright")
-    @patch("src.main.quality_gate._run_mypy")
-    @patch("src.main.quality_gate._run_ruff_format_check")
-    @patch("src.main.quality_gate._run_ruff_check")
+    @patch("src.main.self_improve.quality_gate._run_pyright")
+    @patch("src.main.self_improve.quality_gate._run_mypy")
+    @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
+    @patch("src.main.self_improve.quality_gate._run_ruff_check")
     def test_one_check_fails(
         self, mock_ruff, mock_format, mock_mypy, mock_pyright
     ):
@@ -207,9 +207,9 @@ class TestRunQualityGate:
         result = run_quality_gate(Path("/tmp"))
         assert result.passed is False
 
-    @patch("src.main.quality_gate._run_mypy")
-    @patch("src.main.quality_gate._run_ruff_format_check")
-    @patch("src.main.quality_gate._run_ruff_check")
+    @patch("src.main.self_improve.quality_gate._run_mypy")
+    @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
+    @patch("src.main.self_improve.quality_gate._run_ruff_check")
     def test_exclude_pyright(self, mock_ruff, mock_format, mock_mypy):
         mock_ruff.return_value = QualityCheckResult(tool="ruff-lint", passed=True)
         mock_format.return_value = QualityCheckResult(tool="ruff-format", passed=True)

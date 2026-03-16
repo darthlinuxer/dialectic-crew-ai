@@ -10,13 +10,13 @@ The current product surface is still **CLI-first**, but it already includes pers
 
 | Layer | Path | Purpose |
 |-------|------|---------|
-| CLI | `src/main/cli.py` | Manual `sys.argv` dispatch (no Click/Typer). Entry point: `dialectic-crew` |
+| CLI | `src/main/cli/entrypoint.py` | Typer-based CLI entry point for `dialectic-crew` |
 | Agents | `src/dialectic/agents.py` | 5 agent factories (`create_visionario`, `create_critico_socratico`, `create_sintetizador`, `create_validador_macro`, `create_implementer`) |
 | PRD flow | `src/dialectic/prd_flow.py` | `DialecticFlow(Flow[DialecticState])` — CrewAI Flow with `@start`/`@listen`/`@router` decorators |
 | Planning | `src/planning/flow.py` | User-story planning dialectic crew with retry/validation/export helpers |
 | Execution | `src/execution/` | `dialectic_execution.py` orchestrates story execution and checkpoints; `task_flow.py` runs per-task dialectic→verify→reimplement |
 | Schemas | `src/schemas.py` | All Pydantic models (PRDSchema, UserStory, ImplementationTask, etc.) — the single source of truth |
-| Self-improve | `src/main/self_improve.py` | Orchestrator (not a Flow): introspect → prioritize → PRD → plan → execute → test → PR |
+| Self-improve | `src/main/self_improve/` | Package surface plus orchestrator helpers for introspect → prioritize → PRD → plan → execute → test → PR |
 | MCP skills | `src/mcp/skills_mcp.py` | FastMCP server for local `SKILL.md` discovery |
 | Runtime | `src/dialectic/crewai_runtime.py` | CrewAI runtime defaults, telemetry suppression, and tracing prompt controls |
 | Persistence | `src/dialectic/flow_persistence.py` | Shared SQLite persistence helpers for CrewAI flows and resume support |
@@ -51,7 +51,7 @@ Agents also rely on CrewAI-native building blocks already present in the codebas
 `_make_mcp()` returns `None` when prerequisites are missing. Agent tool lists filter out `None` via list comprehension. External MCP failures reduce capability, never crash.
 
 ### HookScope guards expensive flows
-`src/dialectic/hooks.py` — a context manager that enforces token budgets, iteration caps, protected-path blocking, and cost metrics. Used especially in self-improve (`self_improve.py` has a hardcoded `frozenset` of paths that must never be modified).
+`src/dialectic/hooks.py` — a context manager that enforces token budgets, iteration caps, protected-path blocking, and cost metrics. Used especially in self-improve (`src/main/self_improve/paths.py` defines the protected-path `frozenset`).
 
 ### Metrics never raise
 `emit()` is fire-and-forget; all exceptions are swallowed at DEBUG level. Metrics are passive telemetry and must never break the main flow.
@@ -175,7 +175,7 @@ The skills library lives at `src/mcp/skills/` (also discoverable at `~/.agents/s
 
 1. **Schemas go in `src/schemas.py`** — all Pydantic models live there, nowhere else.
 2. **New agents** must follow the `create_<name>(vision_context: VisionContext) -> Agent` factory pattern in `agents.py`.
-3. **New CLI commands** are added as `cmd_<name>(args)` functions in `cli.py` and wired into the `sys.argv` dispatch in `main()`. Update `_command_requires_api()` and `_command_requires_vision()` if the command has special gate requirements.
+3. **New CLI commands** are added in `src/main/cli/entrypoint.py` and wired into the Typer app plus `main()`. Update `_command_requires_api()` and `_command_requires_vision()` if the command has special gate requirements.
 4. **Follow Python best practices** — use type hints, small focused functions, clear names, cohesive modules, and tests that verify behavior rather than implementation trivia.
 5. **Apply SOLID and established design patterns** where they simplify the design. Prefer composition, explicit interfaces/protocols, and narrow responsibilities over large multipurpose classes.
 6. **Keep classes small and cohesive** — aim to keep classes under roughly 400 lines when practical. If a class starts turning into a novella, split responsibilities before it becomes literature.
@@ -183,10 +183,10 @@ The skills library lives at `src/mcp/skills/` (also discoverable at `~/.agents/s
 8. **IMPORTANT!!!****Use CrewAI-native solutions first** — before adding custom abstractions, confirm that Flows, Crews, Tasks, Knowledge, Memory, Hooks, MCP adapters, Event Listeners or other CrewAI-native components do not already solve the problem.
 9. **Test files** go in `tests/` and follow `test_<module>.py` naming. No global LLM mocking — mock per-test as needed.
 10. **Metrics**: use `emit(metric_type, value, **context)` from `dialectic.metrics`. Never catch or suppress metric errors at the call site.
-11. **Protected paths in self-improve**: if adding safety-critical files, add them to the `frozenset` in `self_improve.py`.
+11. **Protected paths in self-improve**: if adding safety-critical files, add them to the `frozenset` in `src/main/self_improve/paths.py`.
 12. **Preserve persistence semantics** — when changing PRD, execution, or self-improve flows, keep resume/checkpoint metadata compatible unless a deliberate migration is part of the task.
 13. **Git conventions**: conventional commits (`feat(scope): subject`), imperative mood, max 50 chars subject.
-14. **CrewAI telemetry** is disabled by default (`CREWAI_DISABLE_TELEMETRY=true` set in `cli.py:main()`).
+14. **CrewAI telemetry** is disabled by default (`CREWAI_DISABLE_TELEMETRY=true` set in `src/main/cli/entrypoint.py:main()`).
 15. **Structured logging, API, active-project support, and UI work are roadmap areas** aligned with `internal/SELF_VISION.md`; document and implement them carefully as future-facing features until the code exists.
 16. **Verification after meaningful changes is mandatory** — after non-trivial edits, and especially after refactors or import/package changes, verify the touched surface with relevant `pytest`, `ruff`, `mypy`, `pyright`, and editor diagnostics/Pylance on the touched files. Run `pylint` on touched Python files when imports, packaging, public exports, or module boundaries changed. Do not claim completion until these checks are green or any remaining issue is explicitly explained.
 17. **Do not use dynamic imports to hide package/export problems** — if a test or module only works with `import_module(...)` or similar runtime indirection, prefer fixing the package surface instead (for example: canonical import path, missing `__init__.py`, or explicit package exports). Static tooling, runtime imports, and editor diagnostics must agree on the import contract.

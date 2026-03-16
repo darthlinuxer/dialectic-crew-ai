@@ -29,7 +29,7 @@ class FileViolation:
     file_path: str
     rule: str
     message: str
-    severity: str = "error"  # "error" or "warning"
+    severity: str = "error"
 
 
 @dataclass
@@ -86,10 +86,7 @@ def _count_code_lines(file_path: Path) -> int:
                 multiline_quote = None
             continue
 
-        if not stripped:
-            continue
-
-        if stripped.startswith("#"):
+        if not stripped or stripped.startswith("#"):
             continue
 
         for quote in ('"""', "'''"):
@@ -99,8 +96,6 @@ def _count_code_lines(file_path: Path) -> int:
                     in_multiline_string = True
                     multiline_quote = quote
                     break
-                elif count >= 2:
-                    pass
 
         code_lines += 1
 
@@ -122,9 +117,8 @@ def _count_public_methods(class_def: ast.ClassDef) -> int:
     """Count public methods (not starting with _) in a class."""
     count = 0
     for node in class_def.body:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            if not node.name.startswith("_"):
-                count += 1
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and not node.name.startswith("_"):
+            count += 1
     return count
 
 
@@ -133,7 +127,7 @@ def _count_dependencies(class_def: ast.ClassDef) -> int:
     for node in class_def.body:
         if isinstance(node, ast.FunctionDef) and node.name == "__init__":
             deps: set[str] = set()
-            for arg in node.args.args[1:]:  # skip 'self'
+            for arg in node.args.args[1:]:
                 if arg.annotation:
                     deps.add(ast.dump(arg.annotation))
             return len(deps)
@@ -143,24 +137,19 @@ def _count_dependencies(class_def: ast.ClassDef) -> int:
 def _is_dataclass_or_model(class_def: ast.ClassDef) -> bool:
     """Check if class is a dataclass, Pydantic model, or similar data container."""
     for decorator in class_def.decorator_list:
-        if isinstance(decorator, ast.Name):
-            if decorator.id in ("dataclass", "dataclasses"):
+        if isinstance(decorator, ast.Name) and decorator.id in ("dataclass", "dataclasses"):
+            return True
+        if isinstance(decorator, ast.Call):
+            if isinstance(decorator.func, ast.Name) and decorator.func.id in ("dataclass", "dataclasses"):
                 return True
-        elif isinstance(decorator, ast.Call):
-            if isinstance(decorator.func, ast.Name):
-                if decorator.func.id in ("dataclass", "dataclasses"):
-                    return True
-            elif isinstance(decorator.func, ast.Attribute):
-                if decorator.func.attr in ("dataclass", "validator", "field_validator"):
-                    return True
+            if isinstance(decorator.func, ast.Attribute) and decorator.func.attr in ("dataclass", "validator", "field_validator"):
+                return True
 
     for base in class_def.bases:
-        if isinstance(base, ast.Name):
-            if base.id in ("BaseModel", "BaseSettings", "NamedTuple", "TypedDict"):
-                return True
-        elif isinstance(base, ast.Attribute):
-            if base.attr in ("BaseModel", "BaseSettings"):
-                return True
+        if isinstance(base, ast.Name) and base.id in ("BaseModel", "BaseSettings", "NamedTuple", "TypedDict"):
+            return True
+        if isinstance(base, ast.Attribute) and base.attr in ("BaseModel", "BaseSettings"):
+            return True
 
     return False
 
@@ -272,29 +261,15 @@ def validate_code_structure(
     changed_files: list[Path] | None = None,
     check_all_src: bool = False,
 ) -> StructureValidationResult:
-    """Validate code structure for the given files.
-
-    Args:
-        project_root: Root directory of the project.
-        changed_files: List of changed files to validate. If None, validates all src/.
-        check_all_src: If True, check all files in src/ regardless of changed_files.
-
-    Returns:
-        StructureValidationResult with all violations.
-    """
+    """Validate code structure for the given files."""
     result = StructureValidationResult()
 
     if changed_files is None or check_all_src:
         src_dir = project_root / "src"
-        if src_dir.exists():
-            changed_files = list(src_dir.rglob("*.py"))
-        else:
-            changed_files = []
+        changed_files = list(src_dir.rglob("*.py")) if src_dir.exists() else []
 
     for file_path in changed_files:
-        if not file_path.exists():
-            continue
-        if not file_path.suffix == ".py":
+        if not file_path.exists() or file_path.suffix != ".py":
             continue
         if file_path.name.startswith("test_"):
             continue
@@ -320,14 +295,26 @@ def print_structure_validation_result(
 
     if errors:
         print(f"{prefix}Errors:")
-        for v in errors[:10]:
-            print(f"{prefix}  [{v.rule}] {v.file_path}: {v.message}")
+        for violation in errors[:10]:
+            print(f"{prefix}  [{violation.rule}] {violation.file_path}: {violation.message}")
         if len(errors) > 10:
             print(f"{prefix}  ... and {len(errors) - 10} more errors")
 
     if warnings:
         print(f"{prefix}Warnings:")
-        for v in warnings[:5]:
-            print(f"{prefix}  [{v.rule}] {v.file_path}: {v.message}")
+        for violation in warnings[:5]:
+            print(f"{prefix}  [{violation.rule}] {violation.file_path}: {violation.message}")
         if len(warnings) > 5:
             print(f"{prefix}  ... and {len(warnings) - 5} more warnings")
+
+__all__ = [
+    "ALLOWED_CODE_DIRS",
+    "MAX_DEPENDENCIES",
+    "MAX_FILE_LINES",
+    "MAX_PUBLIC_METHODS",
+    "FileViolation",
+    "StructureValidationResult",
+    "print_structure_validation_result",
+    "validate_code_structure",
+]
+

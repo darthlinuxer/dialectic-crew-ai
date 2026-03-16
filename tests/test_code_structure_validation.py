@@ -1,6 +1,6 @@
 """Tests for the code structure validation module."""
 
-from src.main.code_structure_validation import (
+from src.main.self_improve.code_structure import (
     MAX_FILE_LINES,
     MAX_PUBLIC_METHODS,
     StructureValidationResult,

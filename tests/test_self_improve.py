@@ -13,7 +13,7 @@ import pytest
 
 from dialectic.metrics import MetricRecord, MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
-from src.main.pr_builder import create_pr
+from src.main.self_improve.pr_builder import create_pr
 from src.main.self_improve import (
     PROTECTED_PATHS,
     SIMULATION_BRANCH_NAME,
@@ -49,7 +49,7 @@ class TestProtectedPaths:
         assert "internal/SELF_VISION.md" in PROTECTED_PATHS
 
     def test_self_improve_protected(self):
-        assert "src/main/self_improve.py" in PROTECTED_PATHS
+        assert "src/main/self_improve/orchestrator.py" in PROTECTED_PATHS
 
     def test_metrics_protected(self):
         assert "src/dialectic/metrics.py" in PROTECTED_PATHS

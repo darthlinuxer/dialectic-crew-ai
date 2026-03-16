@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from src.main import cleanup_commands
+from src.main.cleanup import cli as cleanup_commands
 from schemas import SelfImprovementRecord
 
 

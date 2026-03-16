@@ -110,3 +110,11 @@ def emit_test_failure_details(
     if stderr_tail:
         print_fn(f"{prefix}stderr tail:")
         print_fn(textwrap.indent(stderr_tail[-500:], prefix + "  "))
+
+__all__ = [
+    "emit_test_failure_details",
+    "pytest_command",
+    "self_improve_test_timeout",
+    "snapshot_tests",
+]
+

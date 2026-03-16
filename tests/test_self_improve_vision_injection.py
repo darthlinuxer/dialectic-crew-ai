@@ -216,7 +216,7 @@ class TestExecutionRuntimeStyleGuideInjection:
             assert len(knowledge_sources) == 1  # vision only
 
 def test_self_improve_uses_self_vision_context():
-    """self_improve.py should pass VisionContext.SELF to all stages."""
+    """self_improve package should pass VisionContext.SELF to all stages."""
     self_improve = __import__("main", fromlist=["self_improve"]).self_improve
     source = inspect.getsource(self_improve)
 

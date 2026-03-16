@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dialectic.metrics import MetricsStore
 
-
 def metrics_stable(
     store: MetricsStore,
     baseline: dict,
@@ -27,3 +26,6 @@ def metrics_stable(
             )
 
     return True, "metrics stable"
+
+__all__ = ["metrics_stable"]
+

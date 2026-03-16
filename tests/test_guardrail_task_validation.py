@@ -63,7 +63,7 @@ def test_text_result_guardrail_logs_tool_call_rejection(caplog):
 
 def test_text_result_guardrail_accepts_normal_text():
     class Result:  # pylint: disable=too-few-public-methods
-        raw = "Implemented config loading and updated src/main/cli.py."
+        raw = "Implemented config loading and updated src/main/cli/entrypoint.py."
 
     ok, payload = task_guardrails._text_result_guardrail(Result())
 
