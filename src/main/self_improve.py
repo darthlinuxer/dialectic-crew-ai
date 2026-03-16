@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -25,7 +26,7 @@ from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Callable, TypeVar
+from typing import Callable, Literal, TypeVar
 
 from dialectic.hooks import HookScope
 from dialectic.introspect import run_introspection
@@ -101,6 +102,7 @@ FLOW_DB_ENV_VAR = "DIALECTIC_FLOW_DB"
 METRICS_DB_ENV_VAR = "DIALECTIC_METRICS_DB"
 SELF_IMPROVE_STATE_DIR_ENV_VAR = "DIALECTIC_SELF_IMPROVE_STATE_DIR"
 _StageResultT = TypeVar("_StageResultT")
+_ArtifactKind = Literal["prd", "plan"]
 
 
 def _configure_crewai_runtime() -> None:
@@ -291,6 +293,120 @@ def _run_execution_stage(
         vision_context=VisionContext.SELF,
         resume_run_id=resume_run_id,
     )
+
+
+def _load_starting_artifact(artifact_path: str) -> tuple[_ArtifactKind, str]:
+    """Classify an explicit self-improve artifact path as a PRD or execution plan."""
+    path = Path(artifact_path).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"Self-improve artifact not found: {path}")
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Self-improve artifact is not valid JSON: {path}") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"Self-improve artifact must contain a JSON object: {path}")
+
+    if isinstance(payload.get("user_stories"), list):
+        return "prd", str(path)
+    if isinstance(payload.get("tasks"), list) or isinstance(
+        payload.get("implementation_tasks"),
+        list,
+    ):
+        return "plan", str(path)
+
+    raise ValueError(
+        "Self-improve artifact must look like an exported PRD (user_stories) "
+        f"or execution plan (tasks): {path}"
+    )
+
+
+def _make_artifact_opportunity(
+    kind: _ArtifactKind,
+    artifact_path: str,
+) -> ImprovementOpportunity:
+    """Create a synthetic opportunity when self-improve starts from an existing artifact."""
+    label = "PRD" if kind == "prd" else "plan"
+    return ImprovementOpportunity(
+        id=f"artifact:{kind}",
+        category="code_health",
+        title=f"Continue self-improve from supplied {label}",
+        description=(
+            "Resume self-improve from the supplied "
+            f"{label.lower()} artifact: {artifact_path}"
+        ),
+        evidence=[artifact_path],
+        estimated_impact="medium",
+    )
+
+
+def _collect_touched_files(project_root: Path) -> list[str]:
+    """Return a best-effort list of touched files for reporting."""
+    if not _command_available("git") or not (project_root / ".git").exists():
+        return []
+
+    result = _run_cmd(["git", "status", "--short"], cwd=project_root, timeout=30)
+    if result.returncode != 0:
+        return []
+
+    touched: list[str] = []
+    for line in result.stdout.splitlines():
+        entry = line[3:].strip() if len(line) > 3 else line.strip()
+        if entry:
+            touched.append(entry)
+    return touched
+
+
+def _print_simulation_report(
+    record: SelfImprovementRecord,
+    selected: list[ImprovementOpportunity],
+    project_root: Path,
+    *,
+    artifact_path: str | None = None,
+) -> None:
+    """Print a deterministic summary of what a simulation run produced."""
+    print("\nSimulation report")
+    print(f"{'=' * 60}")
+    if selected:
+        print(f"Selected objective: {selected[0].title}")
+    if artifact_path:
+        print(f"Starting artifact: {artifact_path}")
+
+    print("\nArtifacts created or reused:")
+    artifacts = [
+        ("PRD JSON", record.prd_path_json),
+        ("PRD Markdown", record.prd_path_md),
+        ("Plan JSON", record.plan_path_json),
+        ("Plan Markdown", record.plan_path_md),
+        ("Execution output", record.execution_output_path),
+        ("Execution report", record.execution_report_path),
+    ]
+    for label, value in artifacts:
+        print(f"  - {label}: {value or 'n/a'}")
+
+    touched_files = _collect_touched_files(project_root)
+    print("\nFiles touched:")
+    if touched_files:
+        for file_path in touched_files[:20]:
+            print(f"  - {file_path}")
+        if len(touched_files) > 20:
+            print(f"  - ... and {len(touched_files) - 20} more")
+    else:
+        print("  - unavailable (git status not accessible in this runtime)")
+
+    story_status = record.execution_story_status or "unknown"
+    objective_achieved = story_status == "completed" and record.tests_passed
+    print("\nOutcome:")
+    print(f"  - Execution story status: {story_status}")
+    print(f"  - Tests passed: {'yes' if record.tests_passed else 'no'}")
+    print(f"  - Metrics stable: {'yes' if record.metrics_stable else 'no'}")
+    print(
+        "  - Objective achieved: "
+        f"{'yes' if objective_achieved else 'no'}"
+    )
+    print(f"{'=' * 60}")
 
 
 def _snapshot_tests(project_root: Path, timeout: int | None = None) -> dict:
@@ -622,12 +738,15 @@ def _cleanup_simulation_branch(project_root: Path) -> None:
             print(f"  WARN: failed to delete simulate branch: {delete_reason}")
 
 
-def run_self_improve(
+def run_self_improve(  # pylint: disable=too-many-arguments
     max_improvements: int = 1,
     simulate: bool = False,
     stash_dirty: bool = False,
     resume_cycle_id: str | None = None,
     skip_baseline_tests: bool = False,
+    *,
+    artifact_path: str | None = None,
+    next_roadmap_item: bool = False,
 ) -> SelfImprovementRecord:
     """
     Run one self-improvement cycle.
@@ -645,10 +764,13 @@ def run_self_improve(
         )
     if simulate and resume_cycle_id is not None:
         raise ValueError("self-improve simulation does not support --resume")
+    if artifact_path is not None and resume_cycle_id is not None:
+        raise ValueError("self-improve does not support using an artifact path with --resume")
 
     _configure_crewai_runtime()
     project_root = resolve_project_root()
     is_resume = resume_cycle_id is not None
+    supplied_artifact = _load_starting_artifact(artifact_path) if artifact_path else None
     cycle_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     branch_name = SIMULATION_BRANCH_NAME if simulate else ""
     resume_summary: dict[str, str | list[str]] = {}
@@ -755,6 +877,31 @@ def run_self_improve(
                     baseline_metrics=baseline_metrics,
                 )
                 print(f"[resume] Loaded {len(selected)} saved opportunities.")
+            elif supplied_artifact is not None:
+                artifact_kind, supplied_artifact_path = supplied_artifact
+                selected = [_make_artifact_opportunity(artifact_kind, supplied_artifact_path)]
+                report = IntrospectionReport(
+                    timestamp=record.timestamp,
+                    opportunities=selected,
+                    baseline_metrics={},
+                )
+                record.opportunities_found = len(selected)
+                record.selected_opportunities = selected
+                record.opportunities_attempted = len(selected)
+                branch_name = SIMULATION_BRANCH_NAME if simulate else f"self-improve/{cycle_id}"
+                record.branch_name = branch_name
+                if artifact_kind == "prd":
+                    record.prd_generated = True
+                    record.prd_path_json = supplied_artifact_path
+                else:
+                    record.prd_generated = True
+                    record.plan_generated = True
+                    record.plan_path_json = supplied_artifact_path
+                _save_self_improve_record(project_root, record)
+                print(
+                    f"[2/6] Using supplied {artifact_kind.upper()} artifact: "
+                    f"{supplied_artifact_path}"
+                )
             else:
                 print("[2/6] Running introspection against SELF_VISION.md + ROADMAP.md...")
                 report = run_introspection(store=store, vision_context=VisionContext.SELF)
@@ -771,20 +918,34 @@ def run_self_improve(
                 for opp in report.opportunities[:max_improvements]:
                     print(f"    [{opp.estimated_impact.upper()}] {opp.title}")
 
-                print("\n[2b/7] Running dialectic prioritization...")
-                try:
-                    prioritized = dialectic_prioritize(
-                        report.opportunities,
-                        vision_context=VisionContext.SELF,
-                        max_to_debate=min(len(report.opportunities), 5),
+                if next_roadmap_item:
+                    print(
+                        "\n[2b/7] Selecting the next roadmap item without "
+                        "dialectic prioritization..."
                     )
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.warning("Dialectic prioritization failed: %s; using impact sort", e)
-                    print(f"  Prioritization failed ({e}); falling back to impact sort.")
-                    prioritized = sorted(
-                        report.opportunities,
-                        key=lambda o: {"high": 0, "medium": 1, "low": 2}.get(o.estimated_impact, 1),
-                    )
+                    prioritized = list(report.opportunities)
+                else:
+                    print("\n[2b/7] Running dialectic prioritization...")
+                    try:
+                        prioritized = dialectic_prioritize(
+                            report.opportunities,
+                            vision_context=VisionContext.SELF,
+                            max_to_debate=min(len(report.opportunities), 5),
+                        )
+                    except Exception as e:  # pylint: disable=broad-exception-caught
+                        logger.warning(
+                            "Dialectic prioritization failed: %s; using impact sort",
+                            e,
+                        )
+                        print(f"  Prioritization failed ({e}); falling back to impact sort.")
+                        prioritized = sorted(
+                            report.opportunities,
+                            key=lambda o: {
+                                "high": 0,
+                                "medium": 1,
+                                "low": 2,
+                            }.get(o.estimated_impact, 1),
+                        )
                 selected = prioritized[:max_improvements]
                 record.selected_opportunities = selected
                 record.opportunities_attempted = len(selected)
@@ -917,11 +1078,18 @@ def run_self_improve(
                             )
                             record.prd_generated = True
                         else:
-                            prd_path = _require_artifact(
-                                record.prd_path_json,
-                                "PRD generation did not produce an exported JSON artifact",
-                            )
-                            print(f"\n[resume] Reusing PRD artifact: {prd_path}")
+                            if record.prd_path_json:
+                                prd_path = _require_artifact(
+                                    record.prd_path_json,
+                                    "PRD generation did not produce an exported JSON artifact",
+                                )
+                                print(f"\n[resume] Reusing PRD artifact: {prd_path}")
+                            else:
+                                prd_path = record.plan_path_json
+                                print(
+                                    "\n[resume] Skipping PRD artifact reuse because "
+                                    "execution is starting from a supplied plan."
+                                )
 
                         if tracker.budget_exceeded:
                             record.failure_reason = (
@@ -1084,26 +1252,36 @@ def run_self_improve(
                 _save_self_improve_record(project_root, record)
                 return record
 
-            print("[9/9] Validating: checking metrics stability...")
-            stable, reason = _metrics_stable(
-                store,
-                record.baseline_metrics or report.baseline_metrics,
-            )
-            record.metrics_stable = stable
-            if not stable:
-                record.failure_reason = f"Metrics regressed: {reason}"
-                print(f"  FAIL: {record.failure_reason}")
-                if not simulate:
-                    _git_discard_branch(branch_name, project_root)
-                _persist_record(store, record)
-                _save_self_improve_record(project_root, record)
-                return record
+            if skip_baseline_tests:
+                print(
+                    "[9/9] Skipping metrics stability check because "
+                    "baseline tests were skipped."
+                )
+                record.metrics_stable = True
+            else:
+                print("[9/9] Validating: checking metrics stability...")
+                stable, reason = _metrics_stable(
+                    store,
+                    record.baseline_metrics or report.baseline_metrics,
+                )
+                record.metrics_stable = stable
+                if not stable:
+                    record.failure_reason = f"Metrics regressed: {reason}"
+                    print(f"  FAIL: {record.failure_reason}")
+                    if not simulate:
+                        _git_discard_branch(branch_name, project_root)
+                    _persist_record(store, record)
+                    _save_self_improve_record(project_root, record)
+                    return record
 
             if simulate:
                 record.failure_reason = SIMULATED_CYCLE_RESULT
-                print(
-                    "\nSimulation completed successfully. "
-                    "Cleaning up disposable branch..."
+                print("\nSimulation completed successfully. Cleaning up disposable branch...")
+                _print_simulation_report(
+                    record,
+                    selected,
+                    project_root,
+                    artifact_path=artifact_path,
                 )
                 _persist_record(store, record)
                 _save_self_improve_record(project_root, record)

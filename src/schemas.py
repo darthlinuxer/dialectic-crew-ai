@@ -222,6 +222,7 @@ class SelfImprovementRecord(BaseModel):
     plan_path_md: str = ""
     execution_run_id: str = ""
     execution_task_flow_ids: dict[str, str] = Field(default_factory=dict)
+    execution_story_status: str = ""
     execution_output_path: str = ""
     execution_report_path: str = ""
     failure_reason: str = ""

@@ -4,6 +4,7 @@
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 # pylint: disable=consider-using-from-import,wrong-import-order,line-too-long
 
+import json
 from pathlib import Path
 
 import src.main.cli as cli
@@ -421,7 +422,10 @@ class TestCliRequirementRouting:
             resume_cycle_id=None,
             list_resumable=False,
             skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
         ):
+            del artifact_path, next_roadmap_item
             captured["simulate"] = simulate
             captured["max_improvements"] = max_improvements
             captured["stash_dirty"] = stash_dirty
@@ -474,8 +478,11 @@ class TestCliRequirementRouting:
             resume_cycle_id=None,
             list_resumable=False,
             skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
         ):
             del simulate, max_improvements, stash_dirty, skip_baseline_tests
+            del artifact_path, next_roadmap_item
             captured["list_resumable"] = list_resumable
             captured["resume_cycle_id"] = resume_cycle_id
 
@@ -501,8 +508,11 @@ class TestCliRequirementRouting:
             resume_cycle_id=None,
             list_resumable=False,
             skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
         ):
             del simulate, max_improvements, stash_dirty, resume_cycle_id, list_resumable
+            del artifact_path, next_roadmap_item
             captured["skip_baseline_tests"] = skip_baseline_tests
 
         monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
@@ -515,6 +525,108 @@ class TestCliRequirementRouting:
         cli.main()
 
         assert captured == {"skip_baseline_tests": True}
+
+    def test_self_improve_next_roadmap_item_passes_flag_through(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            simulate=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+        ):
+            del simulate, max_improvements, stash_dirty, resume_cycle_id, list_resumable
+            del skip_baseline_tests, artifact_path
+            captured["next_roadmap_item"] = next_roadmap_item
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "self-improve", "--next-roadmap-item"],
+        )
+
+        cli.main()
+
+        assert captured == {"next_roadmap_item": True}
+
+    def test_self_improve_prd_artifact_path_passes_through(self, monkeypatch, tmp_path):
+        captured = {}
+        artifact_path = tmp_path / "prd.json"
+        artifact_path.write_text(
+            json.dumps({"user_stories": [{"id": "US-001"}]}),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            simulate=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+        ):
+            del simulate, max_improvements, stash_dirty, resume_cycle_id, list_resumable
+            del skip_baseline_tests, next_roadmap_item
+            captured["artifact_path"] = artifact_path
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "self-improve", str(artifact_path)],
+        )
+
+        cli.main()
+
+        assert captured == {"artifact_path": str(artifact_path)}
+
+    def test_self_improve_plan_artifact_path_passes_through(self, monkeypatch, tmp_path):
+        captured = {}
+        artifact_path = tmp_path / "plan.json"
+        artifact_path.write_text(
+            json.dumps({"tasks": [{"id": "T-001", "title": "Implement"}]}),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            simulate=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+        ):
+            del simulate, max_improvements, stash_dirty, resume_cycle_id, list_resumable
+            del skip_baseline_tests, next_roadmap_item
+            captured["artifact_path"] = artifact_path
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            ["dialectic-crew", "self-improve", str(artifact_path)],
+        )
+
+        cli.main()
+
+        assert captured == {"artifact_path": str(artifact_path)}
 
 
 class TestVisionResolution:

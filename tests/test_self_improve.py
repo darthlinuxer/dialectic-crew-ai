@@ -4,6 +4,7 @@
 # pylint: disable=redefined-outer-name,import-outside-toplevel,unused-argument
 # pylint: disable=too-few-public-methods,line-too-long,too-many-lines,duplicate-code
 
+import json
 import subprocess
 import sys
 from typing import Any, cast
@@ -354,6 +355,344 @@ class TestRunSelfImprove:
         assert snapshot_calls == ["called"]
         assert "[1/6] Running baseline tests..." not in out
         assert "--skip-baseline-tests was requested" in out
+
+    def test_next_roadmap_item_skips_dialectic_prioritization(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] First roadmap item\n- [ ] Second roadmap item\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("--next-roadmap-item should bypass prioritization")
+            ),
+        )
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 5.0
+        mock_flow.state.consensus_reached = False
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                record = run_self_improve(max_improvements=1, next_roadmap_item=True)
+
+        assert record.selected_opportunities
+        assert "First roadmap item" in record.selected_opportunities[0].title
+
+    def test_artifact_prd_path_starts_at_planning(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        artifact_path = tmp_path / "input_prd.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Shortcut PRD",
+                    "user_stories": [{"id": "US-001", "title": "Shortcut story"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("PRD shortcut should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+
+        plan_calls: list[str] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del user_story_ref, vision_context
+            plan_calls.append(prd_path)
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        exec_calls: list[str] = []
+
+        def fake_exec(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            exec_calls.append(plan_path)
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "run-shortcut-prd",
+                "task_flow_ids": {"T-001": "task-flow-shortcut-prd"},
+                "output_path": str(tmp_path / "exec_output" / "run-shortcut-prd"),
+                "report_path": str(tmp_path / "exec_output" / "run-shortcut-prd" / "report.json"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=fake_exec):
+                record = run_self_improve(max_improvements=1, artifact_path=str(artifact_path))
+
+        assert plan_calls == [str(artifact_path)]
+        assert exec_calls == [str(tmp_path / "prd_output" / "exec_shortcut.json")]
+        assert record.prd_generated is True
+        assert record.plan_generated is True
+
+    def test_artifact_plan_path_starts_at_execution(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        artifact_path = tmp_path / "input_plan.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US-001",
+                    "tasks": [{"id": "T-001", "title": "Implement shortcut"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("Plan shortcut should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+
+        from unittest.mock import patch
+
+        with patch(
+            "planning.flow.run_user_story_planning",
+            side_effect=AssertionError("Plan shortcut should bypass planning"),
+        ):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-plan",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-plan"},
+                    "output_path": str(tmp_path / "exec_output" / "run-shortcut-plan"),
+                    "report_path": str(tmp_path / "exec_output" / "run-shortcut-plan" / "report.json"),
+                },
+            ) as mock_exec:
+                record = run_self_improve(max_improvements=1, artifact_path=str(artifact_path))
+
+        mock_exec.assert_called_once_with(
+            plan_path=str(artifact_path),
+            vision_context=VisionContext.SELF,
+            resume_run_id=None,
+        )
+        assert record.plan_generated is True
+        assert record.execution_attempted is True
+
+    def test_skip_baseline_tests_skips_metrics_validation(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Skip metrics without baseline\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("metrics validation should be skipped without a baseline")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "prd_output" / "PRD_test.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+            "plan_path_md": str(tmp_path / "prd_output" / "exec_test.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-skip-metrics",
+            "task_flow_ids": {"T-001": "task-flow-skip-metrics"},
+            "output_path": str(tmp_path / "exec_output" / "run-skip-metrics"),
+            "report_path": str(tmp_path / "exec_output" / "run-skip-metrics" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(max_improvements=1, skip_baseline_tests=True)
+
+        assert record.tests_passed is True
+
+    def test_simulation_prints_summary_report(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Report simulation artifacts\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve._prepare_simulation_branch",
+            lambda cwd: (True, SIMULATION_BRANCH_NAME),
+        )
+        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, check_all_src=True: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not commit")),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._create_pr",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not create PRs")),
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-sim-report"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "sim-run-report",
+            "task_flow_ids": {"T-001": "task-flow-sim-report"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        run_self_improve(simulate=True)
+
+        out = capsys.readouterr().out
+
+        assert "Simulation report" in out
+        assert str(tmp_path / "runtime" / "prd.json") in out
+        assert str(tmp_path / "runtime" / "plan.json") in out
+        assert str(tmp_path / "runtime" / "exec" / "report.json") in out
+        assert "completed" in out
 
     def test_simulate_runs_full_flow_without_persisting_branch_changes(
         self,
