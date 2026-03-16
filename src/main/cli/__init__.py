@@ -18,6 +18,9 @@ from .entrypoint import (
 )
 
 commands = _commands
+_package_module = _sys.modules[__name__]
+_package_path = list(getattr(_package_module, "__path__", []))
+_package_spec = getattr(_package_module, "__spec__", None)
 
 __all__ = [
     "app",
@@ -32,5 +35,9 @@ __all__ = [
 ]
 
 setattr(_entrypoint, "commands", _commands)
+_entrypoint.__package__ = __name__
+if _package_path:
+    _entrypoint.__path__ = _package_path
+if _package_spec is not None:
+    _entrypoint.__spec__ = _package_spec
 _sys.modules[__name__] = _entrypoint
-
