@@ -12,8 +12,34 @@ from execution.dialectic_execution import run_dialectic_execution
 from execution.runner import run_execution
 from execution.status import mark_task, show_status
 from execution.verify import verify_task, verify_user_story
+from typing import TypedDict
 from planning.flow import run_user_story_planning
 from .self_improve import _list_resumable_cycles, run_self_improve
+
+
+class PrdFlowKwargs(TypedDict):
+    file_paths: list[str] | None
+    vision_context: VisionContext
+    resume_id: str | None
+    max_retries: int | None
+    consensus_min_score: float | None
+
+
+def _build_prd_flow_kwargs(
+    file_paths: list[str] | None,
+    vision_context: VisionContext,
+    resume_id: str | None,
+    max_retries: int | None,
+    consensus_min_score: float | None,
+) -> PrdFlowKwargs:
+    """Build the shared PRD dispatch kwargs used by CLI seams and command handlers."""
+    return {
+        "file_paths": file_paths,
+        "vision_context": vision_context,
+        "resume_id": resume_id,
+        "max_retries": max_retries,
+        "consensus_min_score": consensus_min_score,
+    }
 
 
 def _check_vision_exists(context: VisionContext = VisionContext.PROJECT) -> None:
@@ -46,11 +72,13 @@ def cmd_prd(
 
     result = run_dialectic_flow(
         feature_request,
-        file_paths=file_paths,
-        vision_context=vision_context,
-        resume_id=resume_id,
-        max_retries=max_retries,
-        consensus_min_score=consensus_min_score,
+        **_build_prd_flow_kwargs(
+            file_paths=file_paths,
+            vision_context=vision_context,
+            resume_id=resume_id,
+            max_retries=max_retries,
+            consensus_min_score=consensus_min_score,
+        ),
     )
     print("\n" + "=" * 60)
     print("DIALECTIC PROCESS COMPLETE!")
@@ -176,13 +204,15 @@ def cmd_verify_story(plan_path: str | None, prd_path: str | None) -> None:
         sys.exit(1)
 
 
-def cmd_self_improve(
+def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     simulate: bool = False,
     max_improvements: int = 1,
     stash_dirty: bool = False,
     resume_cycle_id: str | None = None,
     list_resumable: bool = False,
     skip_baseline_tests: bool = False,
+    artifact_path: str | None = None,
+    next_roadmap_item: bool = False,
 ) -> None:
     """Run or inspect the guarded self-improve workflow from the CLI."""
     if max_improvements != 1:
@@ -190,6 +220,12 @@ def cmd_self_improve(
             "self-improve currently only supports max_improvements=1 while "
             "end-to-end reliability is being validated"
         )
+    if artifact_path and resume_cycle_id:
+        print("Provide either an artifact path or --resume, not both.")
+        sys.exit(1)
+    if artifact_path and not os.path.exists(artifact_path):
+        print(f"Self-improve artifact not found: {artifact_path}")
+        sys.exit(1)
 
     _check_vision_exists(VisionContext.SELF)
     if list_resumable:
@@ -211,6 +247,8 @@ def cmd_self_improve(
         stash_dirty,
         resume_cycle_id,
         skip_baseline_tests,
+        artifact_path=artifact_path,
+        next_roadmap_item=next_roadmap_item,
     )
     if record.pr_created:
         print("\nSelf-improvement cycle completed successfully.")
@@ -218,5 +256,21 @@ def cmd_self_improve(
         print("\nSimulation complete. No branch or runtime artifacts were preserved.")
     elif record.failure_reason:
         print(f"\nSelf-improvement cycle ended: {record.failure_reason}")
+
+__all__ = [
+    "_build_prd_flow_kwargs",
+    "_check_vision_exists",
+    "cmd_execute",
+    "cmd_mark",
+    "cmd_plan",
+    "cmd_prd",
+    "cmd_self_improve",
+    "cmd_status",
+    "cmd_verify",
+    "cmd_verify_story",
+]
+
+
+
 
 

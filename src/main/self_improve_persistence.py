@@ -43,6 +43,7 @@ def record_execution_artifacts(record: SelfImprovementRecord, exec_result: dict)
     """Copy exported execution artifact metadata into the cycle record."""
     record.execution_run_id = exec_result.get("run_id", "") or ""
     record.execution_task_flow_ids = exec_result.get("task_flow_ids", {}) or {}
+    record.execution_story_status = exec_result.get("story_status", "") or ""
     record.execution_output_path = exec_result.get("output_path", "") or ""
     record.execution_report_path = exec_result.get("report_path", "") or ""
 

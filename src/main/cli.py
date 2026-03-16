@@ -23,6 +23,7 @@ from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.prd_flow import get_prd_resume_state
 from dialectic.vision import VisionContext
 from .cli_commands import (
+    _build_prd_flow_kwargs,
     _check_vision_exists,
     cmd_execute,
     cmd_mark,
@@ -115,7 +116,7 @@ def _command_requires_vision(sub: str, args: list[str]) -> bool:
     return False
 
 
-def cmd_prd(
+def cmd_prd(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     feature_request: str | None,
     file_paths: list[str] | None = None,
     vision_context: VisionContext = VisionContext.PROJECT,
@@ -125,13 +126,16 @@ def cmd_prd(
     get_prd_resume_state_fn=get_prd_resume_state,
 ) -> None:
     """Forward PRD dispatch while preserving the CLI module's test seam."""
+    flow_kwargs = _build_prd_flow_kwargs(
+        file_paths,
+        vision_context,
+        resume_id,
+        max_retries,
+        consensus_min_score,
+    )
     _cmd_prd(
         feature_request,
-        file_paths=file_paths,
-        vision_context=vision_context,
-        resume_id=resume_id,
-        max_retries=max_retries,
-        consensus_min_score=consensus_min_score,
+        **flow_kwargs,
         get_prd_resume_state_fn=get_prd_resume_state_fn,
     )
 
@@ -176,7 +180,7 @@ def _run_guarded_command(
         action()
 
 
-def _dispatch_prd_command(
+def _dispatch_prd_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     feature_request: str | None,
     *,
     file_paths: list[str] | None,
@@ -186,25 +190,17 @@ def _dispatch_prd_command(
     consensus_min_score: float | None,
 ) -> None:
     """Dispatch PRD generation while preserving the historical non-resume call shape."""
-    if resume_id is not None:
-        cmd_prd(
-            feature_request,
-            file_paths=file_paths,
-            vision_context=vision_context,
-            resume_id=resume_id,
-            max_retries=max_retries,
-            consensus_min_score=consensus_min_score,
-            get_prd_resume_state_fn=get_prd_resume_state,
-        )
-        return
-
+    flow_kwargs = _build_prd_flow_kwargs(
+        file_paths,
+        vision_context,
+        resume_id,
+        max_retries,
+        consensus_min_score,
+    )
     cmd_prd(
         feature_request,
-        file_paths=file_paths,
-        vision_context=vision_context,
-        resume_id=resume_id,
-        max_retries=max_retries,
-        consensus_min_score=consensus_min_score,
+        **flow_kwargs,
+        get_prd_resume_state_fn=get_prd_resume_state,
     )
 
 
@@ -526,7 +522,12 @@ def verify_command(
 
 
 @app.command("self-improve")
-def self_improve_command(
+def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    artifact_path: str | None = typer.Argument(
+        None,
+        metavar="[PRD_OR_PLAN_PATH]",
+        help="Optional PRD or execution plan JSON artifact to continue self-improve from.",
+    ),
     simulate: bool = typer.Option(
         False,
         "--simulate",
@@ -562,13 +563,21 @@ def self_improve_command(
         "--skip-baseline-tests",
         help="Skip the initial baseline pytest run before self-improve proceeds.",
     ),
+    next_roadmap_item: bool = typer.Option(
+        False,
+        "--next-roadmap-item",
+        help="Skip dialectic prioritization and use the first introspection opportunity.",
+    ),
 ) -> None:
     """Run the guarded self-improvement orchestration workflow.
 
     Examples:
             uv run dialectic-crew self-improve --simulate
         uv run dialectic-crew self-improve --skip-baseline-tests
+            uv run dialectic-crew self-improve --next-roadmap-item
       uv run dialectic-crew self-improve --max 1
+            uv run dialectic-crew self-improve prd_output/PRD_20260308_1640.json
+            uv run dialectic-crew self-improve prd_output/exec_US-01_20260313_125038.json
       uv run dialectic-crew self-improve --resume 20260310T120000
       uv run dialectic-crew self-improve --list-resumable
     """
@@ -588,8 +597,12 @@ def self_improve_command(
         args.append("--list-resumable")
     if skip_baseline_tests:
         args.append("--skip-baseline-tests")
+    if next_roadmap_item:
+        args.append("--next-roadmap-item")
     if resume_cycle_id:
         args.extend(["--resume", resume_cycle_id])
+    if artifact_path:
+        args.append(artifact_path)
 
     _run_guarded_command(
         "self-improve",
@@ -601,6 +614,8 @@ def self_improve_command(
             resume_cycle_id=resume_cycle_id,
             list_resumable=list_resumable,
             skip_baseline_tests=skip_baseline_tests,
+            artifact_path=artifact_path,
+            next_roadmap_item=next_roadmap_item,
         ),
     )
 
