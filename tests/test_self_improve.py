@@ -24,6 +24,7 @@ from src.main.self_improve.internal.orchestrator import (
     _simulation_runtime_root,
 )
 from src.main.self_improve.pr_builder import create_pr
+from src.main.self_improve.persistence import load_self_improve_record
 from src.main.self_improve import (
     PROTECTED_PATHS,
     SIMULATION_BRANCH_NAME,
@@ -248,6 +249,69 @@ class TestRunSelfImprove:
     def test_rejects_resume_during_simulation(self):
         with pytest.raises(ValueError, match="does not support --resume"):
             run_self_improve(simulate=True, resume_cycle_id="cycle-123")
+
+    def test_persists_resumable_state_when_prioritization_is_interrupted(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Preserve interrupted self-improve cycles\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda branch, cwd: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda branch, cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+
+        opportunity = ImprovementOpportunity(
+            id="vision-gap-1",
+            category="code_health",
+            title="Stabilize self-improve interruption handling",
+            description="Persist resumable cycle state when prioritization is interrupted.",
+            evidence=["internal/ROADMAP.md"],
+            estimated_impact="high",
+        )
+        report = IntrospectionReport(
+            timestamp="2026-03-16T00:00:00+00:00",
+            opportunities=[opportunity],
+            baseline_metrics={},
+        )
+
+        monkeypatch.setattr("main.self_improve.run_introspection", lambda **kwargs: report)
+
+        def interrupt_prioritization(opps, **kwargs):
+            del opps, kwargs
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize",
+            interrupt_prioritization,
+        )
+
+        with pytest.raises(KeyboardInterrupt):
+            run_self_improve()
+
+        resumable = _list_resumable_cycles(tmp_path)
+        assert len(resumable) == 1
+        cycle_id = resumable[0]["cycle_id"]
+        record = load_self_improve_record(tmp_path, cycle_id)
+
+        assert record.failure_reason == "Interrupted during prioritization"
+        assert record.selected_opportunities == [opportunity]
+        assert record.opportunities_attempted == 1
+        resume_summary = _summarize_resume_state(record, record.failure_reason)
+        assert resume_summary["next_stage"] == "PRD generation"
 
     def test_retries_transient_llm_timeout_during_prd_generation(
         self,

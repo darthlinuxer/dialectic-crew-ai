@@ -758,6 +758,9 @@ def main(argv: Sequence[str] | None = None) -> None:
                 prog_name="dialectic-crew",
                 standalone_mode=False,
             )
+        except KeyboardInterrupt as exc:
+            print("\nOperation interrupted by user.")
+            raise SystemExit(130) from exc
         except click.exceptions.Exit as exc:
             raise SystemExit(exc.exit_code) from exc
         except click.ClickException as exc:

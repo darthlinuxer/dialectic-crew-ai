@@ -683,6 +683,10 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     cycle_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     branch_name = SIMULATION_BRANCH_NAME if simulate else ""
     resume_summary: dict[str, str | list[str]] = {}
+    current_stage = "startup"
+    report: IntrospectionReport | None = None
+    selected: list[ImprovementOpportunity] = []
+    tracker = None
     simulation_context = (
         _simulation_runtime_environment(project_root, cycle_id)
         if simulate
@@ -712,6 +716,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
 
         try:
             if simulate and not is_resume:
+                current_stage = "simulation git preflight"
                 preflight_failure = _run_git_preflight(
                     project_root,
                     cycle_id=cycle_id,
@@ -760,6 +765,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                         "--skip-baseline-tests was requested."
                     )
                 else:
+                    current_stage = "baseline tests"
                     print("\n[1/6] Running baseline tests...")
                     baseline_tests = _snapshot_tests(project_root)
                     if not baseline_tests["passed"]:
@@ -770,6 +776,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                         return record
 
             if not simulate and not is_resume:
+                current_stage = "git preflight"
                 preflight_failure = _run_git_preflight(
                     project_root,
                     cycle_id=cycle_id,
@@ -816,6 +823,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     f"{supplied_artifact_path}"
                 )
             else:
+                current_stage = "introspection"
                 print("[2/6] Running introspection against SELF_VISION.md + ROADMAP.md...")
                 report = run_introspection(store=store, vision_context=VisionContext.SELF)
                 record.opportunities_found = len(report.opportunities)
@@ -840,6 +848,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 else:
                     print("\n[2b/7] Running dialectic prioritization...")
                     try:
+                        current_stage = "prioritization"
                         prioritized = dialectic_prioritize(
                             report.opportunities,
                             vision_context=VisionContext.SELF,
@@ -879,6 +888,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                         f"simulation branch: {branch_name}"
                     )
                 else:
+                    current_stage = "branch setup"
                     print(f"\n[3/7] Creating branch: {branch_name}")
                     if not _git_branch_create(branch_name, project_root):
                         record.failure_reason = "Failed to create git branch"
@@ -942,6 +952,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                         _save_self_improve_record(project_root, record)
 
                         if not record.prd_generated:
+                            current_stage = "PRD generation"
                             print(f"\n[4/7] Generating PRD for: {opp.title[:60]}...")
                             if tracker.budget_exceeded:
                                 record.failure_reason = (
@@ -1012,6 +1023,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             raise _CycleAbort(record.failure_reason)
 
                         if not record.plan_generated:
+                            current_stage = "planning"
                             print("[5/7] Planning user story execution...")
                             from planning.flow import (  # pylint: disable=import-outside-toplevel
                                 run_user_story_planning,
@@ -1057,6 +1069,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             or not record.execution_report_path
                         )
                         if needs_execution:
+                            current_stage = "execution"
                             print("[6/7] Executing plan...")
                             from execution.dialectic_execution import (  # pylint: disable=import-outside-toplevel
                                 run_dialectic_execution,
@@ -1087,6 +1100,26 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                                 f"{record.execution_run_id}"
                             )
 
+                except KeyboardInterrupt:
+                    if not record.selected_opportunities and report is not None:
+                        record.selected_opportunities = list(
+                            report.opportunities[:max_improvements]
+                        )
+                        record.opportunities_attempted = len(record.selected_opportunities)
+                    interruption_reason = f"Interrupted during {current_stage}"
+                    record.failure_reason = interruption_reason
+                    print(f"\n  {interruption_reason}. Saving cycle state...")
+                    if tracker is not None:
+                        record.total_tokens = tracker.total_tokens
+                        record.estimated_cost = tracker.estimated_cost
+                    _persist_record(store, record)
+                    _save_self_improve_record(project_root, record)
+                    if not simulate:
+                        print(
+                            "  Resume with: dialectic-crew self-improve "
+                            f"--resume {record.cycle_id}"
+                        )
+                    raise
                 except _CycleAbort as e:
                     print(f"\n  Cycle aborted: {e}")
                     if not record.failure_reason:
@@ -1112,6 +1145,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 record.total_tokens = tracker.total_tokens
                 record.estimated_cost = tracker.estimated_cost
 
+            current_stage = "quality gate"
             print(f"\n  Token usage: {record.total_tokens} tokens, ${record.estimated_cost:.4f}")
 
             print("\n[7a/9] Validating: running code quality checks...")
@@ -1127,6 +1161,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 return record
             print(f"  Quality gate passed: {quality_result.summary}")
 
+            current_stage = "structure validation"
             print("\n[7b/9] Validating: code structure (SOLID, deep modules)...")
             structure_result = validate_code_structure(project_root, check_all_src=True)
             if not structure_result.passed:
@@ -1144,6 +1179,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             else:
                 print("  Structure validation passed.")
 
+            current_stage = "post-execution tests"
             print("\n[8/9] Validating: running tests...")
             post_tests = _snapshot_tests(project_root)
             record.tests_passed = post_tests["passed"]
@@ -1164,6 +1200,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 )
                 record.metrics_stable = True
             else:
+                current_stage = "metrics validation"
                 print("[9/9] Validating: checking metrics stability...")
                 stable, reason = _metrics_stable(
                     store,
@@ -1221,6 +1258,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 _save_self_improve_record(project_root, record)
                 return record
 
+            current_stage = "PR creation"
             print("\nAll gates passed. Creating PR...")
             pr_body = _build_pr_body(report, selected, record)
             pr_url = _create_pr(
@@ -1238,6 +1276,26 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             _persist_record(store, record)
             _save_self_improve_record(project_root, record)
             return record
+        except KeyboardInterrupt:
+            if not record.selected_opportunities and report is not None:
+                record.selected_opportunities = list(
+                    report.opportunities[:max_improvements]
+                )
+                record.opportunities_attempted = len(record.selected_opportunities)
+            interruption_reason = f"Interrupted during {current_stage}"
+            record.failure_reason = interruption_reason
+            print(f"\n  {interruption_reason}. Saving cycle state...")
+            if tracker is not None:
+                record.total_tokens = tracker.total_tokens
+                record.estimated_cost = tracker.estimated_cost
+            _persist_record(store, record)
+            _save_self_improve_record(project_root, record)
+            if not simulate:
+                print(
+                    "  Resume with: dialectic-crew self-improve "
+                    f"--resume {record.cycle_id}"
+                )
+            raise
         finally:
             if simulation_branch_active:
                 _cleanup_simulation_branch(project_root)

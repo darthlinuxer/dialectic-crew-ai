@@ -123,6 +123,24 @@ class TestCliRequirementRouting:
         assert calls[:2] == ["logging", "events"]
         assert calls[-1] == "status"
 
+    def test_main_exits_130_on_keyboard_interrupt(self, monkeypatch, capsys):
+        class _InterruptingCommand:
+            def main(self, *, args, prog_name, standalone_mode):
+                del args, prog_name, standalone_mode
+                raise KeyboardInterrupt()
+
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "status"])
+        monkeypatch.setattr(cli, "configure_application_logging", lambda: None)
+        monkeypatch.setattr(cli, "register_crewai_event_logger", lambda: None)
+        monkeypatch.setattr(cli, "get_command", lambda app: _InterruptingCommand())
+        monkeypatch.setattr(cli, "_print_banner", lambda: None)
+
+        with pytest.raises(SystemExit) as excinfo:
+            cli.main()
+
+        assert excinfo.value.code == 130
+        assert "Operation interrupted by user." in capsys.readouterr().out
+
     def test_plan_help_mentions_self_mode(self):
         result = RUNNER.invoke(cli.app, ["plan", "--help"])
 
