@@ -225,6 +225,8 @@ class SelfImprovementRecord(BaseModel):
     execution_story_status: str = ""
     execution_output_path: str = ""
     execution_report_path: str = ""
+    execution_attempt_count: int = 0
+    execution_failure_reasons: List[str] = Field(default_factory=list)
     failure_reason: str = ""
     total_tokens: int = 0
     estimated_cost: float = 0.0

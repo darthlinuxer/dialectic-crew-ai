@@ -7,6 +7,8 @@ route all staged work through `VisionContext.SELF`.
 Compatibility contract: `vision_context=VisionContext.SELF`.
 """
 
+# pylint: disable=trailing-newlines
+
 from __future__ import annotations
 
 import inspect
@@ -22,9 +24,9 @@ from . import (
     git_helpers,
     llm_retries,
     metrics,
+    orchestrator,
     paths,
     persistence,
-    orchestrator,
     pr_builder,
     quality_gate,
     runtime,
@@ -104,11 +106,20 @@ _pytest_command = cast(Callable[..., Any], globals()["_pytest_command"])
 _recover_stale_self_improve_worktree = cast(
     Callable[..., Any], globals()["_recover_stale_self_improve_worktree"]
 )
+_self_improve_execution_retries = cast(
+    Callable[..., Any], globals()["_self_improve_execution_retries"]
+)
 _run_with_transient_llm_retries = cast(
     Callable[..., Any], globals()["_run_with_transient_llm_retries"]
 )
 _save_self_improve_record = cast(
     Callable[..., Any], globals()["_save_self_improve_record"]
+)
+_simulation_runtime_environment = cast(
+    Callable[..., Any], globals()["_simulation_runtime_environment"]
+)
+_simulation_runtime_root = cast(
+    Callable[..., Any], globals()["_simulation_runtime_root"]
 )
 _self_improve_llm_stage_retries = getattr(
     llm_retries,
@@ -132,8 +143,11 @@ __all__ = [
     "_prepare_simulation_branch",
     "_pytest_command",
     "_recover_stale_self_improve_worktree",
+    "_self_improve_execution_retries",
     "_run_with_transient_llm_retries",
     "_save_self_improve_record",
+    "_simulation_runtime_environment",
+    "_simulation_runtime_root",
     "_self_improve_llm_stage_retries",
     "_self_improve_test_timeout",
     "_snapshot_tests",
@@ -153,4 +167,5 @@ __all__ = [
     "test_runner",
     "time",
 ]
+# End of public compatibility exports.
 

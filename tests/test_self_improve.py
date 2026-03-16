@@ -3,16 +3,26 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
 # pylint: disable=redefined-outer-name,import-outside-toplevel,unused-argument
 # pylint: disable=too-few-public-methods,line-too-long,too-many-lines,duplicate-code
+# pylint: disable=too-many-public-methods,too-many-locals
 
 import json
+import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
+from dialectic.app_logging import configure_application_logging, get_logging_config, shutdown_application_logging
+from dialectic.crew_verbose_config import get_output_log_file
 from dialectic.metrics import MetricRecord, MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
+from src.main.self_improve.internal.orchestrator import (
+    _self_improve_execution_retries,
+    _simulation_runtime_environment,
+    _simulation_runtime_root,
+)
 from src.main.self_improve.pr_builder import create_pr
 from src.main.self_improve import (
     PROTECTED_PATHS,
@@ -112,6 +122,11 @@ class TestSnapshotTests:
 
         assert _self_improve_llm_stage_retries() == 2
 
+    def test_invalid_execution_retry_budget_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("SELF_IMPROVE_EXECUTION_RETRIES", "not-a-number")
+
+        assert _self_improve_execution_retries() == 1
+
     def test_prefers_uv_when_available(self, monkeypatch):
         monkeypatch.setattr(
             "main.self_improve.shutil.which",
@@ -182,9 +197,57 @@ class TestSnapshotTests:
 
 
 class TestRunSelfImprove:
+    def test_simulation_runtime_environment_persists_and_restores_logging(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        cycle_id = "cycle-123"
+        original_log_dir = tmp_path / "logs"
+
+        monkeypatch.setenv("DIALECTIC_LOG_DIR", str(original_log_dir))
+        monkeypatch.setenv("CREWAI_VERBOSE", "true")
+        monkeypatch.delenv("CREWAI_OUTPUT_LOG_FILE", raising=False)
+
+        shutdown_application_logging()
+        configure_application_logging(force=True)
+
+        runtime_root = _simulation_runtime_root(tmp_path, cycle_id)
+        try:
+            with _simulation_runtime_environment(tmp_path, cycle_id) as active_root:
+                assert active_root == runtime_root
+                assert active_root.exists()
+                assert os.getenv("DIALECTIC_RUNTIME_ROOT") == str(runtime_root)
+                assert get_logging_config().log_dir == runtime_root / "logs"
+                assert get_output_log_file() == (
+                    runtime_root / "logs" / "crewai_verbose.log"
+                ).as_posix()
+
+            assert os.getenv("DIALECTIC_RUNTIME_ROOT") is None
+            assert get_logging_config().log_dir == original_log_dir
+        finally:
+            shutdown_application_logging()
+
+    def test_simulation_runtime_environment_preserves_explicit_crewai_logfile(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        explicit_log = tmp_path / "explicit-crewai.log"
+
+        monkeypatch.setenv("CREWAI_VERBOSE", "true")
+        monkeypatch.setenv("CREWAI_OUTPUT_LOG_FILE", str(explicit_log))
+
+        with _simulation_runtime_environment(tmp_path, "cycle-explicit-log"):
+            assert get_output_log_file() == explicit_log.as_posix()
+
     def test_rejects_more_than_one_opportunity(self):
         with pytest.raises(ValueError, match="exactly one opportunity"):
             run_self_improve(max_improvements=2)
+
+    def test_rejects_resume_during_simulation(self):
+        with pytest.raises(ValueError, match="does not support --resume"):
+            run_self_improve(simulate=True, resume_cycle_id="cycle-123")
 
     def test_retries_transient_llm_timeout_during_prd_generation(
         self,
@@ -233,7 +296,6 @@ class TestRunSelfImprove:
             attempts["count"] += 1
             if attempts["count"] == 1:
                 raise RuntimeError("Failed to connect to OpenAI API: Request timed out.")
-            return None
 
         mock_flow.kickoff.side_effect = fake_kickoff
 
@@ -812,6 +874,247 @@ class TestRunSelfImprove:
             f"[3/7] Using previously prepared disposable simulation branch: "
             f"{SIMULATION_BRANCH_NAME}"
         ) in out
+
+    def test_simulation_uses_persistent_runtime_root_for_artifacts(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Persist simulation artifacts\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve._prepare_simulation_branch",
+            lambda cwd: (True, SIMULATION_BRANCH_NAME),
+        )
+        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, check_all_src=True: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+
+        runtime_root = tmp_path / ".dialectic" / "self_improve" / "simulations" / "cycle-persist"
+        monkeypatch.setattr(
+            "main.self_improve._simulation_runtime_root",
+            lambda project_root, cycle_id: runtime_root,
+        )
+
+        def _write(path: Path, content: str = "{}") -> str:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return str(path)
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-sim-persist"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = _write(runtime_root / "prd_output" / "self" / "prd.json")
+        mock_flow.state.prd_path_md = _write(runtime_root / "prd_output" / "self" / "prd.md", "# prd\n")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": _write(runtime_root / "prd_output" / "self" / "plan.json"),
+            "plan_path_md": _write(runtime_root / "prd_output" / "self" / "plan.md", "# plan\n"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "sim-run-persist",
+            "task_flow_ids": {"T-001": "task-flow-sim-persist"},
+            "output_path": _write(runtime_root / "exec_output" / "self" / "run-persist" / "checkpoint.json"),
+            "report_path": _write(runtime_root / "exec_output" / "self" / "run-persist" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(simulate=True)
+
+        assert record.failure_reason == "simulated"
+        assert record.prd_path_json.startswith(str(tmp_path / ".dialectic" / "self_improve"))
+        assert Path(record.prd_path_json).exists()
+        assert Path(record.plan_path_json).exists()
+        assert Path(record.execution_report_path).exists()
+
+    def test_simulation_retries_failed_execution_once_before_success(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Retry failed execution\n")
+
+        monkeypatch.setenv("SELF_IMPROVE_EXECUTION_RETRIES", "1")
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve._prepare_simulation_branch",
+            lambda cwd: (True, SIMULATION_BRANCH_NAME),
+        )
+        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, check_all_src=True: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-sim-retry"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+
+        attempts = {"count": 0}
+
+        def fake_execution(**kwargs):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                return {
+                    "overall_success": False,
+                    "story_status": "failed",
+                    "run_id": "sim-run-retry-1",
+                    "task_flow_ids": {},
+                    "output_path": str(tmp_path / "runtime" / "exec-1"),
+                    "report_path": str(tmp_path / "runtime" / "exec-1" / "report.json"),
+                }
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "sim-run-retry-2",
+                "task_flow_ids": {"T-001": "task-flow-sim-retry"},
+                "output_path": str(tmp_path / "runtime" / "exec-2"),
+                "report_path": str(tmp_path / "runtime" / "exec-2" / "report.json"),
+            }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=fake_execution):
+                        record = run_self_improve(simulate=True)
+
+        out = capsys.readouterr().out
+
+        assert record.failure_reason == "simulated"
+        assert attempts["count"] == 2
+        assert record.execution_attempt_count == 2
+        assert record.execution_failure_reasons == ["Execution failed: failed"]
+        assert "Retrying execution from the approved plan" in out
+
+    def test_simulation_stops_after_configured_execution_retries_exhausted(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Exhaust failed execution retries\n")
+
+        monkeypatch.setenv("SELF_IMPROVE_EXECUTION_RETRIES", "1")
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve._prepare_simulation_branch",
+            lambda cwd: (True, SIMULATION_BRANCH_NAME),
+        )
+        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-sim-retry-fail"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+
+        failed_exec = {
+            "overall_success": False,
+            "story_status": "failed",
+            "run_id": "sim-run-retry-fail",
+            "task_flow_ids": {},
+            "output_path": str(tmp_path / "runtime" / "exec-fail"),
+            "report_path": str(tmp_path / "runtime" / "exec-fail" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=[failed_exec, failed_exec]):
+                        record = run_self_improve(simulate=True)
+
+        assert record.failure_reason == "Execution failed: failed"
+        assert record.execution_attempt_count == 2
+        assert record.execution_failure_reasons == [
+            "Execution failed: failed",
+            "Execution failed: failed",
+        ]
 
     def test_aborts_when_baseline_tests_fail(self, tmp_path, monkeypatch, store):
         monkeypatch.setattr(

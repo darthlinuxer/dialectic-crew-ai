@@ -20,9 +20,9 @@ from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Literal
 
+from dialectic.app_logging import configure_application_logging
 from dialectic.hooks import HookScope
 from dialectic.introspect import run_introspection
 from dialectic.metrics import MetricsStore, emit, get_metrics_store
@@ -56,7 +56,9 @@ from ..paths import (
     MIN_METRIC_RETENTION,
     PROTECTED_PATHS,
     RUNTIME_ROOT_ENV_VAR,
+    DEFAULT_SELF_IMPROVE_EXECUTION_RETRIES,
     SELF_IMPROVE_ROADMAP_PATH,
+    SELF_IMPROVE_SIMULATIONS_DIR,
     SELF_IMPROVE_STATE_DIR,
     SELF_IMPROVE_STATE_DIR_ENV_VAR,
     SIMULATED_CYCLE_RESULT,
@@ -459,23 +461,120 @@ def _temporary_environment(overrides: dict[str, str]):
                 os.environ[key] = previous
 
 
+def _simulation_runtime_root(project_root: Path, cycle_id: str) -> Path:
+    return project_root / SELF_IMPROVE_SIMULATIONS_DIR / cycle_id
+
+
+def _self_improve_execution_retries() -> int:
+    raw_value = os.getenv("SELF_IMPROVE_EXECUTION_RETRIES")
+    if raw_value is None or raw_value == "":
+        return DEFAULT_SELF_IMPROVE_EXECUTION_RETRIES
+    try:
+        retries = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid SELF_IMPROVE_EXECUTION_RETRIES=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_EXECUTION_RETRIES,
+        )
+        return DEFAULT_SELF_IMPROVE_EXECUTION_RETRIES
+    if retries < 0:
+        logger.warning(
+            "Negative SELF_IMPROVE_EXECUTION_RETRIES=%r; using default %s",
+            raw_value,
+            DEFAULT_SELF_IMPROVE_EXECUTION_RETRIES,
+        )
+        return DEFAULT_SELF_IMPROVE_EXECUTION_RETRIES
+    return retries
+
+
 @contextmanager
-def _simulation_runtime_environment():
-    with TemporaryDirectory(prefix="dialectic-self-improve-sim-") as temp_dir:
-        runtime_root = Path(temp_dir)
-        pytest_addopts_parts = [os.getenv("PYTEST_ADDOPTS", "").strip(), "-p no:cacheprovider"]
-        pytest_addopts = " ".join(part for part in pytest_addopts_parts if part).strip()
-        overrides = {
-            RUNTIME_ROOT_ENV_VAR: str(runtime_root),
-            FLOW_DB_ENV_VAR: str(runtime_root / ".dialectic" / "flows.db"),
-            METRICS_DB_ENV_VAR: str(runtime_root / ".dialectic" / "metrics.db"),
-            SELF_IMPROVE_STATE_DIR_ENV_VAR: str(runtime_root / ".dialectic" / "self_improve"),
-            "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONPYCACHEPREFIX": str(runtime_root / ".pycache"),
-            "PYTEST_ADDOPTS": pytest_addopts,
-        }
+def _simulation_runtime_environment(project_root: Path, cycle_id: str):
+    runtime_root = _simulation_runtime_root(project_root, cycle_id)
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    pytest_addopts_parts = [os.getenv("PYTEST_ADDOPTS", "").strip(), "-p no:cacheprovider"]
+    pytest_addopts = " ".join(part for part in pytest_addopts_parts if part).strip()
+    overrides = {
+        RUNTIME_ROOT_ENV_VAR: str(runtime_root),
+        FLOW_DB_ENV_VAR: str(runtime_root / "flows.db"),
+        METRICS_DB_ENV_VAR: str(runtime_root / "metrics.db"),
+        SELF_IMPROVE_STATE_DIR_ENV_VAR: str(project_root / SELF_IMPROVE_STATE_DIR),
+        "DIALECTIC_LOG_DIR": str(runtime_root / "logs"),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPYCACHEPREFIX": str(runtime_root / ".pycache"),
+        "PYTEST_ADDOPTS": pytest_addopts,
+    }
+    try:
         with _temporary_environment(overrides):
+            configure_application_logging(force=True)
             yield runtime_root
+    finally:
+        configure_application_logging(force=True)
+
+
+def _record_execution_attempt(
+    record: SelfImprovementRecord,
+    exec_result: dict,
+    *,
+    attempt: int,
+    failure_reason: str | None = None,
+) -> None:
+    _record_execution_artifacts(record, exec_result)
+    record.execution_attempted = True
+    record.execution_attempt_count = max(record.execution_attempt_count, attempt)
+    if failure_reason:
+        record.execution_failure_reasons.append(failure_reason)
+
+
+def _execute_plan_with_retries(  # pylint: disable=too-many-arguments
+    run_dialectic_execution_fn,
+    *,
+    plan_path: str,
+    resume_run_id: str | None,
+    simulate: bool,
+    record: SelfImprovementRecord,
+    project_root: Path,
+) -> dict:
+    """Run execution with bounded logical retries for simulation-only dry runs."""
+    max_attempts = (_self_improve_execution_retries() + 1) if simulate else 1
+
+    for attempt in range(1, max_attempts + 1):
+        exec_result = _run_with_transient_llm_retries(
+            "execution",
+            partial(
+                _run_execution_stage,
+                run_dialectic_execution_fn,
+                plan_path=plan_path,
+                resume_run_id=resume_run_id,
+            ),
+        )
+        failure_reason: str | None = None
+        if not exec_result.get("overall_success"):
+            failure_reason = (
+                "Execution failed: "
+                f"{exec_result.get('story_status', 'unknown')}"
+            )
+        _record_execution_attempt(
+            record,
+            exec_result,
+            attempt=attempt,
+            failure_reason=failure_reason,
+        )
+        _save_self_improve_record(project_root, record)
+        if failure_reason is None:
+            return exec_result
+        if attempt >= max_attempts:
+            record.failure_reason = failure_reason
+            return exec_result
+
+        print(
+            "  Execution attempt "
+            f"{attempt}/{max_attempts} failed: {exec_result.get('story_status', 'unknown')}"
+        )
+        print("  Retrying execution from the approved plan...")
+        resume_run_id = None
+
+    raise RuntimeError("Execution retry loop exited unexpectedly")
 
 
 def _run_git_preflight(
@@ -565,10 +664,13 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     artifact_path: str | None = None,
     next_roadmap_item: bool = False,
 ) -> SelfImprovementRecord:
+    """Run a self-improve cycle, optionally as a non-destructive simulation."""
     if max_improvements != 1:
         raise ValueError(
             "self-improve currently supports exactly one opportunity per cycle"
         )
+    # Simulation uses an isolated throwaway branch plus a separate runtime root,
+    # so resuming a previous cycle inside that sandbox would be misleading.
     if simulate and resume_cycle_id is not None:
         raise ValueError("self-improve simulation does not support --resume")
     if artifact_path is not None and resume_cycle_id is not None:
@@ -581,13 +683,16 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     cycle_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     branch_name = SIMULATION_BRANCH_NAME if simulate else ""
     resume_summary: dict[str, str | list[str]] = {}
-    simulation_context = _simulation_runtime_environment() if simulate else nullcontext()
+    simulation_context = (
+        _simulation_runtime_environment(project_root, cycle_id)
+        if simulate
+        else nullcontext()
+    )
     simulation_branch_active = False
 
     with simulation_context:
         store = get_metrics_store()
-        if is_resume:
-            assert resume_cycle_id is not None
+        if resume_cycle_id is not None:
             record = _load_self_improve_record(project_root, resume_cycle_id)
             cycle_id = record.cycle_id
             branch_name = record.branch_name or f"self-improve/{cycle_id}"
@@ -596,6 +701,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             record.tests_passed = False
             record.metrics_stable = False
             record.pr_created = False
+            record.execution_failure_reasons = list(record.execution_failure_reasons)
             _save_self_improve_record(project_root, record)
         else:
             record = SelfImprovementRecord(
@@ -956,24 +1062,16 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                                 run_dialectic_execution,
                             )
 
-                            exec_result = _run_with_transient_llm_retries(
-                                "execution",
-                                partial(
-                                    _run_execution_stage,
-                                    run_dialectic_execution,
-                                    plan_path=plan_path,
-                                    resume_run_id=record.execution_run_id or None,
-                                ),
+                            exec_result = _execute_plan_with_retries(
+                                run_dialectic_execution,
+                                plan_path=plan_path,
+                                resume_run_id=record.execution_run_id or None,
+                                simulate=simulate,
+                                record=record,
+                                project_root=project_root,
                             )
-                            _record_execution_artifacts(record, exec_result)
-                            record.execution_attempted = True
-                            _save_self_improve_record(project_root, record)
 
                             if not exec_result.get("overall_success"):
-                                record.failure_reason = (
-                                    "Execution failed: "
-                                    f"{exec_result.get('story_status', 'unknown')}"
-                                )
                                 raise _CycleAbort(record.failure_reason)
                             _require_artifact(
                                 record.execution_output_path,
