@@ -1147,6 +1147,11 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             not record.execution_attempted
                             or not record.execution_output_path
                             or not record.execution_report_path
+                            or (
+                                is_resume
+                                and str(resume_summary.get("next_stage", ""))
+                                == "execution"
+                            )
                         )
                         if needs_execution:
                             current_stage = "execution"

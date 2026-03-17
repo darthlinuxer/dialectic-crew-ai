@@ -1735,7 +1735,7 @@ class TestRunSelfImprove:
         assert "[resume] Last failure: Execution failed: failed" in out
         assert "[resume] Next stage: execution" in out
         assert f"PRD: {tmp_path / 'prd_output' / 'PRD_test.json'}" in out
-        assert "Execution run: run-123" in out
+        assert "Execution run: run-123" not in out
 
     def test_resume_switches_to_recorded_branch_when_current_branch_drifted(
         self,
@@ -1967,6 +1967,108 @@ class TestRunSelfImprove:
         assert resumed.failure_reason == ""
         assert recreated == [("self-improve/cycle-main-recreate", str(tmp_path))]
 
+    def test_resume_reenters_execution_when_saved_execution_story_failed(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from src.main.self_improve import _save_self_improve_record
+        from schemas import ImprovementOpportunity
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, **kwargs: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+
+        prd_path = tmp_path / "prd_output" / "PRD_test.json"
+        plan_path = tmp_path / "prd_output" / "exec_test.json"
+        execution_output = tmp_path / "exec_output" / "run-789" / "checkpoint.json"
+        execution_report = tmp_path / "exec_output" / "run-789" / "report.json"
+        for path in (prd_path, plan_path, execution_output, execution_report):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{}", encoding="utf-8")
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-rerun-execution",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-1",
+                    category="code_health",
+                    title="Retry failed execution",
+                    description="Resume should rerun failed execution instead of reusing its artifacts.",
+                    evidence=[str(execution_report)],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            tests_passed=True,
+            metrics_stable=True,
+            pr_created=True,
+            prd_path_json=str(prd_path),
+            plan_path_json=str(plan_path),
+            execution_run_id="run-789",
+            execution_story_status="failed",
+            execution_output_path=str(execution_output),
+            execution_report_path=str(execution_report),
+            failure_reason="",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        execution_calls: list[dict[str, object]] = []
+
+        monkeypatch.setattr(
+            "execution.dialectic_execution.run_dialectic_execution",
+            lambda **kwargs: (
+                execution_calls.append(kwargs)
+                or {
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-789",
+                    "task_flow_ids": {"T-001": "task-flow-rerun"},
+                    "output_path": str(tmp_path / "exec_output" / "run-789"),
+                    "report_path": str(tmp_path / "exec_output" / "run-789" / "report.json"),
+                }
+            ),
+        )
+
+        resumed = run_self_improve(resume_cycle_id="cycle-rerun-execution")
+
+        assert resumed.execution_story_status == "completed"
+        assert len(execution_calls) == 1
+        assert execution_calls[0]["plan_path"] == str(plan_path)
+        assert execution_calls[0]["resume_run_id"] == "run-789"
+
 
 class TestResumeSummary:
     def test_prefers_execution_after_failed_execution(self):
@@ -1982,6 +2084,29 @@ class TestResumeSummary:
                 execution_run_id="run-1",
             ),
             "Execution failed: failed",
+        )
+
+        assert summary["next_stage"] == "execution"
+
+    def test_prefers_execution_when_saved_story_status_failed_even_without_failure_reason(self):
+        summary = _summarize_resume_state(
+            SelfImprovementRecord(
+                cycle_id="c1b",
+                timestamp="2026-03-10T00:00:00Z",
+                prd_generated=True,
+                plan_generated=True,
+                execution_attempted=True,
+                tests_passed=True,
+                metrics_stable=True,
+                pr_created=True,
+                prd_path_json="prd.json",
+                plan_path_json="plan.json",
+                execution_run_id="run-2",
+                execution_story_status="failed",
+                execution_output_path="exec-output.json",
+                execution_report_path="exec-report.json",
+            ),
+            "",
         )
 
         assert summary["next_stage"] == "execution"

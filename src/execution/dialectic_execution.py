@@ -65,6 +65,11 @@ _load_checkpoint = load_checkpoint
 _upsert_task_result = upsert_task_result
 
 
+def _result_reusable_on_resume(result: TaskExecutionResult) -> bool:
+    """Return whether a checkpointed task result is safe to reuse during resume."""
+    return result.success
+
+
 # ---------------------------------------------------------------------------
 # Main execution orchestrator (uses TaskExecutionFlow per task)
 # ---------------------------------------------------------------------------
@@ -165,9 +170,35 @@ def run_dialectic_execution(
         print(f"Resuming run id: {resume_run_id}")
     print(f"{'='*60}\n")
 
-    task_results: list[TaskExecutionResult] = list(checkpoint.task_results)
-    completed_outputs: dict[str, str] = dict(checkpoint.completed_outputs)
-    failed_task_ids: set[str] = set(checkpoint.failed_task_ids)
+    if resume_run_id:
+        reusable_results = {
+            task_id: result
+            for task_id, result in existing_results.items()
+            if _result_reusable_on_resume(result)
+        }
+        reusable_flow_ids = {
+            task_id: flow_id
+            for task_id, flow_id in checkpoint.task_flow_ids.items()
+            if task_id in reusable_results
+        }
+        reusable_outputs = {
+            task_id: output
+            for task_id, output in checkpoint.completed_outputs.items()
+            if task_id in reusable_results
+        }
+        checkpoint.task_results = list(reusable_results.values())
+        checkpoint.task_flow_ids = reusable_flow_ids
+        checkpoint.completed_outputs = reusable_outputs
+        checkpoint.failed_task_ids = []
+        _save_checkpoint(run_dir, checkpoint)
+        existing_results = reusable_results
+        task_results = list(reusable_results.values())
+        completed_outputs = dict(reusable_outputs)
+        failed_task_ids: set[str] = set()
+    else:
+        task_results = list(checkpoint.task_results)
+        completed_outputs = dict(checkpoint.completed_outputs)
+        failed_task_ids = set(checkpoint.failed_task_ids)
 
     for task in ordered_tasks:
         with log_context(phase="task", task_id=task.id):

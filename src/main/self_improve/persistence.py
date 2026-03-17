@@ -15,6 +15,24 @@ SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
 SELF_IMPROVE_STATE_DIR_ENV_VAR = "DIALECTIC_SELF_IMPROVE_STATE_DIR"
 
 
+def execution_result_reusable(
+    record: SelfImprovementRecord,
+    last_failure_reason: str = "",
+) -> bool:
+    """Return whether the saved execution can be safely reused on resume."""
+    if (
+        not record.execution_attempted
+        or not record.execution_output_path
+        or not record.execution_report_path
+    ):
+        return False
+    if last_failure_reason.startswith("Execution failed:"):
+        return False
+    if record.execution_story_status in {"failed", "partially_completed"}:
+        return False
+    return True
+
+
 def _resolve_state_dir(project_root: Path, state_dir: Path) -> Path:
     """Resolve the effective snapshot directory, honoring an env override when present."""
     raw_state_dir = os.getenv(SELF_IMPROVE_STATE_DIR_ENV_VAR, "").strip()
@@ -97,23 +115,19 @@ def summarize_resume_state(
 ) -> dict[str, str | list[str]]:
     """Summarize what a resumed cycle can reuse and which stage remains."""
     reused: list[str] = []
+    execution_reusable = execution_result_reusable(record, last_failure_reason)
     if record.prd_generated and record.prd_path_json:
         reused.append(f"PRD: {record.prd_path_json}")
     if record.plan_generated and record.plan_path_json:
         reused.append(f"Plan: {record.plan_path_json}")
-    if record.execution_run_id:
+    if execution_reusable and record.execution_run_id:
         reused.append(f"Execution run: {record.execution_run_id}")
 
     if not record.prd_generated:
         next_stage = "PRD generation"
     elif not record.plan_generated:
         next_stage = "planning"
-    elif (
-        not record.execution_attempted
-        or not record.execution_output_path
-        or not record.execution_report_path
-        or last_failure_reason.startswith("Execution failed:")
-    ):
+    elif not execution_reusable:
         next_stage = "execution"
     elif not record.tests_passed:
         next_stage = "test validation"
@@ -177,6 +191,7 @@ __all__ = [
     "SELF_IMPROVE_STATE_DIR_ENV_VAR",
     "list_resumable_cycles",
     "load_self_improve_record",
+    "execution_result_reusable",
     "record_execution_artifacts",
     "record_plan_artifacts",
     "record_prd_artifacts",
