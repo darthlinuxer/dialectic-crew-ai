@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +48,7 @@ class StructureValidationResult:
         message: str,
         severity: str = "error",
     ) -> None:
+        """Add a violation and update the aggregate pass/fail flag."""
         self.violations.append(
             FileViolation(
                 file_path=file_path,
@@ -59,6 +61,7 @@ class StructureValidationResult:
             self.passed = False
 
     def build_summary(self) -> str:
+        """Build and cache an error/warning summary string."""
         error_count = sum(1 for v in self.violations if v.severity == "error")
         warn_count = sum(1 for v in self.violations if v.severity == "warning")
         self.summary = f"{error_count} errors, {warn_count} warnings"
@@ -71,6 +74,12 @@ def _count_code_lines(file_path: Path) -> int:
         content = file_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return 0
+
+    return _count_code_lines_from_content(content)
+
+
+def _count_code_lines_from_content(content: str) -> int:
+    """Count non-blank, non-comment lines in Python source text."""
 
     lines = content.split("\n")
     code_lines = 0
@@ -102,6 +111,30 @@ def _count_code_lines(file_path: Path) -> int:
     return code_lines
 
 
+def _count_code_lines_at_ref(
+    project_root: Path,
+    file_path: Path,
+    git_ref: str,
+) -> int | None:
+    """Count code lines for a file as stored at a given git ref."""
+    try:
+        rel_path = file_path.relative_to(project_root)
+    except ValueError:
+        return None
+
+    result = subprocess.run(
+        ["git", "show", f"{git_ref}:{rel_path.as_posix()}"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+
+    return _count_code_lines_from_content(result.stdout)
+
+
 def _extract_classes(file_path: Path) -> list[ast.ClassDef]:
     """Extract all class definitions from a Python file."""
     try:
@@ -117,7 +150,9 @@ def _count_public_methods(class_def: ast.ClassDef) -> int:
     """Count public methods (not starting with _) in a class."""
     count = 0
     for node in class_def.body:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and not node.name.startswith("_"):
+        if isinstance(
+            node, ast.FunctionDef | ast.AsyncFunctionDef
+        ) and not node.name.startswith("_"):
             count += 1
     return count
 
@@ -137,18 +172,36 @@ def _count_dependencies(class_def: ast.ClassDef) -> int:
 def _is_dataclass_or_model(class_def: ast.ClassDef) -> bool:
     """Check if class is a dataclass, Pydantic model, or similar data container."""
     for decorator in class_def.decorator_list:
-        if isinstance(decorator, ast.Name) and decorator.id in ("dataclass", "dataclasses"):
+        if isinstance(decorator, ast.Name) and decorator.id in (
+            "dataclass",
+            "dataclasses",
+        ):
             return True
         if isinstance(decorator, ast.Call):
-            if isinstance(decorator.func, ast.Name) and decorator.func.id in ("dataclass", "dataclasses"):
+            if isinstance(decorator.func, ast.Name) and decorator.func.id in (
+                "dataclass",
+                "dataclasses",
+            ):
                 return True
-            if isinstance(decorator.func, ast.Attribute) and decorator.func.attr in ("dataclass", "validator", "field_validator"):
+            if isinstance(decorator.func, ast.Attribute) and decorator.func.attr in (
+                "dataclass",
+                "validator",
+                "field_validator",
+            ):
                 return True
 
     for base in class_def.bases:
-        if isinstance(base, ast.Name) and base.id in ("BaseModel", "BaseSettings", "NamedTuple", "TypedDict"):
+        if isinstance(base, ast.Name) and base.id in (
+            "BaseModel",
+            "BaseSettings",
+            "NamedTuple",
+            "TypedDict",
+        ):
             return True
-        if isinstance(base, ast.Attribute) and base.attr in ("BaseModel", "BaseSettings"):
+        if isinstance(base, ast.Attribute) and base.attr in (
+            "BaseModel",
+            "BaseSettings",
+        ):
             return True
 
     return False
@@ -158,10 +211,19 @@ def _check_file_line_count(
     file_path: Path,
     project_root: Path,
     result: StructureValidationResult,
+    baseline_branch: str | None = None,
 ) -> None:
     """Check if file exceeds MAX_FILE_LINES."""
     line_count = _count_code_lines(file_path)
     if line_count > MAX_FILE_LINES:
+        if baseline_branch is not None:
+            baseline_count = _count_code_lines_at_ref(
+                project_root,
+                file_path,
+                baseline_branch,
+            )
+            if baseline_count is not None and baseline_count > MAX_FILE_LINES:
+                return
         rel_path = file_path.relative_to(project_root)
         result.add_violation(
             file_path=str(rel_path),
@@ -256,10 +318,50 @@ def _check_file_location(
             )
 
 
+def collect_changed_python_files(
+    project_root: Path,
+    *,
+    base_branch: str = "main",
+) -> list[Path]:
+    """Collect changed Python files from git diff and working tree status."""
+    if not (project_root / ".git").exists():
+        return []
+
+    candidates: set[str] = set()
+
+    diff_result = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=ACMR", f"{base_branch}...HEAD"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if diff_result.returncode == 0:
+        candidates.update(
+            line.strip() for line in diff_result.stdout.splitlines() if line.strip()
+        )
+
+    status_result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status_result.returncode == 0:
+        for line in status_result.stdout.splitlines():
+            entry = line[3:].strip() if len(line) > 3 else line.strip()
+            if entry:
+                candidates.add(entry)
+
+    return [project_root / path for path in sorted(candidates) if path.endswith(".py")]
+
+
 def validate_code_structure(
     project_root: Path,
     changed_files: list[Path] | None = None,
     check_all_src: bool = False,
+    baseline_branch: str | None = None,
 ) -> StructureValidationResult:
     """Validate code structure for the given files."""
     result = StructureValidationResult()
@@ -276,7 +378,12 @@ def validate_code_structure(
         if "/__pycache__/" in str(file_path) or file_path.name == "__pycache__":
             continue
 
-        _check_file_line_count(file_path, project_root, result)
+        _check_file_line_count(
+            file_path,
+            project_root,
+            result,
+            baseline_branch=baseline_branch,
+        )
         _check_classes_per_file(file_path, project_root, result)
         _check_god_class(file_path, project_root, result)
         _check_file_location(file_path, project_root, result)
@@ -296,16 +403,21 @@ def print_structure_validation_result(
     if errors:
         print(f"{prefix}Errors:")
         for violation in errors[:10]:
-            print(f"{prefix}  [{violation.rule}] {violation.file_path}: {violation.message}")
+            print(
+                f"{prefix}  [{violation.rule}] {violation.file_path}: {violation.message}"
+            )
         if len(errors) > 10:
             print(f"{prefix}  ... and {len(errors) - 10} more errors")
 
     if warnings:
         print(f"{prefix}Warnings:")
         for violation in warnings[:5]:
-            print(f"{prefix}  [{violation.rule}] {violation.file_path}: {violation.message}")
+            print(
+                f"{prefix}  [{violation.rule}] {violation.file_path}: {violation.message}"
+            )
         if len(warnings) > 5:
             print(f"{prefix}  ... and {len(warnings) - 5} more warnings")
+
 
 __all__ = [
     "ALLOWED_CODE_DIRS",
@@ -314,7 +426,7 @@ __all__ = [
     "MAX_PUBLIC_METHODS",
     "FileViolation",
     "StructureValidationResult",
+    "collect_changed_python_files",
     "print_structure_validation_result",
     "validate_code_structure",
 ]
-

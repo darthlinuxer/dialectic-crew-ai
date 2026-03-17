@@ -33,7 +33,11 @@ from dialectic.prioritize import dialectic_prioritize
 from dialectic.vision import VisionContext, resolve_project_root
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
-from ..code_structure import print_structure_validation_result, validate_code_structure
+from ..code_structure import (
+    collect_changed_python_files,
+    print_structure_validation_result,
+    validate_code_structure,
+)
 from ..git_helpers import (
     dirty_worktree_guidance,
     git_branch_create,
@@ -234,10 +238,7 @@ def _print_simulation_report(
     print(f"  - Execution story status: {story_status}")
     print(f"  - Tests passed: {'yes' if record.tests_passed else 'no'}")
     print(f"  - Metrics stable: {'yes' if record.metrics_stable else 'no'}")
-    print(
-        "  - Objective achieved: "
-        f"{'yes' if objective_achieved else 'no'}"
-    )
+    print(f"  - Objective achieved: {'yes' if objective_achieved else 'no'}")
     print(f"{'=' * 60}")
 
 
@@ -358,7 +359,9 @@ def _record_plan_artifacts(record: SelfImprovementRecord, plan_result: dict) -> 
     return record_plan_artifacts(record, plan_result)
 
 
-def _record_execution_artifacts(record: SelfImprovementRecord, exec_result: dict) -> None:
+def _record_execution_artifacts(
+    record: SelfImprovementRecord, exec_result: dict
+) -> None:
     record_execution_artifacts(record, exec_result)
 
 
@@ -370,7 +373,9 @@ def _self_improve_record_path(project_root: Path, cycle_id: str) -> Path:
     )
 
 
-def _save_self_improve_record(project_root: Path, record: SelfImprovementRecord) -> None:
+def _save_self_improve_record(
+    project_root: Path, record: SelfImprovementRecord
+) -> None:
     save_self_improve_record(
         project_root,
         record,
@@ -378,7 +383,9 @@ def _save_self_improve_record(project_root: Path, record: SelfImprovementRecord)
     )
 
 
-def _load_self_improve_record(project_root: Path, cycle_id: str) -> SelfImprovementRecord:
+def _load_self_improve_record(
+    project_root: Path, cycle_id: str
+) -> SelfImprovementRecord:
     return load_self_improve_record(
         project_root,
         cycle_id,
@@ -412,7 +419,12 @@ def _can_recreate_resume_branch_from_saved_state(
         return _artifact_exists(record.prd_path_json)
     if next_stage == "execution":
         return _artifact_exists(record.plan_path_json)
-    if next_stage in {"test validation", "metrics validation", "PR creation", "completed"}:
+    if next_stage in {
+        "test validation",
+        "metrics validation",
+        "PR creation",
+        "completed",
+    }:
         return _artifact_exists(record.execution_output_path) and _artifact_exists(
             record.execution_report_path
         )
@@ -422,10 +434,7 @@ def _can_recreate_resume_branch_from_saved_state(
 def _print_resume_guidance(record: SelfImprovementRecord, branch_name: str) -> None:
     if branch_name:
         print(f"  Branch preserved for resume/debugging: {branch_name}")
-    print(
-        "  Resume with: dialectic-crew self-improve "
-        f"--resume {record.cycle_id}"
-    )
+    print(f"  Resume with: dialectic-crew self-improve --resume {record.cycle_id}")
 
 
 def _list_resumable_cycles(project_root: Path) -> list[dict[str, str]]:
@@ -524,7 +533,10 @@ def _self_improve_execution_retries() -> int:
 def _simulation_runtime_environment(project_root: Path, cycle_id: str):
     runtime_root = _simulation_runtime_root(project_root, cycle_id)
     runtime_root.mkdir(parents=True, exist_ok=True)
-    pytest_addopts_parts = [os.getenv("PYTEST_ADDOPTS", "").strip(), "-p no:cacheprovider"]
+    pytest_addopts_parts = [
+        os.getenv("PYTEST_ADDOPTS", "").strip(),
+        "-p no:cacheprovider",
+    ]
     pytest_addopts = " ".join(part for part in pytest_addopts_parts if part).strip()
     overrides = {
         RUNTIME_ROOT_ENV_VAR: str(runtime_root),
@@ -583,8 +595,7 @@ def _execute_plan_with_retries(  # pylint: disable=too-many-arguments
         failure_reason: str | None = None
         if not exec_result.get("overall_success"):
             failure_reason = (
-                "Execution failed: "
-                f"{exec_result.get('story_status', 'unknown')}"
+                f"Execution failed: {exec_result.get('story_status', 'unknown')}"
             )
         _record_execution_attempt(
             record,
@@ -658,7 +669,9 @@ def _prepare_simulation_branch(project_root: Path) -> tuple[bool, str]:
         _git_discard_branch(SIMULATION_BRANCH_NAME, project_root)
         print("  Discarded currently checked-out simulate branch before recreating it.")
     elif _git_branch_exists(SIMULATION_BRANCH_NAME, project_root):
-        deleted, delete_reason = _git_delete_branch(SIMULATION_BRANCH_NAME, project_root)
+        deleted, delete_reason = _git_delete_branch(
+            SIMULATION_BRANCH_NAME, project_root
+        )
         if not deleted:
             return False, delete_reason
         print(f"  Deleted previous simulate branch: {delete_reason}")
@@ -673,15 +686,21 @@ def _cleanup_simulation_branch(project_root: Path) -> None:
     if current_branch == SIMULATION_BRANCH_NAME:
         reset_ok, reset_reason = _git_reset_hard_head(project_root)
         if not reset_ok:
-            print(f"  WARN: failed to reset simulate branch before cleanup: {reset_reason}")
+            print(
+                f"  WARN: failed to reset simulate branch before cleanup: {reset_reason}"
+            )
         clean_ok, clean_reason = _git_clean_untracked(project_root)
         if not clean_ok:
-            print(f"  WARN: failed to clean simulate branch before cleanup: {clean_reason}")
+            print(
+                f"  WARN: failed to clean simulate branch before cleanup: {clean_reason}"
+            )
         _git_discard_branch(SIMULATION_BRANCH_NAME, project_root)
         return
 
     if _git_branch_exists(SIMULATION_BRANCH_NAME, project_root):
-        deleted, delete_reason = _git_delete_branch(SIMULATION_BRANCH_NAME, project_root)
+        deleted, delete_reason = _git_delete_branch(
+            SIMULATION_BRANCH_NAME, project_root
+        )
         if not deleted:
             print(f"  WARN: failed to delete simulate branch: {delete_reason}")
 
@@ -706,12 +725,16 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     if simulate and resume_cycle_id is not None:
         raise ValueError("self-improve simulation does not support --resume")
     if artifact_path is not None and resume_cycle_id is not None:
-        raise ValueError("self-improve does not support using an artifact path with --resume")
+        raise ValueError(
+            "self-improve does not support using an artifact path with --resume"
+        )
 
     _configure_crewai_runtime()
     project_root = resolve_project_root()
     is_resume = resume_cycle_id is not None
-    supplied_artifact = _load_starting_artifact(artifact_path) if artifact_path else None
+    supplied_artifact = (
+        _load_starting_artifact(artifact_path) if artifact_path else None
+    )
     cycle_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     branch_name = SIMULATION_BRANCH_NAME if simulate else ""
     resume_summary: dict[str, str | list[str]] = {}
@@ -778,9 +801,11 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 simulation_branch_active = True
                 _save_self_improve_record(project_root, record)
 
-            print(f"\n{'='*60}")
-            print(f"Self-Improvement Cycle {cycle_id}{' (resume)' if is_resume else ''}")
-            print(f"{'='*60}")
+            print(f"\n{'=' * 60}")
+            print(
+                f"Self-Improvement Cycle {cycle_id}{' (resume)' if is_resume else ''}"
+            )
+            print(f"{'=' * 60}")
             if is_resume:
                 print(f"[resume] Last failure: {resume_summary['last_failure']}")
                 print(f"[resume] Next stage: {resume_summary['next_stage']}")
@@ -801,7 +826,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     print("\n[1/6] Running baseline tests...")
                     baseline_tests = _snapshot_tests(project_root)
                     if not baseline_tests["passed"]:
-                        record.failure_reason = "Baseline tests already failing -- aborting"
+                        record.failure_reason = (
+                            "Baseline tests already failing -- aborting"
+                        )
                         print(f"  ABORT: {record.failure_reason}")
                         _emit_test_failure_details(baseline_tests)
                         _persist_record(store, record)
@@ -831,7 +858,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 print(f"[resume] Loaded {len(selected)} saved opportunities.")
             elif supplied_artifact is not None:
                 artifact_kind, supplied_artifact_path = supplied_artifact
-                selected = [_make_artifact_opportunity(artifact_kind, supplied_artifact_path)]
+                selected = [
+                    _make_artifact_opportunity(artifact_kind, supplied_artifact_path)
+                ]
                 report = IntrospectionReport(
                     timestamp=record.timestamp,
                     opportunities=selected,
@@ -840,7 +869,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 record.opportunities_found = len(selected)
                 record.selected_opportunities = selected
                 record.opportunities_attempted = len(selected)
-                branch_name = SIMULATION_BRANCH_NAME if simulate else f"self-improve/{cycle_id}"
+                branch_name = (
+                    SIMULATION_BRANCH_NAME if simulate else f"self-improve/{cycle_id}"
+                )
                 record.branch_name = branch_name
                 if artifact_kind == "prd":
                     record.prd_generated = True
@@ -856,8 +887,12 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 )
             else:
                 current_stage = "introspection"
-                print("[2/6] Running introspection against SELF_VISION.md + ROADMAP.md...")
-                report = run_introspection(store=store, vision_context=VisionContext.SELF)
+                print(
+                    "[2/6] Running introspection against SELF_VISION.md + ROADMAP.md..."
+                )
+                report = run_introspection(
+                    store=store, vision_context=VisionContext.SELF
+                )
                 record.opportunities_found = len(report.opportunities)
                 record.baseline_metrics = dict(report.baseline_metrics)
 
@@ -891,7 +926,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             "Dialectic prioritization failed: %s; using impact sort",
                             e,
                         )
-                        print(f"  Prioritization failed ({e}); falling back to impact sort.")
+                        print(
+                            f"  Prioritization failed ({e}); falling back to impact sort."
+                        )
                         prioritized = sorted(
                             report.opportunities,
                             key=lambda o: {
@@ -903,7 +940,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 selected = prioritized[:max_improvements]
                 record.selected_opportunities = selected
                 record.opportunities_attempted = len(selected)
-                branch_name = SIMULATION_BRANCH_NAME if simulate else f"self-improve/{cycle_id}"
+                branch_name = (
+                    SIMULATION_BRANCH_NAME if simulate else f"self-improve/{cycle_id}"
+                )
                 record.branch_name = branch_name
                 _save_self_improve_record(project_root, record)
             print("  Prioritized order:")
@@ -933,19 +972,22 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 if git_metadata_exists and _command_available("git"):
                     current_branch = _git_current_branch(project_root)
                     if current_branch != branch_name:
-                        switched, switch_reason = _git_checkout_branch(branch_name, project_root)
+                        switched, switch_reason = _git_checkout_branch(
+                            branch_name, project_root
+                        )
                         if not switched:
-                            can_recreate_from_saved_state = (
-                                current_branch.startswith("self-improve/")
-                                or _can_recreate_resume_branch_from_saved_state(
-                                    record,
-                                    resume_summary,
-                                )
+                            can_recreate_from_saved_state = current_branch.startswith(
+                                "self-improve/"
+                            ) or _can_recreate_resume_branch_from_saved_state(
+                                record,
+                                resume_summary,
                             )
                             if can_recreate_from_saved_state:
-                                recreated, recreate_reason = _git_branch_create_from_head(
-                                    branch_name,
-                                    project_root,
+                                recreated, recreate_reason = (
+                                    _git_branch_create_from_head(
+                                        branch_name,
+                                        project_root,
+                                    )
                                 )
                                 if not recreated:
                                     record.failure_reason = (
@@ -964,9 +1006,8 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                                     f"{recreate_source}: {branch_name}"
                                 )
                             else:
-                                record.failure_reason = (
-                                    f"Failed to resume on branch '{branch_name}': {switch_reason}"
-                                )
+                                # pylint: disable-next=line-too-long
+                                record.failure_reason = f"Failed to resume on branch '{branch_name}': {switch_reason}"
                                 print(f"  ABORT: {record.failure_reason}")
                                 _persist_record(store, record)
                                 _save_self_improve_record(project_root, record)
@@ -1080,9 +1121,8 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             plan_path = _record_plan_artifacts(record, plan_result)
                             _save_self_improve_record(project_root, record)
                             if plan_result["quality_score"] < 7.5:
-                                record.failure_reason = (
-                                    f"Plan quality too low: {plan_result['quality_score']}"
-                                )
+                                # pylint: disable-next=line-too-long
+                                record.failure_reason = f"Plan quality too low: {plan_result['quality_score']}"
                                 raise _CycleAbort(record.failure_reason)
                             plan_path = _require_artifact(
                                 plan_path,
@@ -1146,7 +1186,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                         record.selected_opportunities = list(
                             report.opportunities[:max_improvements]
                         )
-                        record.opportunities_attempted = len(record.selected_opportunities)
+                        record.opportunities_attempted = len(
+                            record.selected_opportunities
+                        )
                     interruption_reason = f"Interrupted during {current_stage}"
                     record.failure_reason = interruption_reason
                     print(f"\n  {interruption_reason}. Saving cycle state...")
@@ -1187,7 +1229,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 record.estimated_cost = tracker.estimated_cost
 
             current_stage = "quality gate"
-            print(f"\n  Token usage: {record.total_tokens} tokens, ${record.estimated_cost:.4f}")
+            print(
+                f"\n  Token usage: {record.total_tokens} tokens, ${record.estimated_cost:.4f}"
+            )
 
             print("\n[7a/9] Validating: running code quality checks...")
             quality_result = run_quality_gate(project_root)
@@ -1204,9 +1248,16 @@ def run_self_improve(  # pylint: disable=too-many-arguments
 
             current_stage = "structure validation"
             print("\n[7b/9] Validating: code structure (SOLID, deep modules)...")
-            structure_result = validate_code_structure(project_root, check_all_src=True)
+            structure_targets = collect_changed_python_files(project_root)
+            structure_result = validate_code_structure(
+                project_root,
+                changed_files=structure_targets,
+                baseline_branch="main",
+            )
             if not structure_result.passed:
-                record.failure_reason = f"Structure validation failed: {structure_result.summary}"
+                record.failure_reason = (
+                    f"Structure validation failed: {structure_result.summary}"
+                )
                 print(f"  FAIL: {record.failure_reason}")
                 print_structure_validation_result(structure_result)
                 if not simulate:
@@ -1259,7 +1310,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
 
             if simulate:
                 record.failure_reason = SIMULATED_CYCLE_RESULT
-                print("\nSimulation completed successfully. Cleaning up disposable branch...")
+                print(
+                    "\nSimulation completed successfully. Cleaning up disposable branch..."
+                )
                 _print_simulation_report(
                     record,
                     selected,
@@ -1270,7 +1323,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 _save_self_improve_record(project_root, record)
                 return record
 
-            completed_roadmap_items = _mark_roadmap_items_completed(project_root, selected)
+            completed_roadmap_items = _mark_roadmap_items_completed(
+                project_root, selected
+            )
             if completed_roadmap_items:
                 print("  Updated roadmap items:")
                 for item in completed_roadmap_items:
@@ -1290,8 +1345,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             ahead, ahead_reason = _git_has_commits_ahead(project_root)
             if not ahead:
                 record.failure_reason = (
-                    "No committable source changes were produced "
-                    "after validation"
+                    "No committable source changes were produced after validation"
                 )
                 print(f"  PR skipped: {record.failure_reason}")
                 print(f"  Details: {ahead_reason}")

@@ -1,5 +1,10 @@
 """Tests for the code structure validation module."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=too-few-public-methods
+
+from unittest.mock import MagicMock, patch
+
 from src.main.self_improve.code_structure import (
     MAX_FILE_LINES,
     MAX_PUBLIC_METHODS,
@@ -9,6 +14,7 @@ from src.main.self_improve.code_structure import (
     _count_public_methods,
     _extract_classes,
     _is_dataclass_or_model,
+    collect_changed_python_files,
     validate_code_structure,
 )
 
@@ -213,7 +219,9 @@ class Bar:
         src = tmp_path / "src"
         src.mkdir()
         file = src / "god.py"
-        methods = "\n".join([f"    def method{i}(self): pass" for i in range(MAX_PUBLIC_METHODS + 5)])
+        methods = "\n".join(
+            [f"    def method{i}(self): pass" for i in range(MAX_PUBLIC_METHODS + 5)]
+        )
         content = f"class GodClass:\n{methods}\n"
         file.write_text(content)
 
@@ -269,3 +277,74 @@ class GoodClass:
 
         result = validate_code_structure(tmp_path, check_all_src=True)
         assert result.passed is True
+
+    def test_skips_preexisting_large_file_when_baseline_also_exceeds_limit(
+        self, tmp_path, monkeypatch
+    ):
+        src = tmp_path / "src"
+        src.mkdir()
+        file = src / "legacy_big.py"
+        file.write_text("".join(["x = 1\n"] * (MAX_FILE_LINES + 10)))
+
+        monkeypatch.setattr(
+            "src.main.self_improve.code_structure._count_code_lines_at_ref",
+            lambda *args, **kwargs: MAX_FILE_LINES + 5,
+        )
+
+        result = validate_code_structure(
+            tmp_path,
+            [file],
+            baseline_branch="main",
+        )
+
+        assert result.passed is True
+        assert not result.violations
+
+    def test_flags_large_file_when_baseline_did_not_exceed_limit(
+        self, tmp_path, monkeypatch
+    ):
+        src = tmp_path / "src"
+        src.mkdir()
+        file = src / "new_big.py"
+        file.write_text("".join(["x = 1\n"] * (MAX_FILE_LINES + 10)))
+
+        monkeypatch.setattr(
+            "src.main.self_improve.code_structure._count_code_lines_at_ref",
+            lambda *args, **kwargs: MAX_FILE_LINES - 1,
+        )
+
+        result = validate_code_structure(
+            tmp_path,
+            [file],
+            baseline_branch="main",
+        )
+
+        assert result.passed is False
+        assert any(v.rule == "max-file-lines" for v in result.violations)
+
+
+class TestCollectChangedPythonFiles:
+    @patch("src.main.self_improve.code_structure.subprocess.run")
+    def test_collects_diff_and_status_python_files(self, mock_run, tmp_path):
+        (tmp_path / ".git").mkdir()
+        mock_run.side_effect = [
+            MagicMock(
+                returncode=0,
+                stdout="src/dialectic/agents.py\nsrc/README.md\nlib/tool.py\n",
+                stderr="",
+            ),
+            MagicMock(
+                returncode=0,
+                stdout=" M src/main/cli/entrypoint.py\n?? tests/test_cli_runtime.py\n",
+                stderr="",
+            ),
+        ]
+
+        files = collect_changed_python_files(tmp_path)
+
+        assert files == [
+            tmp_path / "lib/tool.py",
+            tmp_path / "src/dialectic/agents.py",
+            tmp_path / "src/main/cli/entrypoint.py",
+            tmp_path / "tests/test_cli_runtime.py",
+        ]

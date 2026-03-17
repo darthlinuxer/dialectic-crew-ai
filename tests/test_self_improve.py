@@ -482,7 +482,7 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve.validate_code_structure",
-            lambda cwd, check_all_src=True: type(
+            lambda cwd, **kwargs: type(
                 "StructureResult",
                 (),
                 {"passed": True, "summary": "ok", "violations": []},
@@ -827,7 +827,7 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve.validate_code_structure",
-            lambda cwd, check_all_src=True: type(
+            lambda cwd, **kwargs: type(
                 "StructureResult",
                 (),
                 {"passed": True, "summary": "ok", "violations": []},
@@ -937,7 +937,7 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve.validate_code_structure",
-            lambda cwd, check_all_src=True: type(
+            lambda cwd, **kwargs: type(
                 "StructureResult",
                 (),
                 {"passed": True, "summary": "ok", "violations": []},
@@ -1030,7 +1030,7 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve.validate_code_structure",
-            lambda cwd, check_all_src=True: type(
+            lambda cwd, **kwargs: type(
                 "StructureResult",
                 (),
                 {"passed": True, "summary": "ok", "violations": []},
@@ -1117,7 +1117,7 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve.validate_code_structure",
-            lambda cwd, check_all_src=True: type(
+            lambda cwd, **kwargs: type(
                 "StructureResult",
                 (),
                 {"passed": True, "summary": "ok", "violations": []},
@@ -2090,7 +2090,7 @@ class TestFailureBranchPreservation:
         )
         monkeypatch.setattr(
             "main.self_improve.validate_code_structure",
-            lambda cwd, check_all_src=True: type(
+            lambda cwd, **kwargs: type(
                 "StructureResult",
                 (),
                 {"passed": True, "summary": "ok", "violations": []},
@@ -2293,7 +2293,7 @@ class TestTokenBudgetIntegration:
         )
         monkeypatch.setattr(
             "main.self_improve.validate_code_structure",
-            lambda cwd, check_all_src=True: type(
+            lambda cwd, **kwargs: type(
                 "StructureResult",
                 (),
                 {"passed": True, "summary": "ok", "violations": []},

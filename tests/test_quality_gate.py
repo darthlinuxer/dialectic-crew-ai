@@ -1,17 +1,21 @@
 """Tests for the quality gate module."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=too-few-public-methods,too-many-arguments
+# pylint: disable=too-many-positional-arguments
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from src.main.self_improve.quality_gate import (
     QualityCheckResult,
     QualityGateResult,
-    _build_mypy_command,
-    _collect_touched_python_files,
     _run_mypy,
     _run_ruff_check,
     _run_ruff_format_check,
     _run_pyright,
+    build_mypy_command,
+    collect_touched_python_files,
     run_quality_gate,
 )
 
@@ -24,7 +28,7 @@ class TestQualityCheckResult:
         assert result.error_count == 0
         assert result.warning_count == 0
         assert result.output == ""
-        assert result.errors == []
+        assert not result.errors
 
 
 class TestQualityGateResult:
@@ -52,22 +56,22 @@ class TestQualityGateResult:
 
 
 class TestRuffCheck:
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_ruff_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_ruff_check(Path("/tmp"))
         assert result.passed is True
         assert "not available" in result.output
 
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_target_path_missing(self, mock_available):
         mock_available.return_value = True
         result = _run_ruff_check(Path("/nonexistent"), "src/")
         assert result.passed is True
         assert "does not exist" in result.output
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_ruff_passes(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
@@ -80,13 +84,16 @@ class TestRuffCheck:
             Path("/tmp"),
         )
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_ruff_fails_with_errors(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(
             returncode=1,
-            stdout='[{"filename": "test.py", "location": {"row": 1}, "code": "E501", "message": "line too long"}]',
+            stdout=(
+                '[{"filename": "test.py", "location": {"row": 1}, '
+                '"code": "E501", "message": "line too long"}]'
+            ),
             stderr="",
         )
         with patch.object(Path, "exists", return_value=True):
@@ -95,8 +102,8 @@ class TestRuffCheck:
         assert result.error_count == 1
         assert len(result.errors) == 1
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_ruff_scopes_to_touched_files(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stdout="[]", stderr="")
@@ -120,14 +127,14 @@ class TestRuffCheck:
 
 
 class TestRuffFormatCheck:
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_ruff_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_ruff_format_check(Path("/tmp"))
         assert result.passed is True
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_format_passes(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -135,8 +142,8 @@ class TestRuffFormatCheck:
             result = _run_ruff_format_check(Path("/tmp"), "src/")
         assert result.passed is True
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_format_fails(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(
@@ -148,7 +155,7 @@ class TestRuffFormatCheck:
             result = _run_ruff_format_check(Path("/tmp"), "src/")
         assert result.passed is False
 
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_format_skips_when_no_touched_python_files(self, mock_available):
         mock_available.return_value = True
 
@@ -160,7 +167,7 @@ class TestRuffFormatCheck:
 
 class TestMypyCheck:
     def test_build_mypy_command_uses_explicit_package_bases(self):
-        command = _build_mypy_command(
+        command = build_mypy_command(
             ["src/dialectic/agents.py", "src/main/cli/entrypoint.py", "src/schemas.py"]
         )
 
@@ -178,14 +185,14 @@ class TestMypyCheck:
         ]
         assert env["MYPYPATH"].startswith("src")
 
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_mypy_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_mypy(Path("/tmp"))
         assert result.passed is True
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_mypy_passes(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(returncode=0, stdout="Success", stderr="")
@@ -198,8 +205,8 @@ class TestMypyCheck:
         assert called_cmd[:3] == ["mypy", "--explicit-package-bases", "-p"]
         assert called_env["MYPYPATH"].startswith("src")
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_mypy_fails(self, mock_available, mock_run):
         mock_available.return_value = True
         mock_run.return_value = MagicMock(
@@ -214,20 +221,23 @@ class TestMypyCheck:
 
 
 class TestPyrightCheck:
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_pyright_not_available(self, mock_available):
         mock_available.return_value = False
         result = _run_pyright(Path("/tmp"))
         assert result.passed is True  # pyright is warn-only
 
-    @patch("src.main.self_improve.quality_gate._run_cmd")
-    @patch("src.main.self_improve.quality_gate._command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
     def test_pyright_always_passes(self, mock_available, mock_run):
         """Pyright is warn-only, so it should always pass."""
         mock_available.return_value = True
         mock_run.return_value = MagicMock(
             returncode=1,
-            stdout='{"generalDiagnostics": [{"severity": 1, "message": "error", "file": "test.py", "range": {"start": {"line": 1}}}]}',
+            stdout=(
+                '{"generalDiagnostics": [{"severity": 1, "message": "error", '
+                '"file": "test.py", "range": {"start": {"line": 1}}}]}'
+            ),
             stderr="",
         )
         with patch.object(Path, "exists", return_value=True):
@@ -237,7 +247,7 @@ class TestPyrightCheck:
 
 
 class TestRunQualityGate:
-    @patch("src.main.self_improve.quality_gate._collect_touched_python_files")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
     @patch("src.main.self_improve.quality_gate._run_pyright")
     @patch("src.main.self_improve.quality_gate._run_mypy")
     @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
@@ -260,7 +270,7 @@ class TestRunQualityGate:
             touched_files=["src/dialectic/agents.py"],
         )
 
-    @patch("src.main.self_improve.quality_gate._collect_touched_python_files")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
     @patch("src.main.self_improve.quality_gate._run_pyright")
     @patch("src.main.self_improve.quality_gate._run_mypy")
     @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
@@ -270,14 +280,18 @@ class TestRunQualityGate:
     ):
         mock_collect.return_value = ["src/dialectic/agents.py"]
         mock_ruff.return_value = QualityCheckResult(tool="ruff-lint", passed=True)
-        mock_format.return_value = QualityCheckResult(tool="ruff-format", passed=False, error_count=1)
+        mock_format.return_value = QualityCheckResult(
+            tool="ruff-format",
+            passed=False,
+            error_count=1,
+        )
         mock_mypy.return_value = QualityCheckResult(tool="mypy", passed=True)
         mock_pyright.return_value = QualityCheckResult(tool="pyright", passed=True)
 
         result = run_quality_gate(Path("/tmp"))
         assert result.passed is False
 
-    @patch("src.main.self_improve.quality_gate._collect_touched_python_files")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
     @patch("src.main.self_improve.quality_gate._run_mypy")
     @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
     @patch("src.main.self_improve.quality_gate._run_ruff_check")
@@ -293,14 +307,22 @@ class TestRunQualityGate:
 
 
 class TestTouchedFileCollection:
-    @patch("src.main.self_improve.quality_gate._run_cmd")
+    @patch("src.main.self_improve.quality_gate_helpers.run_cmd")
     def test_collect_touched_python_files_uses_branch_diff_and_status(self, mock_run):
         mock_run.side_effect = [
-            MagicMock(returncode=0, stdout="src/dialectic/agents.py\nsrc/README.md\n", stderr=""),
-            MagicMock(returncode=0, stdout=" M src/main/cli/entrypoint.py\n?? tests/test_cli_runtime.py\n", stderr=""),
+            MagicMock(
+                returncode=0,
+                stdout="src/dialectic/agents.py\nsrc/README.md\n",
+                stderr="",
+            ),
+            MagicMock(
+                returncode=0,
+                stdout=" M src/main/cli/entrypoint.py\n?? tests/test_cli_runtime.py\n",
+                stderr="",
+            ),
         ]
 
         with patch.object(Path, "exists", return_value=True):
-            files = _collect_touched_python_files(Path("/tmp"))
+            files = collect_touched_python_files(Path("/tmp"))
 
         assert files == ["src/dialectic/agents.py", "src/main/cli/entrypoint.py"]
