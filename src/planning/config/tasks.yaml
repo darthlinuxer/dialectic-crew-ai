@@ -9,6 +9,7 @@ thesis_plan:
     {retry_feedback_block}
 
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}` is available via your knowledge sources).
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
     Generate the THESIS: an initial implementation plan for this user story.
     Include:
     1. Summarized technical approach (approach_summary)
@@ -30,6 +31,7 @@ thesis_plan:
 antithesis_plan:
   description: |
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}` is available via your knowledge sources).
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
 
     The implementation proposal (thesis) for the user story is in context.
 
@@ -50,6 +52,7 @@ synthesis_plan:
     USER STORY: {us_id} — {us_title}
 
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}` is available via your knowledge sources).
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
 
     You received:
     - The thesis: implementation plan from the Visionary
@@ -77,6 +80,7 @@ validation_plan:
     produce the final document.
 
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}` is available via your knowledge sources).
+    Treat the knowledge-source content for `{vision_path}` as authoritative.
 
     {retry_feedback_block}
 

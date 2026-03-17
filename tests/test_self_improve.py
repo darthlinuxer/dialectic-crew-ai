@@ -313,6 +313,66 @@ class TestRunSelfImprove:
         resume_summary = _summarize_resume_state(record, record.failure_reason)
         assert resume_summary["next_stage"] == "PRD generation"
 
+    def test_enables_shutdown_noise_suppression_when_interrupted(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Suppress shutdown noise on interrupt\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda branch, cwd: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda branch, cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+
+        opportunity = ImprovementOpportunity(
+            id="vision-gap-2",
+            category="code_health",
+            title="Suppress shutdown noise",
+            description="Enable known shutdown-noise suppression on user interrupt.",
+            evidence=["internal/ROADMAP.md"],
+            estimated_impact="high",
+        )
+        report = IntrospectionReport(
+            timestamp="2026-03-16T00:00:00+00:00",
+            opportunities=[opportunity],
+            baseline_metrics={},
+        )
+
+        monkeypatch.setattr("main.self_improve.run_introspection", lambda **kwargs: report)
+
+        suppression_calls: list[str] = []
+        monkeypatch.setattr(
+            "main.self_improve.enable_shutdown_noise_suppression",
+            lambda: suppression_calls.append("enabled"),
+        )
+
+        def interrupt_prioritization(opps, **kwargs):
+            del opps, kwargs
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize",
+            interrupt_prioritization,
+        )
+
+        with pytest.raises(KeyboardInterrupt):
+            run_self_improve()
+
+        assert suppression_calls == ["enabled"]
+
     def test_retries_transient_llm_timeout_during_prd_generation(
         self,
         tmp_path,

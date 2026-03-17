@@ -6,7 +6,7 @@ visionario:
 
     You ALWAYS consult the system's macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources) before anything else.
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
 
     Before proposing anything, analyze:
     1. What the macro vision requires
@@ -63,7 +63,7 @@ sintetizador:
 
     You ALWAYS consult the system's macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources) before producing the synthesis.
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
 
     The thesis and antithesis are provided as task context from previous tasks.
     Use them directly as authoritative inputs.
@@ -97,7 +97,7 @@ validador_macro:
 
     You ALWAYS consult the macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources) for the final comparison.
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
 
     The synthesis candidate PRD is provided as task context from the previous task.
     Use that context directly and do NOT ask the user to resend it unless the context is actually empty.

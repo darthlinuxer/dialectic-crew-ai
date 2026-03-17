@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import threading
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
@@ -46,6 +47,10 @@ _OPTIONAL_RECORD_KEYS = (
     "iteration",
     "retry",
 )
+_SHUTDOWN_NOISE_PATTERNS = (
+    re.compile(r"cannot schedule new futures after shutdown", re.IGNORECASE),
+    re.compile(r"Error emitting reasoning failed event", re.IGNORECASE),
+)
 _DEFAULT_CONTEXT = {key: "-" for key in _LOG_CONTEXT_KEYS}
 _runtime_log_context: ContextVar[dict[str, str]] = ContextVar(
     "dialectic_runtime_log_context",
@@ -58,9 +63,12 @@ _installed_handlers: list[logging.Handler] = []
 class _LoggingRuntimeState:
     installed_filter: logging.Filter | None = None
     configured_signature: tuple[Any, ...] | None = None
+    suppress_shutdown_noise: bool = False
+    suppression_lock: threading.Lock | None = None
 
 
 _LOGGING_RUNTIME_STATE = _LoggingRuntimeState()
+_LOGGING_RUNTIME_STATE.suppression_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -201,6 +209,8 @@ class RuntimeContextFilter(logging.Filter):
     """Inject stable runtime context fields into every log record."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if _should_suppress_shutdown_noise(record):
+            return False
         context = get_log_context()
         for key in _LOG_CONTEXT_KEYS:
             setattr(record, key, context.get(key, "-"))
@@ -253,9 +263,38 @@ def _build_rotating_handler(
     return handler
 
 
+def _should_suppress_shutdown_noise(record: logging.LogRecord) -> bool:
+    if not _LOGGING_RUNTIME_STATE.suppress_shutdown_noise:
+        return False
+    message = record.getMessage()
+    return any(pattern.search(message) for pattern in _SHUTDOWN_NOISE_PATTERNS)
+
+
+def enable_shutdown_noise_suppression() -> None:
+    lock = _LOGGING_RUNTIME_STATE.suppression_lock
+    if lock is None:
+        _LOGGING_RUNTIME_STATE.suppress_shutdown_noise = True
+        return
+    with lock:
+        _LOGGING_RUNTIME_STATE.suppress_shutdown_noise = True
+
+
+def disable_shutdown_noise_suppression() -> None:
+    lock = _LOGGING_RUNTIME_STATE.suppression_lock
+    if lock is None:
+        _LOGGING_RUNTIME_STATE.suppress_shutdown_noise = False
+        return
+    with lock:
+        _LOGGING_RUNTIME_STATE.suppress_shutdown_noise = False
+
+
 def shutdown_application_logging() -> None:
     root_logger = logging.getLogger()
-    for handler in _installed_handlers:
+    for handler in list(_installed_handlers):
+        try:
+            handler.flush()
+        except (OSError, ValueError):  # pragma: no cover - defensive logging cleanup
+            pass
         root_logger.removeHandler(handler)
         handler.close()
     _installed_handlers.clear()
@@ -263,6 +302,7 @@ def shutdown_application_logging() -> None:
         root_logger.removeFilter(_LOGGING_RUNTIME_STATE.installed_filter)
         _LOGGING_RUNTIME_STATE.installed_filter = None
     _LOGGING_RUNTIME_STATE.configured_signature = None
+    disable_shutdown_noise_suppression()
 
 
 def configure_application_logging(*, force: bool = False) -> LoggingConfig:
@@ -340,6 +380,8 @@ __all__ = [
     "LoggingConfig",
     "bind_log_context",
     "configure_application_logging",
+    "disable_shutdown_noise_suppression",
+    "enable_shutdown_noise_suppression",
     "get_log_context",
     "get_logging_config",
     "log_context",

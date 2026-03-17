@@ -13,9 +13,11 @@ from typing import cast
 from dialectic.app_logging import (
     bind_log_context,
     configure_application_logging,
+    enable_shutdown_noise_suppression,
     get_log_context,
     get_logging_config,
     reset_log_context,
+    disable_shutdown_noise_suppression,
     shutdown_application_logging,
 )
 from execution.task_guardrails import _text_result_guardrail
@@ -205,3 +207,28 @@ def test_text_result_guardrail_json_log_includes_guardrail_reason(tmp_path, monk
     assert json_line["guardrail"] == "text_result"
     assert json_line["reason"] == "tool_call_output"
     assert "ChatCompletionMessageFunctionToolCall" in cast(str, json_line["preview"])
+
+
+def test_shutdown_noise_suppression_filters_known_interrupt_errors(tmp_path, monkeypatch):
+    monkeypatch.setenv("DIALECTIC_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("DIALECTIC_LOG_TO_STDERR", "false")
+    shutdown_application_logging()
+
+    config = configure_application_logging(force=True)
+    logger = logging.getLogger("tests.shutdown-noise")
+
+    try:
+        enable_shutdown_noise_suppression()
+        logger.error("OpenAI API call failed: cannot schedule new futures after shutdown")
+        logger.error(
+            "Error during fallback text parsing: cannot schedule new futures after shutdown"
+        )
+        logger.error("A real error that should still be logged")
+    finally:
+        disable_shutdown_noise_suppression()
+        logging.shutdown()
+        shutdown_application_logging()
+
+    error_log = config.error_log_path.read_text(encoding="utf-8")
+    assert "cannot schedule new futures after shutdown" not in error_log
+    assert "A real error that should still be logged" in error_log

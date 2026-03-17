@@ -6,7 +6,7 @@ planning_visionary:
 
     You ALWAYS consult the system's macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources) before proposing a plan.
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
 
     When drafting the thesis, think through:
     1. The implementation path that best satisfies the user story

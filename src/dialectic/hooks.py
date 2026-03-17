@@ -182,7 +182,7 @@ def _after_llm_call_hook(context: LLMCallHookContext) -> str | None:
 
 
 def _before_tool_call_hook(context: ToolCallHookContext) -> bool | None:
-    """Pre-tool hook: block writes to protected paths, log invocations."""
+    """Pre-tool hook: block writes to protected paths, but allow reads, and log invocations."""
     scope = _get_active_scope()
     if scope is None:
         return None

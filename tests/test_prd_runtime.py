@@ -187,7 +187,52 @@ def test_build_prd_crew_includes_exact_vision_path_in_prompts(monkeypatch):
 
     for task in captured_tasks:
         assert "internal/SELF_VISION.md" in task["description"]
-        assert "lack of file-tool access is NOT a blocker" in task["description"]
+        assert "Treat the knowledge-source content" in task["description"]
+        assert "Rely on the provided knowledge sources and task context" in task["description"]
+        assert "If direct file tools are available" not in task["description"]
+
+
+def test_build_prd_crew_prefers_knowledge_sources_over_direct_file_reads(monkeypatch):
+    """SELF PRD crews must keep the vision in knowledge sources even when agents start with tools."""
+
+    captured_crew = {}
+
+    class FakeTask:  # pylint: disable=too-few-public-methods
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    class FakeCrew:  # pylint: disable=too-few-public-methods
+        def __init__(self, **kwargs):
+            captured_crew.update(kwargs)
+
+    class FakeAgent:  # pylint: disable=too-few-public-methods
+        def __init__(self, label):
+            self.label = label
+            self.tools = [f"tool:{label}"]
+            self.mcps = [f"mcp:{label}"]
+            self.mcp_servers = [f"server:{label}"]
+
+    monkeypatch.setattr(prd_runtime, "Task", FakeTask)
+    monkeypatch.setattr(prd_runtime, "Crew", FakeCrew)
+    monkeypatch.setattr(prd_runtime, "create_visionario", lambda ctx: FakeAgent("visionario"))
+    monkeypatch.setattr(prd_runtime, "create_critico_socratico", lambda ctx: FakeAgent("critico"))
+    monkeypatch.setattr(prd_runtime, "create_sintetizador", lambda ctx: FakeAgent("sint"))
+    monkeypatch.setattr(prd_runtime, "create_validador_macro", lambda ctx: FakeAgent("val"))
+    monkeypatch.setattr(prd_runtime, "crew_memory", lambda ctx, namespace: None)
+    monkeypatch.setattr(prd_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+
+    prd_runtime.build_prd_crew(
+        feature_objective="Keep SELF vision knowledge authoritative",
+        vision_context=VisionContext.SELF,
+        retry_feedback_block="",
+        retry_feedback_sources=["feedback-source"],
+    )
+
+    assert captured_crew["knowledge_sources"] == ["vision:self", "feedback-source"]
+    for agent in captured_crew["agents"]:
+        assert agent.tools == []
+        assert agent.mcps == []
+        assert agent.mcp_servers == []
 
 
 def test_build_prd_crew_prompts_require_using_upstream_task_context(monkeypatch):
