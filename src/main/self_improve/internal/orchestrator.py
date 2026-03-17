@@ -399,6 +399,35 @@ def _summarize_resume_state(
     return summarize_resume_state(record, last_failure_reason)
 
 
+def _artifact_exists(path: str) -> bool:
+    return bool(path) and Path(path).expanduser().exists()
+
+
+def _can_recreate_resume_branch_from_saved_state(
+    record: SelfImprovementRecord,
+    resume_summary: dict[str, str | list[str]],
+) -> bool:
+    next_stage = str(resume_summary.get("next_stage", ""))
+    if next_stage == "planning":
+        return _artifact_exists(record.prd_path_json)
+    if next_stage == "execution":
+        return _artifact_exists(record.plan_path_json)
+    if next_stage in {"test validation", "metrics validation", "PR creation", "completed"}:
+        return _artifact_exists(record.execution_output_path) and _artifact_exists(
+            record.execution_report_path
+        )
+    return False
+
+
+def _print_resume_guidance(record: SelfImprovementRecord, branch_name: str) -> None:
+    if branch_name:
+        print(f"  Branch preserved for resume/debugging: {branch_name}")
+    print(
+        "  Resume with: dialectic-crew self-improve "
+        f"--resume {record.cycle_id}"
+    )
+
+
 def _list_resumable_cycles(project_root: Path) -> list[dict[str, str]]:
     return list_resumable_cycles(project_root, state_dir=SELF_IMPROVE_STATE_DIR)
 
@@ -906,7 +935,14 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     if current_branch != branch_name:
                         switched, switch_reason = _git_checkout_branch(branch_name, project_root)
                         if not switched:
-                            if current_branch.startswith("self-improve/"):
+                            can_recreate_from_saved_state = (
+                                current_branch.startswith("self-improve/")
+                                or _can_recreate_resume_branch_from_saved_state(
+                                    record,
+                                    resume_summary,
+                                )
+                            )
+                            if can_recreate_from_saved_state:
                                 recreated, recreate_reason = _git_branch_create_from_head(
                                     branch_name,
                                     project_root,
@@ -922,9 +958,10 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                                     _persist_record(store, record)
                                     _save_self_improve_record(project_root, record)
                                     return record
+                                recreate_source = current_branch or "current HEAD"
                                 print(
                                     "  Recreated recorded branch from "
-                                    f"{current_branch}: {branch_name}"
+                                    f"{recreate_source}: {branch_name}"
                                 )
                             else:
                                 record.failure_reason = (
@@ -1131,7 +1168,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     record.total_tokens = tracker.total_tokens
                     record.estimated_cost = tracker.estimated_cost
                     if not simulate:
-                        _git_discard_branch(branch_name, project_root)
+                        _print_resume_guidance(record, branch_name)
                     _persist_record(store, record)
                     _save_self_improve_record(project_root, record)
                     return record
@@ -1141,7 +1178,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     record.total_tokens = tracker.total_tokens
                     record.estimated_cost = tracker.estimated_cost
                     if not simulate:
-                        _git_discard_branch(branch_name, project_root)
+                        _print_resume_guidance(record, branch_name)
                     _persist_record(store, record)
                     _save_self_improve_record(project_root, record)
                     return record
@@ -1159,7 +1196,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 print(f"  FAIL: {record.failure_reason}")
                 print_quality_gate_result(quality_result)
                 if not simulate:
-                    _git_discard_branch(branch_name, project_root)
+                    _print_resume_guidance(record, branch_name)
                 _persist_record(store, record)
                 _save_self_improve_record(project_root, record)
                 return record
@@ -1173,7 +1210,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 print(f"  FAIL: {record.failure_reason}")
                 print_structure_validation_result(structure_result)
                 if not simulate:
-                    _git_discard_branch(branch_name, project_root)
+                    _print_resume_guidance(record, branch_name)
                 _persist_record(store, record)
                 _save_self_improve_record(project_root, record)
                 return record
@@ -1192,7 +1229,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 print(f"  FAIL: {record.failure_reason}")
                 _emit_test_failure_details(post_tests)
                 if not simulate:
-                    _git_discard_branch(branch_name, project_root)
+                    _print_resume_guidance(record, branch_name)
                 _persist_record(store, record)
                 _save_self_improve_record(project_root, record)
                 return record
@@ -1215,7 +1252,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     record.failure_reason = f"Metrics regressed: {reason}"
                     print(f"  FAIL: {record.failure_reason}")
                     if not simulate:
-                        _git_discard_branch(branch_name, project_root)
+                        _print_resume_guidance(record, branch_name)
                     _persist_record(store, record)
                     _save_self_improve_record(project_root, record)
                     return record

@@ -18,7 +18,12 @@ from planning.flow import run_user_story_planning
 from ..self_improve import _list_resumable_cycles, run_self_improve
 
 
+SELF_IMPROVE_AUTO_RESUME = "__AUTO_RESUME__"
+
+
 class PrdFlowKwargs(TypedDict):
+    """Keyword arguments shared by PRD CLI dispatch helpers."""
+
     file_paths: list[str] | None
     vision_context: VisionContext
     resume_id: str | None
@@ -229,6 +234,7 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
         sys.exit(1)
 
     _check_vision_exists(VisionContext.SELF)
+    should_auto_resume = resume_cycle_id == SELF_IMPROVE_AUTO_RESUME
     if list_resumable:
         rows = _list_resumable_cycles(resolve_project_root())
         if not rows:
@@ -241,6 +247,18 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
                 f"last failure: {row['last_failure']}"
             )
         return
+
+    if should_auto_resume:
+        rows = _list_resumable_cycles(resolve_project_root())
+        if not rows:
+            print("\nNo resumable self-improve cycles found.")
+            return
+        if not simulate and artifact_path is None:
+            resume_cycle_id = rows[0]["cycle_id"]
+            print(
+                "Auto-resuming latest resumable cycle: "
+                f"{resume_cycle_id}"
+            )
 
     record = run_self_improve(
         max_improvements,
@@ -262,6 +280,7 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
 __all__ = [
     "_build_prd_flow_kwargs",
     "_check_vision_exists",
+    "SELF_IMPROVE_AUTO_RESUME",
     "cmd_execute",
     "cmd_mark",
     "cmd_plan",

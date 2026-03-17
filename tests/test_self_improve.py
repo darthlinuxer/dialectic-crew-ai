@@ -1885,6 +1885,88 @@ class TestRunSelfImprove:
         assert resumed.failure_reason == ""
         assert recreated == [("self-improve/cycle-recreate", str(tmp_path))]
 
+    def test_resume_recreates_missing_recorded_branch_from_main_when_artifacts_exist(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from src.main.self_improve import _save_self_improve_record
+        from schemas import ImprovementOpportunity
+
+        git_dir = tmp_path / ".git"
+        git_dir.write_text("gitdir: /fake/worktree\n")
+
+        prd_path = tmp_path / "prd_output" / "PRD_test.json"
+        plan_path = tmp_path / "prd_output" / "exec_test.json"
+        execution_output = tmp_path / "exec_output" / "run-456" / "checkpoint.json"
+        execution_report = tmp_path / "exec_output" / "run-456" / "report.json"
+        for path in (prd_path, plan_path, execution_output, execution_report):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{}", encoding="utf-8")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
+        )
+        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr("main.self_improve._git_current_branch", lambda cwd: "main")
+        monkeypatch.setattr(
+            "main.self_improve._git_checkout_branch",
+            lambda branch, cwd: (False, f"pathspec '{branch}' did not match any file(s) known to git"),
+        )
+
+        recreated = []
+        monkeypatch.setattr(
+            "main.self_improve._git_branch_create_from_head",
+            lambda branch, cwd: (recreated.append((branch, str(cwd))) or True, f"created {branch}"),
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-main-recreate",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-1",
+                    category="code_health",
+                    title="Recreate missing branch from main",
+                    description="Resume should recover the recorded branch when reusable artifacts exist.",
+                    evidence=[".dialectic/self_improve/cycle-main-recreate.json"],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            tests_passed=False,
+            branch_name="self-improve/cycle-main-recreate",
+            prd_path_json=str(prd_path),
+            plan_path_json=str(plan_path),
+            execution_run_id="run-456",
+            execution_output_path=str(execution_output),
+            execution_report_path=str(execution_report),
+            failure_reason="Tests failed after execution",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        resumed = run_self_improve(resume_cycle_id="cycle-main-recreate")
+
+        assert resumed.failure_reason == ""
+        assert recreated == [("self-improve/cycle-main-recreate", str(tmp_path))]
+
 
 class TestResumeSummary:
     def test_prefers_execution_after_failed_execution(self):
@@ -1945,6 +2027,106 @@ class TestResumableCycles:
         assert [row["cycle_id"] for row in rows] == ["cycle-new", "cycle-old"]
         assert rows[0]["next_stage"] == "execution"
         assert rows[1]["next_stage"] == "planning"
+
+
+class TestFailureBranchPreservation:
+    def test_preserves_branch_when_post_execution_tests_fail(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+        from unittest.mock import MagicMock, patch
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Preserve failed cycle branches\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize",
+            lambda opps, **kw: opps,
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-10T00:00:00Z",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="opp-1",
+                        category="code_health",
+                        title="Preserve failure branch",
+                        description="Keep the failed self-improve branch for resume.",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+
+        discard_calls = []
+        monkeypatch.setattr(
+            "main.self_improve._git_discard_branch",
+            lambda branch, cwd: discard_calls.append((branch, str(cwd))),
+        )
+
+        snapshot_results = iter(
+            [
+                {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+                {"returncode": 1, "passed": False, "stdout_tail": "1 failed\n", "stderr_tail": ""},
+            ]
+        )
+        monkeypatch.setattr("main.self_improve._snapshot_tests", lambda p: next(snapshot_results))
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda cwd, check_all_src=True: type(
+                "StructureResult",
+                (),
+                {"passed": True, "summary": "ok", "violations": []},
+            )(),
+        )
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-preserve"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-preserve",
+            "task_flow_ids": {"T-001": "task-flow-preserve"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.failure_reason == "Tests failed after execution"
+        assert record.branch_name.startswith("self-improve/")
+        assert not discard_calls
 
 
 class TestTransientLlmRetries:

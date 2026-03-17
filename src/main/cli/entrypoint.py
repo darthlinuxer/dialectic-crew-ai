@@ -26,6 +26,7 @@ from dialectic.crewai_runtime import configure_crewai_runtime
 from dialectic.prd_flow import get_prd_resume_state
 from dialectic.vision import VisionContext
 from .commands import (
+    SELF_IMPROVE_AUTO_RESUME,
     _build_prd_flow_kwargs,
     _check_vision_exists,
     cmd_execute,
@@ -153,7 +154,20 @@ def cmd_help() -> None:
 def _normalize_legacy_args(args: Sequence[str]) -> list[str]:
     """Normalize legacy argument patterns to the Typer-friendly form."""
     normalized = list(args)
-    if not normalized or normalized[0].lower() != "prd" or "--files" not in normalized:
+    if not normalized:
+        return normalized
+
+    if normalized[0].lower() == "self-improve" and "--resume" in normalized:
+        resume_index = normalized.index("--resume")
+        next_index = resume_index + 1
+        if next_index >= len(normalized) or normalized[next_index].startswith("-"):
+            normalized = (
+                normalized[: next_index]
+                + [SELF_IMPROVE_AUTO_RESUME]
+                + normalized[next_index:]
+            )
+
+    if normalized[0].lower() != "prd" or "--files" not in normalized:
         return normalized
 
     files_index = normalized.index("--files")
@@ -530,8 +544,11 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
     resume_cycle_id: str | None = typer.Option(
         None,
         "--resume",
-        metavar="CYCLE_ID",
-        help="Resume an interrupted self-improve cycle.",
+        metavar="[CYCLE_ID]",
+        help=(
+            "Resume an interrupted self-improve cycle. Omit the ID to resume "
+            "the latest resumable cycle."
+        ),
     ),
     list_resumable: bool = typer.Option(
         False,
@@ -558,7 +575,8 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
       uv run dialectic-crew self-improve --max 1
       uv run dialectic-crew self-improve prd_output/PRD_20260308_1640.json
       uv run dialectic-crew self-improve prd_output/exec_US-01_20260313_125038.json
-      uv run dialectic-crew self-improve --resume 20260310T120000
+            uv run dialectic-crew self-improve --resume
+            uv run dialectic-crew self-improve --resume 20260310T120000
       uv run dialectic-crew self-improve --list-resumable
     """
     if max_improvements != 1:

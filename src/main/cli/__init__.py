@@ -9,6 +9,7 @@ from . import entrypoint as _entrypoint
 from .entrypoint import (
     _command_requires_api,
     _command_requires_vision,
+    _normalize_legacy_args,
     app,
     cmd_help,
     cmd_prd,
@@ -32,6 +33,7 @@ __all__ = [
     "sys",
     "_command_requires_api",
     "_command_requires_vision",
+    "_normalize_legacy_args",
 ]
 
 setattr(_entrypoint, "commands", _commands)

@@ -3,11 +3,13 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,too-many-public-methods
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 # pylint: disable=consider-using-from-import,wrong-import-order,line-too-long
+# pylint: disable=protected-access
 
 import json
 from pathlib import Path
 
 import src.main.cli as cli
+import src.main.cli.commands as cli_commands
 import pytest
 from typer.testing import CliRunner
 
@@ -25,6 +27,22 @@ RUNNER = CliRunner()
 
 
 class TestCliRequirementRouting:
+    def test_normalize_self_improve_resume_without_cycle_id_uses_auto_sentinel(self):
+        assert cli._normalize_legacy_args(["self-improve", "--resume"]) == [
+            "self-improve",
+            "--resume",
+            cli_commands.SELF_IMPROVE_AUTO_RESUME,
+        ]
+
+        assert cli._normalize_legacy_args(
+            ["self-improve", "--resume", "--skip-baseline-tests"]
+        ) == [
+            "self-improve",
+            "--resume",
+            cli_commands.SELF_IMPROVE_AUTO_RESUME,
+            "--skip-baseline-tests",
+        ]
+
     def test_typer_help_lists_core_commands(self):
         result = RUNNER.invoke(cli.app, ["--help"])
 
@@ -469,6 +487,32 @@ class TestCliRequirementRouting:
             "skip_baseline_tests": False,
         }
 
+    def test_self_improve_bare_resume_uses_auto_resume_sentinel(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            simulate=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+        ):
+            del simulate, max_improvements, stash_dirty, list_resumable
+            del skip_baseline_tests, artifact_path, next_roadmap_item
+            captured["resume_cycle_id"] = resume_cycle_id
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(cli.sys, "argv", ["dialectic-crew", "self-improve", "--resume"])
+
+        cli.main()
+
+        assert captured == {"resume_cycle_id": cli_commands.SELF_IMPROVE_AUTO_RESUME}
+
     def test_self_improve_rejects_max_greater_than_one(self, monkeypatch, capsys):
         monkeypatch.setattr(cli, "_check_api_key", lambda: True)
         monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
@@ -645,6 +689,146 @@ class TestCliRequirementRouting:
         cli.main()
 
         assert captured == {"artifact_path": str(artifact_path)}
+
+    def test_cmd_self_improve_without_resume_starts_new_session(
+        self,
+        monkeypatch,
+        capsys,
+    ):
+        captured = {}
+
+        monkeypatch.setattr(cli_commands, "_check_vision_exists", lambda *args, **kwargs: None)
+        monkeypatch.setattr(cli_commands, "resolve_project_root", lambda: Path("/tmp/project"))
+        monkeypatch.setattr(
+            cli_commands,
+            "_list_resumable_cycles",
+            lambda root: [
+                {
+                    "cycle_id": "cycle-auto",
+                    "timestamp": "2026-03-17T12:00:00Z",
+                    "next_stage": "execution",
+                    "last_failure": "Tests failed after execution",
+                }
+            ],
+        )
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+        ):
+            del max_improvements, stash_dirty, skip_baseline_tests, next_roadmap_item
+            captured.update(
+                {
+                    "simulate": simulate,
+                    "resume_cycle_id": resume_cycle_id,
+                    "artifact_path": artifact_path,
+                }
+            )
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve()
+        out = capsys.readouterr().out
+
+        assert "Auto-resuming latest resumable cycle" not in out
+        assert captured["resume_cycle_id"] is None
+        assert captured["simulate"] is False
+        assert captured["artifact_path"] is None
+
+    def test_cmd_self_improve_auto_resumes_latest_cycle_when_resume_has_no_id(
+        self,
+        monkeypatch,
+        capsys,
+    ):
+        captured = {}
+
+        monkeypatch.setattr(cli_commands, "_check_vision_exists", lambda *args, **kwargs: None)
+        monkeypatch.setattr(cli_commands, "resolve_project_root", lambda: Path("/tmp/project"))
+        monkeypatch.setattr(
+            cli_commands,
+            "_list_resumable_cycles",
+            lambda root: [
+                {
+                    "cycle_id": "cycle-one",
+                    "timestamp": "2026-03-17T12:00:00Z",
+                    "next_stage": "execution",
+                    "last_failure": "Tests failed after execution",
+                },
+                {
+                    "cycle_id": "cycle-two",
+                    "timestamp": "2026-03-17T12:05:00Z",
+                    "next_stage": "planning",
+                    "last_failure": "Plan quality too low: 6.0",
+                },
+            ],
+        )
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+        ):
+            del max_improvements, stash_dirty, skip_baseline_tests, next_roadmap_item
+            captured.update(
+                {
+                    "resume_cycle_id": resume_cycle_id,
+                    "simulate": simulate,
+                    "artifact_path": artifact_path,
+                }
+            )
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve(
+            resume_cycle_id=cli_commands.SELF_IMPROVE_AUTO_RESUME
+        )
+        out = capsys.readouterr().out
+
+        assert "Auto-resuming latest resumable cycle: cycle-one" in out
+        assert captured["resume_cycle_id"] == "cycle-one"
+
+    def test_cmd_self_improve_auto_resume_reports_no_saved_cycles(
+        self,
+        monkeypatch,
+        capsys,
+    ):
+        run_calls: list[object] = []
+
+        monkeypatch.setattr(cli_commands, "_check_vision_exists", lambda *args, **kwargs: None)
+        monkeypatch.setattr(cli_commands, "resolve_project_root", lambda: Path("/tmp/project"))
+        monkeypatch.setattr(cli_commands, "_list_resumable_cycles", lambda root: [])
+        monkeypatch.setattr(
+            cli_commands,
+            "run_self_improve",
+            lambda *args, **kwargs: run_calls.append((args, kwargs)),
+        )
+
+        cli_commands.cmd_self_improve(
+            resume_cycle_id=cli_commands.SELF_IMPROVE_AUTO_RESUME
+        )
+        out = capsys.readouterr().out
+
+        assert "No resumable self-improve cycles found." in out
+        assert not run_calls
 
 
 class TestVisionResolution:
