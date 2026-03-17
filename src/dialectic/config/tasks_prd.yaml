@@ -4,7 +4,7 @@ prd_thesis:
 
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources).
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
     Generate the complete initial thesis (PRD proposal) including:
     1. Feature name
     2. Clear objective
@@ -24,7 +24,7 @@ prd_antithesis:
 
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources).
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
     The full Visionary thesis PRD from the previous task is provided to you as task context.
     You MUST analyze that thesis from context directly.
     Do NOT ask the user for the PRD, do NOT claim Task 1 is missing, and do NOT refuse the task unless the context is actually empty.
@@ -48,7 +48,7 @@ prd_synthesis:
 
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources).
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
     The thesis PRD and the full Socratic critique are already provided as task context from previous tasks.
     You MUST use those context artifacts directly.
     Do NOT ask the user to resend them and do NOT claim they are unavailable unless the context is actually empty.
@@ -86,7 +86,7 @@ prd_validation:
 
     Consult the system's macro vision ({vision_label} at exact path `{vision_path}`, available via your knowledge sources).
     Treat the knowledge-source content for `{vision_path}` as authoritative.
-    If direct file tools are available you may read exactly `{vision_path}`, but lack of file-tool access is NOT a blocker.
+    Rely on the provided knowledge sources and task context rather than ad-hoc file-tool access.
     The synthesis candidate PRD is already provided as task context from the previous task.
     You MUST validate that context directly.
     Do NOT ask the user to resend Task 3 output and do NOT claim it is missing unless the context is actually empty.

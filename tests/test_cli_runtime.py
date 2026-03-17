@@ -1,6 +1,6 @@
 """Tests for CLI runtime gating, logging bootstrap, and VISION helpers."""
 
-# pylint: disable=missing-class-docstring,missing-function-docstring,too-many-public-methods
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,too-many-public-methods
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 # pylint: disable=consider-using-from-import,wrong-import-order,line-too-long
 
@@ -124,7 +124,7 @@ class TestCliRequirementRouting:
         assert calls[-1] == "status"
 
     def test_main_exits_130_on_keyboard_interrupt(self, monkeypatch, capsys):
-        class _InterruptingCommand:
+        class _InterruptingCommand:  # pylint: disable=too-few-public-methods
             def main(self, *, args, prog_name, standalone_mode):
                 del args, prog_name, standalone_mode
                 raise KeyboardInterrupt()

@@ -197,6 +197,10 @@ def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
 
     captured_tasks = []
 
+    class FakeAgent:
+        def __init__(self, backstory):
+            self.backstory = backstory
+
     class FakeTask:
         def __init__(self, **kwargs):
             captured_tasks.append(kwargs)
@@ -207,7 +211,13 @@ def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "_build_agent", lambda template, placeholders: template["role"])
+    monkeypatch.setattr(
+        runtime,
+        "_build_agent",
+        lambda template, placeholders: FakeAgent(
+            runtime.render_yaml_config(template, placeholders)["backstory"]
+        ),
+    )
     monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "knowledge")
 
@@ -225,6 +235,9 @@ def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
     )
 
     assert "internal/SELF_VISION.md" in captured_tasks[0]["description"]
+    assert "Treat the knowledge-source content" in captured_tasks[0]["description"]
+    assert "Rely on the provided knowledge sources and task context" in captured_tasks[0]["agent"].backstory
+    assert "If direct file tools are available" not in captured_tasks[0]["agent"].backstory
 
 
 def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):

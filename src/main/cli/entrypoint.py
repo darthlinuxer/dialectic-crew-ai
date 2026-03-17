@@ -1,5 +1,7 @@
 """Main entry point for Dialectic Crew AI."""
 
+# pylint: disable=trailing-newlines
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +17,7 @@ from typer.main import get_command
 
 from dialectic.app_logging import (
     configure_application_logging,
+    shutdown_application_logging,
     log_context,
     new_correlation_id,
 )
@@ -759,6 +762,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 standalone_mode=False,
             )
         except KeyboardInterrupt as exc:
+            logging.shutdown()
+            shutdown_application_logging()
             print("\nOperation interrupted by user.")
             raise SystemExit(130) from exc
         except click.exceptions.Exit as exc:
@@ -766,5 +771,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         except click.ClickException as exc:
             exc.show()
             raise SystemExit(exc.exit_code) from exc
+
+
+__all__ = ["app", "main"]
+
+
+
+
+
 
 

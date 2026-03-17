@@ -1,8 +1,12 @@
 """Bridge CrewAI runtime events into the centralized application logger."""
 
+# pylint: disable=invalid-name,line-too-long,missing-final-newline
+
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -85,11 +89,32 @@ def _event_level(event: Any) -> int:
 def _event_context(source: Any, event: Any) -> dict[str, str]:
     source_state = getattr(source, "state", None)
     return {
-        "flow_id": _safe_get_attr(event, "flow_id", "id", default=_safe_get_attr(source, "flow_id", default=_safe_get_attr(source_state, "id"))),
-        "run_id": _safe_get_attr(event, "run_id", default=_safe_get_attr(source, "run_id")),
-        "task_id": _safe_get_attr(event, "task_id", default=_safe_get_attr(source_state, "task_id")),
+        "flow_id": _safe_get_attr(
+            event,
+            "flow_id",
+            "id",
+            default=_safe_get_attr(
+                source,
+                "flow_id",
+                default=_safe_get_attr(source_state, "id"),
+            ),
+        ),
+        "run_id": _safe_get_attr(
+            event,
+            "run_id",
+            default=_safe_get_attr(source, "run_id"),
+        ),
+        "task_id": _safe_get_attr(
+            event,
+            "task_id",
+            default=_safe_get_attr(source_state, "task_id"),
+        ),
         "story_id": _safe_get_attr(event, "user_story_id", "plan_id", default="-"),
-        "vision_context": _safe_get_attr(event, "vision_context", default=_safe_get_attr(source_state, "vision_context")),
+        "vision_context": _safe_get_attr(
+            event,
+            "vision_context",
+            default=_safe_get_attr(source_state, "vision_context"),
+        ),
         "phase": _safe_get_attr(event, "phase", default=event.__class__.__name__),
     }
 
@@ -136,11 +161,21 @@ def _default_event_types() -> tuple[type[Any], ...]:
     )
 
 
-class CrewAIRuntimeEventLogger(_CrewAIBaseEventListener):
+class CrewAIRuntimeEventLogger(  # pylint: disable=too-few-public-methods,useless-object-inheritance
+    _CrewAIBaseEventListener
+):
     """Best-effort CrewAI event listener that forwards events into app logs."""
 
     def __init__(self, event_types: Sequence[type[Any]] | None = None) -> None:
-        self._event_types = tuple(event_types) if event_types is not None else _default_event_types()
+        self._event_types = (
+            tuple(event_types)
+            if event_types is not None
+            else _default_event_types()
+        )
+        self._last_signature: tuple[Any, ...] | None = None
+        self._last_logged_at: float = 0.0
+        self._dedupe_window_seconds = 0.5
+        self._dedupe_lock = threading.Lock()
         super().__init__()
 
     def setup_listeners(self, crewai_event_bus: Any) -> None:
@@ -150,21 +185,45 @@ class CrewAIRuntimeEventLogger(_CrewAIBaseEventListener):
     def _register_handler(self, event_bus: Any, event_type: type[Any]) -> None:
         @event_bus.on(event_type)
         def _handler(source: Any, event: Any) -> None:
+            """Forward a CrewAI event into centralized runtime logging."""
             self._emit_runtime_log(source, event)
 
     def _emit_runtime_log(self, source: Any, event: Any) -> None:
         context = _event_context(source, event)
+        extra = _event_extra(source, event)
+        signature = (
+            context["flow_id"],
+            context["run_id"],
+            context["task_id"],
+            context["story_id"],
+            context["vision_context"],
+            context["phase"],
+            extra["event_type"],
+            extra["event_name"],
+            extra["source_name"],
+            extra["agent_role"],
+            extra["tool_name"],
+            _safe_get_attr(event, "timestamp"),
+        )
+        now = time.monotonic()
+        with self._dedupe_lock:
+            if (
+                signature == self._last_signature
+                and (now - self._last_logged_at) <= self._dedupe_window_seconds
+            ):
+                return
+            self._last_signature = signature
+            self._last_logged_at = now
         with log_context(**context):
             logger.log(
                 _event_level(event),
                 "CrewAI runtime event",
-                extra=_event_extra(source, event),
+                extra=extra,
             )
 
 
-
 @dataclass
-class _EventLoggerState:
+class _EventLoggerState:  # pylint: disable=too-few-public-methods
     listener: CrewAIRuntimeEventLogger | None = None
 
 
@@ -172,6 +231,7 @@ _EVENT_LOGGER_STATE = _EventLoggerState()
 
 
 def register_crewai_event_logger() -> bool:
+    """Register the best-effort CrewAI event bridge once per process."""
     if not _HAS_CREWAI_EVENTS or _CREWAI_EVENT_BUS is None:
         return False
     if _EVENT_LOGGER_STATE.listener is not None:

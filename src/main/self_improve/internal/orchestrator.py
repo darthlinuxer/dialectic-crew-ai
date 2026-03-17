@@ -22,7 +22,10 @@ from functools import partial
 from pathlib import Path
 from typing import Literal
 
-from dialectic.app_logging import configure_application_logging
+from dialectic.app_logging import (
+    configure_application_logging,
+    enable_shutdown_noise_suppression,
+)
 from dialectic.hooks import HookScope
 from dialectic.introspect import run_introspection
 from dialectic.metrics import MetricsStore, emit, get_metrics_store
@@ -1101,6 +1104,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             )
 
                 except KeyboardInterrupt:
+                    enable_shutdown_noise_suppression()
                     if not record.selected_opportunities and report is not None:
                         record.selected_opportunities = list(
                             report.opportunities[:max_improvements]
@@ -1277,6 +1281,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             _save_self_improve_record(project_root, record)
             return record
         except KeyboardInterrupt:
+            enable_shutdown_noise_suppression()
             if not record.selected_opportunities and report is not None:
                 record.selected_opportunities = list(
                     report.opportunities[:max_improvements]
