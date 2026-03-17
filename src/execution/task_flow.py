@@ -318,7 +318,20 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
             self.state.dialectic_success = False
             self.state.dialectic_retries = self.state.max_retries
             print(f"   {self.state.task_id} dialectic failed ({score}/10)")
-            logger.error("Task dialectic failed")
+            logger.error(
+                "Task dialectic failed: task_id=%s score=%.1f/%s notes=%s",
+                self.state.task_id,
+                score,
+                10,
+                notes[:240],
+                extra={
+                    "event_type": "task_flow_failure",
+                    "event_name": "task_dialectic_failed",
+                    "task_id": self.state.task_id,
+                    "dialectic_score": score,
+                    "dialectic_notes": notes[:240],
+                },
+            )
             return "failed"
 
     @router(run_dialectic)
@@ -469,7 +482,20 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                 self.state.reimplement_score = score
                 self.state.reimplement_success = False
                 print(f"   {self.state.task_id} re-implementation failed ({score}/10)")
-                logger.error("Task reimplementation failed")
+                logger.error(
+                    "Task reimplementation failed: task_id=%s score=%.1f/%s checks_failed=%s",
+                    self.state.task_id,
+                    score,
+                    10,
+                    self.state.verification.checks_failed,
+                    extra={
+                        "event_type": "task_flow_failure",
+                        "event_name": "task_reimplementation_failed",
+                        "task_id": self.state.task_id,
+                        "reimplement_score": score,
+                        "checks_failed": list(self.state.verification.checks_failed),
+                    },
+                )
             return "done"
 
     @router(independent_reimplement)
@@ -514,7 +540,26 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
         with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="failed"):
             self.state.current_phase = "failed"
             phases = " → ".join(self.state.phases_executed)
-            logger.error("Task flow failed")
+            logger.error(
+                (
+                    "Task flow failed: task_id=%s phases=%s dialectic_score=%.1f "
+                    "reimplement_score=%.1f checks_failed=%s"
+                ),
+                self.state.task_id,
+                phases,
+                self.state.dialectic_score,
+                self.state.reimplement_score,
+                self.state.verification.checks_failed,
+                extra={
+                    "event_type": "task_flow_failure",
+                    "event_name": "task_flow_failed",
+                    "task_id": self.state.task_id,
+                    "execution_phases": list(self.state.phases_executed),
+                    "dialectic_score": self.state.dialectic_score,
+                    "reimplement_score": self.state.reimplement_score,
+                    "checks_failed": list(self.state.verification.checks_failed),
+                },
+            )
             print(f"   {self.state.task_id} FAILED (phases: {phases})")
             emit_metric(
                 "task_score",

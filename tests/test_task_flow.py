@@ -1,5 +1,9 @@
 """Execution-flow regressions for TaskExecutionFlow routing."""
 
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=too-few-public-methods,protected-access,line-too-long
+
+import logging
 from pathlib import Path
 from textwrap import dedent
 
@@ -285,6 +289,95 @@ def test_task_execution_flow_routes_to_reimplementation_when_verifier_raises(mon
     assert result.success is False
     assert flow.state.phases_executed == ["dialectic", "verify", "reimplement", "reverify"]
     assert "Local fallback verification executed." in flow.state.verification.notes
+
+
+def test_task_execution_flow_logs_failure_context(monkeypatch, caplog):
+    class DummyScope:  # pylint: disable=too-few-public-methods
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeTaskOutput:  # pylint: disable=too-few-public-methods
+        def __init__(self, *, raw: str = "", pydantic=None):
+            self.raw = raw
+            self.pydantic = pydantic
+
+    class FakeDialecticCrew:  # pylint: disable=too-few-public-methods
+        def kickoff(self):
+            return type(
+                "Result",
+                (),
+                {
+                    "tasks_output": [
+                        FakeTaskOutput(raw="implementation complete"),
+                        FakeTaskOutput(raw="critique"),
+                        FakeTaskOutput(raw="synthesis"),
+                        FakeTaskOutput(
+                            pydantic=ValidationOutput(
+                                quality_score=8.0,
+                                consensus_reached=True,
+                                final_validation_notes="Looks good.",
+                            )
+                        ),
+                    ]
+                },
+            )()
+
+    class FakeReimplementationCrew:  # pylint: disable=too-few-public-methods
+        def kickoff(self):
+            return type(
+                "Result",
+                (),
+                {
+                    "tasks_output": [
+                        FakeTaskOutput(raw="fixed implementation"),
+                        FakeTaskOutput(
+                            pydantic=ValidationOutput(
+                                quality_score=4.2,
+                                consensus_reached=False,
+                                final_validation_notes="Still broken.",
+                            )
+                        ),
+                    ]
+                },
+            )()
+
+    monkeypatch.setattr("execution.task_flow.build_task_dialectic_crew", lambda **kwargs: FakeDialecticCrew())
+    monkeypatch.setattr("execution.task_flow.build_task_flow_reimplementation_crew", lambda **kwargs: FakeReimplementationCrew())
+    monkeypatch.setattr("execution.task_flow.HookScope", DummyScope)
+    monkeypatch.setattr(
+        TaskExecutionFlow,
+        "_run_independent_verifier",
+        lambda self, checks=None: VerificationResult(
+            verified=False,
+            checks_failed=["imports broken"],
+            notes="Verifier failed.",
+        ),
+    )
+
+    with caplog.at_level(logging.ERROR, logger="execution.task_flow"):
+        flow = TaskExecutionFlow()
+        result = flow.kickoff(
+            inputs={
+                "task_id": "T-013",
+                "task_title": "Log richer failure context",
+                "task_description": "Surface failure details in logs.",
+                "acceptance_checks": ["imports resolve"],
+                "min_score": 7.5,
+            }
+        )
+
+    assert isinstance(result, TaskExecutionResult)
+    assert result.success is False
+    failure_record = next(record for record in caplog.records if record.message.startswith("Task flow failed"))
+    assert "phases=dialectic → verify → reimplement" in failure_record.message
+    assert "task_id=T-013" in failure_record.message
+    assert "checks_failed=['imports broken']" in failure_record.message
 
 
 def test_materialize_generated_files_writes_repo_relative_artifacts(tmp_path):

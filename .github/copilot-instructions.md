@@ -92,6 +92,10 @@ For project code, prefer explicit named parameters with concrete types over `*ar
 
 `internal/SELF_VISION.md` is the product direction for this repository. Keep the instructions and implementation aligned with its framework-first priorities:
 
+- Use this decision order whenever you are considering new infrastructure or abstractions:
+	1. **Check CrewAI docs first** — verify whether documented CrewAI capabilities already solve the requirement.
+	2. **Reuse existing project patterns second** — prefer the repository's current Flow, Crew, Knowledge, Memory, logging, target-scoping, and persistence patterns.
+	3. **Add custom infrastructure only as a last resort** — introduce new abstractions only when CrewAI and established project patterns clearly do not satisfy the requirement.
 - Prefer CrewAI native capabilities before custom infrastructure: Memory, Knowledge, Flows, planning, reasoning, hooks, event listeners, human feedback, training, testing, and MCP integrations.
 - Treat API, web UI, active external project management, structured logging, and broader observability as **target architecture** unless and until the codebase actually ships them.
 - When documenting or implementing roadmap work, clearly distinguish **implemented behavior** from **planned direction**. No speculative docs, no imaginary features, no “coming soon” disguised as present tense.

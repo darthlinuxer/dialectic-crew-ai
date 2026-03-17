@@ -1,13 +1,15 @@
 execute_task_thesis:
   description: |
     {tese_input}
-  expected_output: Description of what was implemented and files created/modified
+  expected_output: "{plain_text_implementation_expected_output}"
   agent: implementer
   guardrail: text_result
 
 execute_task_antithesis:
   description: |
     Analyze the implementation of task {task_id} — {task_title}.
+
+    {final_text_response_rules}
 
     Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
     Treat the knowledge-source content for `{vision_path}` as authoritative.
@@ -19,7 +21,7 @@ execute_task_antithesis:
     - imports, references, and package/module boundaries
     - related tests or supporting files that should have been updated
     - obvious static-analysis or editor breakage left behind in adjacent files
-  expected_output: Detailed critique of the implementation
+  expected_output: "{plain_text_critique_expected_output}"
   agent: critico_socratico
   guardrail: text_result
 
@@ -27,13 +29,15 @@ execute_task_synthesis:
   description: |
     Produce the SYNTHESIS for task {task_id}: incorporate ALL critiques.
 
+    {final_text_response_rules}
+
     Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
     Treat the knowledge-source content for `{vision_path}` as authoritative.
     Ensure the synthesis is aligned with the macro vision.
     Include clear instructions for retry if necessary.
     The refined solution must preserve integration quality for imports, references,
     tests, and supporting files on the touched surface.
-  expected_output: Refined synthesis with instructions
+  expected_output: "{plain_text_synthesis_expected_output}"
   agent: sintetizador
   guardrail: text_result
 

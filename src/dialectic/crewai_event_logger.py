@@ -230,6 +230,11 @@ class _EventLoggerState:  # pylint: disable=too-few-public-methods
 _EVENT_LOGGER_STATE = _EventLoggerState()
 
 
+def is_crewai_event_logger_registered() -> bool:
+    """Return whether the process-level CrewAI event bridge is already active."""
+    return _EVENT_LOGGER_STATE.listener is not None
+
+
 def register_crewai_event_logger() -> bool:
     """Register the best-effort CrewAI event bridge once per process."""
     if not _HAS_CREWAI_EVENTS or _CREWAI_EVENT_BUS is None:
@@ -244,4 +249,8 @@ def register_crewai_event_logger() -> bool:
     return True
 
 
-__all__ = ["CrewAIRuntimeEventLogger", "register_crewai_event_logger"]
+__all__ = [
+    "CrewAIRuntimeEventLogger",
+    "is_crewai_event_logger_registered",
+    "register_crewai_event_logger",
+]

@@ -1,3 +1,9 @@
+"""Tests for task-flow verification runtime construction and wiring."""
+
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=too-few-public-methods,import-outside-toplevel,line-too-long
+# pylint: disable=duplicate-code
+
 # pyright: reportPrivateUsage=none
 
 from typing import Any, cast
@@ -10,6 +16,7 @@ def test_build_task_flow_verification_crew_uses_yaml_templates(monkeypatch):
 
     captured_tasks = []
     captured_crew = {}
+    captured_helper = {}
 
     class FakeTask:
         def __init__(self, **kwargs):
@@ -25,6 +32,11 @@ def test_build_task_flow_verification_crew_uses_yaml_templates(monkeypatch):
     monkeypatch.setattr(runtime, "_build_agent", lambda: "verifier")
     monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}")
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+    monkeypatch.setattr(
+        runtime,
+        "build_sequential_crew_kwargs",
+        lambda **kwargs: captured_helper.setdefault("kwargs", kwargs) or kwargs,
+    )
 
     runtime.build_task_flow_verification_crew(
         task_id="T-001",
@@ -45,6 +57,9 @@ def test_build_task_flow_verification_crew_uses_yaml_templates(monkeypatch):
     assert captured_crew["agents"] == ["verifier"]
     assert captured_crew["memory"] == "memory:self:task_verify"
     assert captured_crew["knowledge_sources"] == ["vision:self"]
+    assert captured_helper["kwargs"]["tasks"] == captured_crew["tasks"]
+    assert captured_helper["kwargs"]["memory"] == "memory:self:task_verify"
+    assert captured_helper["kwargs"]["knowledge_sources"] == ["vision:self"]
 
 
 def test_build_task_flow_verification_crew_omits_acceptance_block_when_empty(monkeypatch):

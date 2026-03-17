@@ -30,6 +30,22 @@ from dialectic.yaml_config import load_yaml_config
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_dialectic.yaml"
+_FINAL_TEXT_RESPONSE_RULES = """
+Final response rules:
+- Return only the completed plain-text answer for this task.
+- Never return raw tool-call objects, tool arguments, JSON wrappers, or tool metadata.
+- If you use tools, execute them first and then reply with the finished textual result only.
+""".strip()
+_PLAIN_TEXT_IMPLEMENTATION_EXPECTED_OUTPUT = (
+    "Plain-text answer only describing what was implemented and which files "
+    "were created or modified"
+)
+_PLAIN_TEXT_CRITIQUE_EXPECTED_OUTPUT = (
+    "Plain-text answer only containing a detailed critique of the implementation"
+)
+_PLAIN_TEXT_SYNTHESIS_EXPECTED_OUTPUT = (
+    "Plain-text answer only containing the refined synthesis and retry instructions"
+)
 
 
 def _build_runtime_agents(vision_context: VisionContext) -> dict[str, Any]:
@@ -59,6 +75,10 @@ def _build_runtime_placeholders(
         "vision_path": vision_path,
         "vision_file_ref": vision_file_ref,
         "min_score": min_score,
+        "final_text_response_rules": _FINAL_TEXT_RESPONSE_RULES,
+        "plain_text_implementation_expected_output": _PLAIN_TEXT_IMPLEMENTATION_EXPECTED_OUTPUT,
+        "plain_text_critique_expected_output": _PLAIN_TEXT_CRITIQUE_EXPECTED_OUTPUT,
+        "plain_text_synthesis_expected_output": _PLAIN_TEXT_SYNTHESIS_EXPECTED_OUTPUT,
     }
     placeholders["tese_input"] = _render_tese_input(
         placeholders=placeholders,
@@ -194,6 +214,8 @@ CONTEXT:
 
 {integration_done_block}
 
+{_FINAL_TEXT_RESPONSE_RULES}
+
 Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
 Treat the knowledge-source content for `{vision_path}` as authoritative.
 """
@@ -206,6 +228,8 @@ TASK: {task_id} — {task_title}
 {task_description}
 
 {integration_done_block}
+
+{_FINAL_TEXT_RESPONSE_RULES}
 
 Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
 Treat the knowledge-source content for `{vision_path}` as authoritative.

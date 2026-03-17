@@ -1,3 +1,7 @@
+"""Runtime builder for the standalone verification crew."""
+
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,8 +10,7 @@ from typing import Any
 from crewai import Crew, Task
 
 from dialectic.agents import create_validador_macro
-from dialectic.crew_log_summarizer import get_step_summarizer_callback
-from dialectic.crew_verbose_config import get_output_log_file, is_verbose
+from dialectic.crew_builder import build_sequential_crew_kwargs
 from dialectic.knowledge import crew_memory, vision_knowledge
 from dialectic.tools import file_read_tool, stack_validation_tool
 from dialectic.vision import VisionContext
@@ -24,6 +27,7 @@ def build_verification_crew(
     acceptance_criteria: list[str] | None,
     vision_context: VisionContext,
 ) -> Crew:
+    """Build the single-task verification crew for a planned implementation task."""
     task_templates = load_yaml_config(_TASKS_CONFIG_PATH)
     verify_agent = create_validador_macro(vision_context)
     _assign_tools(verify_agent, [file_read_tool, stack_validation_tool])
@@ -43,16 +47,16 @@ def build_verification_crew(
 
     return Crew(
         agents=[verify_agent],
-        tasks=[verify_task],
-        verbose=is_verbose(),
-        output_log_file=get_output_log_file(),
-        step_callback=get_step_summarizer_callback(),
-        memory=crew_memory(vision_context, "verify"),
-        knowledge_sources=[vision_knowledge(vision_context)],
+        **build_sequential_crew_kwargs(
+            tasks=[verify_task],
+            knowledge_sources=[vision_knowledge(vision_context)],
+            memory=crew_memory(vision_context, "verify"),
+        ),
     )
 
 
 def _render_acceptance_criteria_block(acceptance_criteria: list[str] | None) -> str:
+    """Render acceptance criteria text for the verifier prompt when criteria exist."""
     if not acceptance_criteria:
         return ""
 
@@ -65,6 +69,7 @@ def _render_acceptance_criteria_block(acceptance_criteria: list[str] | None) -> 
 
 
 def _assign_tools(agent: Any, tools: list[Any]) -> None:
+    """Assign a concrete tool list to either dict-like or object-based agents."""
     if isinstance(agent, dict):
         agent["tools"] = tools
         return
@@ -72,6 +77,7 @@ def _assign_tools(agent: Any, tools: list[Any]) -> None:
 
 
 def _build_task(template: dict[str, Any], placeholders: dict[str, Any], agent: Any) -> Task:
+    """Create the verification task from YAML configuration and placeholders."""
     config = dict(render_yaml_config(template, placeholders))
     output_schema = config.pop("output_schema", None)
     if output_schema:

@@ -1,4 +1,37 @@
+"""Tests for execution runtime task construction."""
+
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=too-few-public-methods,import-outside-toplevel,line-too-long
+# pylint: disable=protected-access,duplicate-code
+
 from dialectic.vision import VisionContext
+
+
+def test_build_runtime_placeholders_include_shared_plain_text_contract():
+    from execution import runtime
+
+    placeholders = runtime._build_runtime_placeholders(
+        task_metadata={
+            "task_id": "T-001",
+            "task_title": "Title",
+            "task_description": "Do the thing",
+            "context_str": "Context block",
+        },
+        min_score=7.5,
+        vision_context=VisionContext.PROJECT,
+        retry_context={
+            "synthesis_for_retry": None,
+            "retry": 0,
+            "max_retries": 3,
+        },
+    )
+
+    assert "Return only the completed plain-text answer" in placeholders["final_text_response_rules"]
+    assert placeholders["plain_text_implementation_expected_output"].lower().startswith(
+        "plain-text answer only"
+    )
+    assert "detailed critique" in placeholders["plain_text_critique_expected_output"].lower()
+    assert "refined synthesis" in placeholders["plain_text_synthesis_expected_output"].lower()
 
 
 def test_build_task_dialectic_crew_uses_yaml_templates(monkeypatch):
@@ -91,8 +124,14 @@ def test_build_task_dialectic_crew_uses_initial_template_without_retry(monkeypat
     assert "Context block" in captured_tasks[0]["description"]
     assert "RETRY 1/3" not in captured_tasks[0]["description"]
     assert "Definition of done" in captured_tasks[0]["description"]
+    assert "Return only the completed plain-text answer" in captured_tasks[0]["description"]
+    assert "plain-text answer only" in captured_tasks[0]["expected_output"].lower()
     assert "static-analysis" in captured_tasks[0]["description"]
     assert "adjacent files" in captured_tasks[0]["description"]
+    assert "Return only the completed plain-text answer" in captured_tasks[1]["description"]
+    assert "Return only the completed plain-text answer" in captured_tasks[2]["description"]
+    assert "plain-text answer only" in captured_tasks[1]["expected_output"].lower()
+    assert "plain-text answer only" in captured_tasks[2]["expected_output"].lower()
 
 
 def test_build_task_dialectic_crew_validation_mentions_integration_quality(monkeypatch):

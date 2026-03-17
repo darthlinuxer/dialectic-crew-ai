@@ -1,3 +1,8 @@
+"""Tests for standalone verification runtime construction."""
+
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=too-few-public-methods,import-outside-toplevel,line-too-long
+
 from __future__ import annotations
 
 from execution import verify_runtime
@@ -9,6 +14,7 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
 
     captured_tasks: list[dict] = []
     captured_crew: dict = {}
+    captured_helper: dict = {}
 
     class FakeTask:
         def __init__(self, **kwargs):
@@ -26,6 +32,11 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
     monkeypatch.setattr(verify_runtime, "stack_validation_tool", "validator")
     monkeypatch.setattr(verify_runtime, "crew_memory", lambda ctx, scope: f"memory:{ctx.value}:{scope}")
     monkeypatch.setattr(verify_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+    monkeypatch.setattr(
+        verify_runtime,
+        "build_sequential_crew_kwargs",
+        lambda **kwargs: captured_helper.setdefault("kwargs", kwargs) or kwargs,
+    )
 
     verify_runtime.build_verification_crew(
         task=make_task(id="T-123", title="Verify API", description="Confirm API endpoint exists"),
@@ -44,6 +55,9 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
     assert captured_crew["tasks"][0] is not None
     assert captured_crew["memory"] == "memory:self:verify"
     assert captured_crew["knowledge_sources"] == ["vision:self"]
+    assert captured_helper["kwargs"]["tasks"] == captured_crew["tasks"]
+    assert captured_helper["kwargs"]["memory"] == "memory:self:verify"
+    assert captured_helper["kwargs"]["knowledge_sources"] == ["vision:self"]
 
 
 def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(monkeypatch):

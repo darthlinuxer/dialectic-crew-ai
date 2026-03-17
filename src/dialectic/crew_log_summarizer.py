@@ -8,19 +8,28 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from dialectic.crewai_event_logger import is_crewai_event_logger_registered
 from dialectic.crew_verbose_config import get_output_log_file
 from dialectic.llm import llm_simple
 
 logger = logging.getLogger(__name__)
 
 _MAX_EXCERPT_CHARS = 12_000
-_SUMMARY_PROMPT = """Summarize this CrewAI execution log in exactly 4 to 5 short lines for the console.
-Include: (1) current stage of the flow, (2) brief summary of what the agent(s) did so far, (3) task or step name if visible, (4) any pass/fail or retry indication. Be concise; no preamble.
+_SHUTDOWN_NOISE_MARKERS = (
+    "cannot schedule new futures after shutdown",
+    "event loop is closed",
+)
+_SUMMARY_PROMPT = """
+Summarize this CrewAI execution log in exactly 4 to 5 short lines for the console.
+Include: (1) current stage of the flow, (2) brief summary of what the agent(s)
+did so far, (3) task or step name if visible, (4) any pass/fail or retry
+indication. Be concise; no preamble.
 Log excerpt:
 ---
 {excerpt}
 ---
-Reply with only the 4-5 line summary, nothing else."""
+Reply with only the 4-5 line summary, nothing else.
+""".strip()
 
 
 def get_step_summarizer_callback() -> Callable[[Any], None] | None:
@@ -31,6 +40,9 @@ def get_step_summarizer_callback() -> Callable[[Any], None] | None:
     that CrewAI invokes after each agent step; it reads the current log file and prints
     a 4-5 line LLM summary to stderr. Returns None when no log file is configured.
     """
+    if is_crewai_event_logger_registered():
+        return None
+
     log_path = get_output_log_file()
     if not log_path:
         return None
@@ -42,7 +54,7 @@ def get_step_summarizer_callback() -> Callable[[Any], None] | None:
     return _on_step
 
 
-def summarize_crew_log(log_path: str | Path) -> str:
+def summarize_crew_log(log_path: str | Path) -> str:  # pylint: disable=too-many-return-statements
     """
     Read the log file and return an LLM-generated 4-5 line summary.
 
@@ -75,8 +87,20 @@ def summarize_crew_log(log_path: str | Path) -> str:
             return "Crew log summary unavailable (empty response)."
         return summary
     except Exception as exc:  # pylint: disable=broad-exception-caught
+        if _looks_like_shutdown_noise(exc):
+            logger.debug(
+                "Crew log summarization skipped because the runtime is shutting down: %s",
+                exc,
+            )
+            return "Crew log summary unavailable (runtime shutting down)."
         logger.warning("Crew log summarization failed: %s", exc)
         return "Crew log summary unavailable (LLM error)."
+
+
+def _looks_like_shutdown_noise(exc: Exception) -> bool:
+    """Return whether a summarizer exception matches known shutdown noise."""
+    message = str(exc).lower()
+    return any(marker in message for marker in _SHUTDOWN_NOISE_MARKERS)
 
 
 def _to_excerpt(raw: str, path: Path) -> str:

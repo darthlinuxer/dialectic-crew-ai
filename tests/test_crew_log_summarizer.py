@@ -1,10 +1,14 @@
 """Tests for CrewAI log summarizer (fallback and excerpt)."""
 
+# pylint: disable=missing-function-docstring
+
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
+from dialectic import crew_log_summarizer
 from dialectic.crew_log_summarizer import get_step_summarizer_callback, summarize_crew_log
 
 
@@ -19,6 +23,22 @@ def test_get_step_summarizer_callback_returns_callable_when_log_file_set(monkeyp
     cb = get_step_summarizer_callback()
     assert cb is not None
     assert callable(cb)
+
+
+def test_get_step_summarizer_callback_returns_none_when_native_event_logger_registered(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("CREWAI_VERBOSE", "true")
+    monkeypatch.setenv("CREWAI_OUTPUT_LOG_FILE", str(tmp_path / "crew.log"))
+    monkeypatch.setattr(
+        crew_log_summarizer,
+        "is_crewai_event_logger_registered",
+        lambda: True,
+        raising=False,
+    )
+
+    assert get_step_summarizer_callback() is None
 
 
 def test_summarize_crew_log_file_missing():
@@ -47,6 +67,23 @@ def test_summarize_crew_log_llm_failure_returns_fallback(tmp_path):
         mock_llm.call.side_effect = RuntimeError("API error")
         out = summarize_crew_log(log_file)
     assert "unavailable" in out.lower() or "error" in out.lower()
+
+
+def test_summarize_crew_log_shutdown_noise_returns_fallback_without_warning(tmp_path, caplog):
+    log_file = tmp_path / "crew.log"
+    log_file.write_text("Task 1 started. Agent thinking...")
+
+    with patch("dialectic.crew_log_summarizer.llm_simple") as mock_llm:
+        mock_llm.call.side_effect = RuntimeError(
+            "OpenAI API call failed: cannot schedule new futures after shutdown"
+        )
+        with caplog.at_level(logging.WARNING, logger="dialectic.crew_log_summarizer"):
+            out = summarize_crew_log(log_file)
+
+    assert "unavailable" in out.lower() or "error" in out.lower()
+    assert not any(
+        "Crew log summarization failed" in record.message for record in caplog.records
+    )
 
 
 def test_summarize_crew_log_llm_empty_response_returns_fallback(tmp_path):

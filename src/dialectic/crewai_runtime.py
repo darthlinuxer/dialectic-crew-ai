@@ -7,9 +7,12 @@ captured runs. This helper applies safe defaults while preserving explicit user
 opt-in to tracing via environment variables.
 
 When verbose logs are routed to a file (CREWAI_OUTPUT_LOG_FILE), run_crew_kickoff
-runs the crew and then prints an LLM-generated 4-5 line summary to the console
-instead of the full verbose stream.
+runs the crew without flooding the console. In contexts without the native
+CrewAI event bridge, it then prints an LLM-generated 4-5 line summary instead
+of the full verbose stream.
 """
+
+# pylint: disable=import-outside-toplevel,broad-exception-caught
 
 from __future__ import annotations
 
@@ -21,6 +24,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from typing import Any
 
+from dialectic.crewai_event_logger import is_crewai_event_logger_registered
 from dialectic.crew_log_summarizer import summarize_crew_log
 from dialectic.crew_verbose_config import get_output_log_file
 
@@ -74,7 +78,12 @@ def configure_crewai_runtime() -> None:
     if not tracing_enabled:
         os.environ.setdefault("CREWAI_TRACING_ENABLED", "false")
 
-    suppress_messages, mark_first_execution_done, first_time_trace_hook, first_time_trace_handler = _load_tracing_utils()
+    (
+        suppress_messages,
+        mark_first_execution_done,
+        first_time_trace_hook,
+        first_time_trace_handler,
+    ) = _load_tracing_utils()
     if suppress_messages is None or mark_first_execution_done is None:
         return
 
@@ -96,14 +105,21 @@ def run_crew_kickoff(crew: Any, **kickoff_kwargs: Any) -> Any:
 
     When CREWAI_VERBOSE is true and CREWAI_OUTPUT_LOG_FILE is set, verbose
     output is written to that file. During kickoff we redirect stdout/stderr
-    so the console is not flooded; after kickoff we print a 4-5 line LLM
-    summary of the log. When no log file is configured, kickoff runs normally
-    (verbose output goes to console if CREWAI_VERBOSE is true).
+    so the console is not flooded. After kickoff we print a 4-5 line LLM
+    summary of the log only when the native CrewAI event logger is not active.
+    When no log file is configured, kickoff runs normally (verbose output goes
+    to console if CREWAI_VERBOSE is true).
     """
     log_path = get_output_log_file()
     if log_path:
         with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
             result = crew.kickoff(**kickoff_kwargs)
+        if is_crewai_event_logger_registered():
+            logger.debug(
+                "Skipping post-kickoff CrewAI log summarization because the "
+                "native event logger is active"
+            )
+            return result
         summary = summarize_crew_log(log_path)
         print(summary, file=sys.stderr, flush=True)
         return result
