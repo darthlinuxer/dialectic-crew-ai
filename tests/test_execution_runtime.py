@@ -34,6 +34,45 @@ def test_build_runtime_placeholders_include_shared_plain_text_contract():
     assert "refined synthesis" in placeholders["plain_text_synthesis_expected_output"].lower()
 
 
+def test_build_task_execution_implementer_disables_research_mcps(monkeypatch):
+    from execution import runtime
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        runtime,
+        "_get_agent_config",
+        lambda name: {
+            "role": "Technical Implementer",
+            "goal": "Execute task",
+            "backstory": "Base backstory.",
+            "verbose": True,
+            "allow_delegation": False,
+            "llm_tier": "complex",
+            "tool_bundle": "implementer_io",
+            "mcp_bundle": "research",
+        },
+    )
+    monkeypatch.setattr(
+        runtime,
+        "render_yaml_config",
+        lambda config, replacements: {**config, **replacements},
+    )
+    monkeypatch.setattr(
+        runtime,
+        "build_agent_from_config",
+        lambda config: captured.setdefault("config", config) or "agent",
+    )
+
+    runtime.build_task_execution_implementer(VisionContext.SELF)
+
+    config = captured["config"]
+    assert config["tool_bundle"] == "implementer_io"
+    assert config["mcp_bundle"] == "none"
+    assert "Never finish with a tool call" in config["backstory"]
+    assert "internal/SELF_VISION.md" in config["vision_path"]
+
+
 def test_build_task_dialectic_crew_uses_yaml_templates(monkeypatch):
     from execution import runtime
 
@@ -51,7 +90,7 @@ def test_build_task_dialectic_crew_uses_yaml_templates(monkeypatch):
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "create_implementer", lambda ctx: "impl")
+    monkeypatch.setattr(runtime, "build_task_execution_implementer", lambda ctx: "impl")
     monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "crit")
     monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
@@ -101,7 +140,7 @@ def test_build_task_dialectic_crew_uses_initial_template_without_retry(monkeypat
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "create_implementer", lambda ctx: "impl")
+    monkeypatch.setattr(runtime, "build_task_execution_implementer", lambda ctx: "impl")
     monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "crit")
     monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
@@ -150,7 +189,7 @@ def test_build_task_dialectic_crew_validation_mentions_integration_quality(monke
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "create_implementer", lambda ctx: "impl")
+    monkeypatch.setattr(runtime, "build_task_execution_implementer", lambda ctx: "impl")
     monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "crit")
     monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")
@@ -189,7 +228,7 @@ def test_build_task_dialectic_crew_mentions_self_antidrift_file(monkeypatch):
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "create_implementer", lambda ctx: "impl")
+    monkeypatch.setattr(runtime, "build_task_execution_implementer", lambda ctx: "impl")
     monkeypatch.setattr(runtime, "create_critico_socratico", lambda ctx: "crit")
     monkeypatch.setattr(runtime, "create_sintetizador", lambda ctx: "sint")
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "val")

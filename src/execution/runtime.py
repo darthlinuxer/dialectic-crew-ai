@@ -8,8 +8,9 @@ from typing import Any, Mapping
 from crewai import Crew, Task
 
 from dialectic.agents import (
+    _get_agent_config,
+    build_agent_from_config,
     create_critico_socratico,
-    create_implementer,
     create_sintetizador,
     create_validador_macro,
 )
@@ -26,7 +27,7 @@ from dialectic.knowledge import (
 )
 from dialectic.llm import llm_planning
 from dialectic.vision import VisionContext, normalize_vision_context
-from dialectic.yaml_config import load_yaml_config
+from dialectic.yaml_config import load_yaml_config, render_yaml_config
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_dialectic.yaml"
@@ -46,12 +47,37 @@ _PLAIN_TEXT_CRITIQUE_EXPECTED_OUTPUT = (
 _PLAIN_TEXT_SYNTHESIS_EXPECTED_OUTPUT = (
     "Plain-text answer only containing the refined synthesis and retry instructions"
 )
+_TASK_EXECUTION_IMPLEMENTER_SUFFIX = """
+
+Execution-mode constraints:
+- Use local project tools first; do not rely on research MCP tools during task execution.
+- Never finish with a tool call, tool arguments, or raw tool output.
+- After any file/tool actions, always produce a concise plain-text completion summary.
+""".strip()
+
+
+def build_task_execution_implementer(vision_context: VisionContext) -> Any:
+    """Create a task-scoped implementer agent tuned for live execution reliability."""
+    config = dict(
+        render_yaml_config(
+            _get_agent_config("implementer"),
+            {
+                "vision_label": _vision_label(vision_context),
+                "vision_path": _vision_path(vision_context),
+            },
+        )
+    )
+    config["mcp_bundle"] = "none"
+    config["backstory"] = (
+        f"{config['backstory'].rstrip()}\n\n{_TASK_EXECUTION_IMPLEMENTER_SUFFIX}"
+    )
+    return build_agent_from_config(config)
 
 
 def _build_runtime_agents(vision_context: VisionContext) -> dict[str, Any]:
     """Create the agent set used by the task dialectic execution crew."""
     return {
-        "implementer": create_implementer(vision_context),
+        "implementer": build_task_execution_implementer(vision_context),
         "critico_socratico": create_critico_socratico(vision_context),
         "sintetizador": create_sintetizador(vision_context),
         "validador_macro": create_validador_macro(vision_context),

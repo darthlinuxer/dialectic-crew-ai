@@ -122,7 +122,7 @@ class TestExecutionRuntimeStyleGuideInjection:
     @patch("execution.runtime.create_validador_macro")
     @patch("execution.runtime.create_sintetizador")
     @patch("execution.runtime.create_critico_socratico")
-    @patch("execution.runtime.create_implementer")
+    @patch("execution.runtime.build_task_execution_implementer")
     @patch("execution.runtime.load_yaml_config")
     def test_self_context_includes_style_guides(
         self,
@@ -172,7 +172,7 @@ class TestExecutionRuntimeStyleGuideInjection:
     @patch("execution.runtime.create_validador_macro")
     @patch("execution.runtime.create_sintetizador")
     @patch("execution.runtime.create_critico_socratico")
-    @patch("execution.runtime.create_implementer")
+    @patch("execution.runtime.build_task_execution_implementer")
     @patch("execution.runtime.load_yaml_config")
     def test_project_context_excludes_style_guides(
         self,
