@@ -214,7 +214,7 @@ def build_task_dialectic_crew(
         tasks=tasks,
         knowledge_sources=knowledge_sources,
         memory=None,
-        planning=True,
+        planning=False,
         planning_llm=llm_planning,
     )
 

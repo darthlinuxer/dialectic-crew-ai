@@ -125,7 +125,7 @@ def test_build_task_dialectic_crew_uses_yaml_templates(monkeypatch):
     assert captured_tasks[2]["context"] == [captured_crew["tasks"][0], captured_crew["tasks"][1]]
     assert captured_tasks[3]["output_pydantic"].__name__ == "ValidationOutput"
     assert captured_tasks[3]["guardrail"].__name__ == "_quality_guardrail"
-    assert captured_crew["planning"] is True
+    assert captured_crew["planning"] is False
     assert captured_crew.get("memory") is None
     assert captured_crew["knowledge_sources"] == ["vision:self"]
 
