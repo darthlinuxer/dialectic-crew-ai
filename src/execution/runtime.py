@@ -21,7 +21,7 @@ from dialectic.crew_builder import (
 from dialectic.knowledge import (
     _vision_label,
     _vision_path,
-    crew_memory,
+    crew_memory as _crew_memory_compat,
     style_guide_knowledge,
     vision_knowledge,
 )
@@ -31,6 +31,7 @@ from dialectic.yaml_config import load_yaml_config, render_yaml_config
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_dialectic.yaml"
+crew_memory = _crew_memory_compat
 _FINAL_TEXT_RESPONSE_RULES = """
 Final response rules:
 - Return only the completed plain-text answer for this task.
@@ -212,7 +213,7 @@ def build_task_dialectic_crew(
         thesis_agent_name="implementer",
         tasks=tasks,
         knowledge_sources=knowledge_sources,
-        memory=crew_memory(normalized_context, "task_dialectic"),
+        memory=None,
         planning=True,
         planning_llm=llm_planning,
     )
