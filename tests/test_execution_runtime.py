@@ -32,6 +32,9 @@ def test_build_runtime_placeholders_include_shared_plain_text_contract():
     )
     assert "detailed critique" in placeholders["plain_text_critique_expected_output"].lower()
     assert "refined synthesis" in placeholders["plain_text_synthesis_expected_output"].lower()
+    assert placeholders["file_section_response_rules"].startswith(
+        "When the task changes files"
+    )
 
 
 def test_build_task_execution_implementer_disables_research_mcps(monkeypatch):
@@ -67,9 +70,11 @@ def test_build_task_execution_implementer_disables_research_mcps(monkeypatch):
     runtime.build_task_execution_implementer(VisionContext.SELF)
 
     config = captured["config"]
-    assert config["tool_bundle"] == "implementer_io"
+    assert config["tool_bundle"] == "none"
     assert config["mcp_bundle"] == "none"
     assert "Never finish with a tool call" in config["backstory"]
+    assert "Do not use file tools to reread the vision file" in config["backstory"]
+    assert "emit complete file contents using `--- relative/path ---` sections" in config["backstory"]
     assert "internal/SELF_VISION.md" in config["vision_path"]
 
 
@@ -164,7 +169,10 @@ def test_build_task_dialectic_crew_uses_initial_template_without_retry(monkeypat
     assert "RETRY 1/3" not in captured_tasks[0]["description"]
     assert "Definition of done" in captured_tasks[0]["description"]
     assert "Return only the completed plain-text answer" in captured_tasks[0]["description"]
+    assert "Do not use file tools to reread the vision file" in captured_tasks[0]["description"]
+    assert "--- relative/path/to/file.ext ---" in captured_tasks[0]["description"]
     assert "plain-text answer only" in captured_tasks[0]["expected_output"].lower()
+    assert "complete file sections" in captured_tasks[0]["expected_output"].lower()
     assert "static-analysis" in captured_tasks[0]["description"]
     assert "adjacent files" in captured_tasks[0]["description"]
     assert "Return only the completed plain-text answer" in captured_tasks[1]["description"]
