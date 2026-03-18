@@ -144,7 +144,7 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
             fallback = _run_local_verification_fallback(checks_to_verify)
             if fallback is not None:
                 logger.info("Recovered verifier failure with local acceptance fallback")
-                return fallback
+                return self._merge_stack_gate_if_verified(fallback)
             return VerificationResult(
                 verified=False,
                 checks_failed=list(checks_to_verify or []),
@@ -165,16 +165,45 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
         if verification is None:
             fallback = _run_local_verification_fallback(checks_to_verify)
             if fallback is not None:
-                logger.info("Recovered missing VerificationResult with local acceptance fallback")
-                return fallback
+                logger.info(
+                    "Recovered missing VerificationResult with local acceptance fallback"
+                )
+                return self._merge_stack_gate_if_verified(fallback)
             return VerificationResult(
                 verified=False,
                 notes="Failed to obtain structured VerificationResult",
             )
 
+        if (
+            not verification.verified
+            and not verification.checks_passed
+            and not verification.checks_failed
+            and not verification.notes.strip()
+        ):
+            fallback = _run_local_verification_fallback(checks_to_verify)
+            if fallback is not None:
+                logger.info(
+                    "Recovered empty VerificationResult with local acceptance fallback"
+                )
+                return self._merge_stack_gate_if_verified(fallback)
+            return VerificationResult(
+                verified=False,
+                checks_failed=list(checks_to_verify or []),
+                notes="Verifier returned an empty structured VerificationResult",
+            )
+
         if not verification.verified:
             return verification
 
+        gate = run_stack_validation_gate("task")
+        return _merge_verification_results(verification, gate)
+
+    def _merge_stack_gate_if_verified(
+        self, verification: VerificationResult
+    ) -> VerificationResult:
+        """Merge stack validation into fallback verification results that already passed."""
+        if not verification.verified:
+            return verification
         gate = run_stack_validation_gate("task")
         return _merge_verification_results(verification, gate)
 
@@ -211,7 +240,10 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
             vision_context=self.state.vision_context,
         ):
             self.state.current_phase = "dialectic"
-            if not self.state.phases_executed or self.state.phases_executed[-1] != "dialectic":
+            if (
+                not self.state.phases_executed
+                or self.state.phases_executed[-1] != "dialectic"
+            ):
                 self.state.phases_executed.append("dialectic")
             synthesis_for_retry: str | None = None
             vision_context = VisionContext(self.state.vision_context)
@@ -275,7 +307,11 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                         validation = last_p
 
                 score = validation.quality_score if validation else 5.0
-                notes = validation.final_validation_notes if validation else "No structured output"
+                notes = (
+                    validation.final_validation_notes
+                    if validation
+                    else "No structured output"
+                )
 
                 impl_raw = ""
                 synthesis_raw = ""
@@ -295,9 +331,14 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                     if materialized:
                         logger.info(
                             "Materialized implementation artifacts from dialectic output",
-                            extra={"count": len(materialized), "task_id": self.state.task_id},
+                            extra={
+                                "count": len(materialized),
+                                "task_id": self.state.task_id,
+                            },
                         )
-                    print(f"   {self.state.task_id} dialectic approved (score {score}/10)")
+                    print(
+                        f"   {self.state.task_id} dialectic approved (score {score}/10)"
+                    )
                     logger.info("Task dialectic approved")
                     return "passed"
 
@@ -348,9 +389,14 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     @listen("verify")
     def verify_implementation(self):
         """Phase A: Verify artifacts + Phase B: Check acceptance criteria."""
-        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="verify"):
+        with log_context(
+            flow_id=self.flow_id, task_id=self.state.task_id, phase="verify"
+        ):
             self.state.current_phase = "verify"
-            if not self.state.phases_executed or self.state.phases_executed[-1] != "verify":
+            if (
+                not self.state.phases_executed
+                or self.state.phases_executed[-1] != "verify"
+            ):
                 self.state.phases_executed.append("verify")
 
             if self.state.verified and self.state.verification.verified:
@@ -386,9 +432,14 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     @listen("reimplement")
     def independent_reimplement(self):
         """Phase C: Focused re-implementation using failed checks plus condensed context."""
-        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="reimplement"):
+        with log_context(
+            flow_id=self.flow_id, task_id=self.state.task_id, phase="reimplement"
+        ):
             self.state.current_phase = "reimplement"
-            if not self.state.phases_executed or self.state.phases_executed[-1] != "reimplement":
+            if (
+                not self.state.phases_executed
+                or self.state.phases_executed[-1] != "reimplement"
+            ):
                 self.state.phases_executed.append("reimplement")
             print(
                 f"   {self.state.task_id} starting independent "
@@ -429,9 +480,15 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                 if materialized:
                     logger.info(
                         "Materialized implementation artifacts from reimplementation output",
-                        extra={"count": len(materialized), "task_id": self.state.task_id},
+                        extra={
+                            "count": len(materialized),
+                            "task_id": self.state.task_id,
+                        },
                     )
-                if validation.quality_score < REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD:
+                if (
+                    validation.quality_score
+                    < REVERIFY_AFTER_REIMPLEMENT_SCORE_THRESHOLD
+                ):
                     if (
                         not self.state.phases_executed
                         or self.state.phases_executed[-1] != "reverify"
@@ -457,9 +514,7 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
                     self.state.verified = gate.verified
                     self.state.verification = VerificationResult(
                         verified=gate.verified,
-                        checks_passed=(
-                            failed_checks or self.state.acceptance_checks
-                        )
+                        checks_passed=(failed_checks or self.state.acceptance_checks)
                         + gate.checks_passed,
                         checks_failed=gate.checks_failed,
                         notes=_join_verification_notes(
@@ -512,7 +567,9 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     @listen("mark_completed")
     def on_completed(self):
         """Emit metrics and return the final success payload."""
-        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="completed"):
+        with log_context(
+            flow_id=self.flow_id, task_id=self.state.task_id, phase="completed"
+        ):
             self.state.current_phase = "completed"
             phases = " → ".join(self.state.phases_executed)
             logger.info("Task flow completed")
@@ -537,7 +594,9 @@ class TaskExecutionFlow(Flow[TaskFlowState]):
     @listen("mark_failed")
     def on_failed(self):
         """Emit metrics and return the final failure payload."""
-        with log_context(flow_id=self.flow_id, task_id=self.state.task_id, phase="failed"):
+        with log_context(
+            flow_id=self.flow_id, task_id=self.state.task_id, phase="failed"
+        ):
             self.state.current_phase = "failed"
             phases = " → ".join(self.state.phases_executed)
             logger.error(
@@ -617,7 +676,9 @@ def _build_dialectic_context(dialectic_notes: str, impl_output: str) -> str:
     return "\n\n".join(parts)
 
 
-def _materialize_generated_files(raw_output: str, repo_root: Path | None = None) -> list[str]:
+def _materialize_generated_files(
+    raw_output: str, repo_root: Path | None = None
+) -> list[str]:
     """Write numbered file-content sections from model output into the repository.
 
     This is a narrow fallback for execution stages that returned detailed file payloads
@@ -693,7 +754,9 @@ def _extract_dashed_file_sections(text: str) -> list[tuple[str, str]]:
         if not _looks_like_relative_file_path(relative_path):
             continue
         section_start = match.end()
-        section_end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        section_end = (
+            matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        )
         content = _trim_materialized_section(text[section_start:section_end])
         if content:
             extracted.append((relative_path, content))
@@ -721,7 +784,9 @@ def _normalize_materialized_relative_path(relative_path: str) -> str:
 
 def _looks_like_relative_file_path(relative_path: str) -> bool:
     candidate = Path(relative_path.strip())
-    return not candidate.is_absolute() and (len(candidate.parts) > 1 or bool(candidate.suffix))
+    return not candidate.is_absolute() and (
+        len(candidate.parts) > 1 or bool(candidate.suffix)
+    )
 
 
 def _resolve_materialization_path(base_dir: Path, relative_path: str) -> Path | None:
@@ -746,7 +811,9 @@ def _sanitize_materialized_content(relative_path: str, content: str) -> str:
 
 
 def _extract_json_payload(content: str) -> str | None:
-    payload_start = next((index for index, char in enumerate(content) if char in "[{"), -1)
+    payload_start = next(
+        (index for index, char in enumerate(content) if char in "[{"), -1
+    )
     if payload_start < 0:
         return None
 

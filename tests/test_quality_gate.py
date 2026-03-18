@@ -185,6 +185,23 @@ class TestMypyCheck:
         ]
         assert env["MYPYPATH"].startswith("src")
 
+    def test_build_mypy_command_can_target_precise_files(self):
+        command = build_mypy_command(
+            ["src/execution/verify.py", "src/publication/policy.py"],
+            prefer_precise_paths=True,
+        )
+
+        assert command is not None
+        cmd, env = command
+        assert cmd == [
+            "mypy",
+            "--explicit-package-bases",
+            "--follow-imports=skip",
+            "src/execution/verify.py",
+            "src/publication/policy.py",
+        ]
+        assert env["MYPYPATH"].startswith("src")
+
     @patch("src.main.self_improve.quality_gate.command_available")
     def test_mypy_not_available(self, mock_available):
         mock_available.return_value = False

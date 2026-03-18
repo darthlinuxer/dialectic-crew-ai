@@ -30,8 +30,9 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
     monkeypatch.setattr(verify_runtime, "create_validador_macro", lambda ctx: agent)
     monkeypatch.setattr(verify_runtime, "file_read_tool", "reader")
     monkeypatch.setattr(verify_runtime, "stack_validation_tool", "validator")
-    monkeypatch.setattr(verify_runtime, "crew_memory", lambda ctx, scope: f"memory:{ctx.value}:{scope}")
-    monkeypatch.setattr(verify_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+    monkeypatch.setattr(
+        verify_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}"
+    )
     monkeypatch.setattr(
         verify_runtime,
         "build_sequential_crew_kwargs",
@@ -39,7 +40,9 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
     )
 
     verify_runtime.build_verification_crew(
-        task=make_task(id="T-123", title="Verify API", description="Confirm API endpoint exists"),
+        task=make_task(
+            id="T-123", title="Verify API", description="Confirm API endpoint exists"
+        ),
         acceptance_criteria=["Endpoint returns 200", "Schema matches contract"],
         vision_context=VisionContext.SELF,
     )
@@ -48,19 +51,32 @@ def test_build_verification_crew_uses_yaml_template_and_tool_override(monkeypatc
     assert len(captured_tasks) == 1
     assert "T-123" in captured_tasks[0]["description"]
     assert "Endpoint returns 200" in captured_tasks[0]["description"]
-    assert "package/module boundaries remain coherent" in captured_tasks[0]["description"]
-    assert "Related tests, exports, or supporting files" in captured_tasks[0]["description"]
+    assert (
+        "package/module boundaries remain coherent" in captured_tasks[0]["description"]
+    )
+    assert (
+        "Related tests, exports, or supporting files"
+        in captured_tasks[0]["description"]
+    )
+    assert (
+        "Return ONLY valid JSON matching ValidationOutput"
+        in captured_tasks[0]["description"]
+    )
     assert captured_tasks[0]["output_pydantic"].__name__ == "ValidationOutput"
     assert captured_crew["agents"] == [agent]
     assert captured_crew["tasks"][0] is not None
-    assert captured_crew["memory"] == "memory:self:verify"
+    assert captured_crew["memory"] is None
     assert captured_crew["knowledge_sources"] == ["vision:self"]
     assert captured_helper["kwargs"]["tasks"] == captured_crew["tasks"]
-    assert captured_helper["kwargs"]["memory"] == "memory:self:verify"
+    assert captured_helper["kwargs"]["memory"] is None
     assert captured_helper["kwargs"]["knowledge_sources"] == ["vision:self"]
+    assert agent["reasoning"] is False
+    assert "structured story-verification mode" in agent["backstory"]
 
 
-def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(monkeypatch):
+def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(
+    monkeypatch,
+):
     from tests.conftest import make_task
 
     captured_tasks: list[dict] = []
@@ -75,10 +91,11 @@ def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(monk
 
     monkeypatch.setattr(verify_runtime, "Task", FakeTask)
     monkeypatch.setattr(verify_runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(verify_runtime, "create_validador_macro", lambda ctx: {"tools": []})
+    monkeypatch.setattr(
+        verify_runtime, "create_validador_macro", lambda ctx: {"tools": []}
+    )
     monkeypatch.setattr(verify_runtime, "file_read_tool", "reader")
     monkeypatch.setattr(verify_runtime, "stack_validation_tool", "validator")
-    monkeypatch.setattr(verify_runtime, "crew_memory", lambda ctx, scope: "memory")
     monkeypatch.setattr(verify_runtime, "vision_knowledge", lambda ctx: "vision")
 
     verify_runtime.build_verification_crew(
@@ -89,3 +106,7 @@ def test_build_verification_crew_omits_acceptance_criteria_block_when_empty(monk
 
     assert "ACCEPTANCE CRITERIA" not in captured_tasks[0]["description"]
     assert "static-analysis/editor inconsistencies" in captured_tasks[0]["description"]
+    assert (
+        "Return ONLY valid JSON matching ValidationOutput"
+        in captured_tasks[0]["description"]
+    )

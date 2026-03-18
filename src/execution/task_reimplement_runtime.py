@@ -11,21 +11,32 @@ from dialectic.crew_verbose_config import is_verbose
 from dialectic.knowledge import (
     _vision_label,
     _vision_path,
-    crew_memory,
     vision_knowledge,
 )
 from dialectic.llm import llm_complex
-from dialectic.tools import (
-    directory_read_tool,
-    file_read_tool,
-    file_write_tool,
-    stack_validation_tool,
-)
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import load_yaml_config
 
 
-_TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_taskflow_reimplement.yaml"
+_TASKS_CONFIG_PATH = (
+    Path(__file__).with_name("config") / "tasks_taskflow_reimplement.yaml"
+)
+
+
+_FILE_SECTION_RESPONSE_RULES = (
+    "Return plain text only. Do not call tools. After the short summary, emit one or more "
+    "complete file sections using this exact format:\n"
+    "--- relative/path/to/file.ext ---\n"
+    "<full final file content>\n"
+    "Repeat for every file that must change. If no file changes are needed, write exactly NO_FILE_CHANGES."
+)
+
+_TASK_REIMPLEMENTER_SUFFIX = (
+    "You are operating in a text-first repair mode. Do not use file, directory, memory, or validation tools. "
+    "Do not reread the anti-drift vision file via tools; rely on the injected knowledge source and prompt context. "
+    "Produce a concise root-cause summary followed by complete file sections in the required format so the runtime "
+    "can materialize the repair safely."
+)
 
 
 # pylint: disable=too-many-arguments
@@ -53,6 +64,7 @@ def build_task_flow_reimplementation_crew(
         "vision_label": _vision_label(vision_context),
         "vision_path": _vision_path(vision_context),
         "vision_file_ref": f"#file:{_vision_label(vision_context)}",
+        "file_section_rules": _FILE_SECTION_RESPONSE_RULES,
     }
 
     reimpl_agent = _build_agent()
@@ -77,7 +89,7 @@ def build_task_flow_reimplementation_crew(
         agents=[reimpl_agent, reval_agent],
         tasks=[task_fix, task_revalidate],
         knowledge_sources=[vision_knowledge(vision_context)],
-        memory=crew_memory(vision_context, "task_reimplement"),
+        memory=None,
     )
 
 
@@ -100,17 +112,11 @@ def _build_agent() -> Agent:
             "You are an implementer focused on fixing the root cause of specific gaps. "
             "Read existing files, identify whether the problem is in imports, references, "
             "tests, exports, or implementation details, and fix the real source of failure. "
-            "Use the stack-aware validation tool before you conclude the fix is done."
+            f"{_TASK_REIMPLEMENTER_SUFFIX}"
         ),
         verbose=is_verbose(),
         allow_delegation=False,
-        reasoning=True,
-        max_reasoning_attempts=2,
+        reasoning=False,
         llm=llm_complex,
-        tools=[
-            file_read_tool,
-            file_write_tool,
-            directory_read_tool,
-            stack_validation_tool,
-        ],
+        tools=[],
     )

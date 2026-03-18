@@ -11,9 +11,9 @@ from crewai import Agent, Crew, Task
 
 from dialectic.crew_builder import build_sequential_crew_kwargs
 from dialectic.crew_verbose_config import is_verbose
-from dialectic.knowledge import crew_memory, vision_knowledge
+from dialectic.knowledge import vision_knowledge
 from dialectic.llm import llm_simple
-from dialectic.tools import directory_read_tool, file_read_tool, stack_validation_tool
+from dialectic.tools import file_read_tool, stack_validation_tool
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import (
     load_yaml_config,
@@ -24,6 +24,19 @@ from dialectic.yaml_config import (
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_taskflow_verify.yaml"
+
+
+_VERIFICATION_RESPONSE_RULES = (
+    "Return ONLY valid JSON matching VerificationResult with keys verified, "
+    "checks_passed, checks_failed, and notes. Do not wrap the JSON in markdown. "
+    "Do not include commentary before or after the JSON."
+)
+
+_TASK_VERIFIER_SUFFIX = (
+    "You are operating in structured verification mode. Use file-reading and stack-validation "
+    "tools only when necessary, never use directory listing behavior, and always return raw "
+    "VerificationResult JSON with no extra text."
+)
 
 
 def build_task_flow_verification_crew(
@@ -42,6 +55,7 @@ def build_task_flow_verification_crew(
         "task_title": task_title,
         "task_description": task_description,
         "acceptance_checks_block": _render_acceptance_checks_block(acceptance_checks),
+        "verification_response_rules": _VERIFICATION_RESPONSE_RULES,
     }
 
     verify_task = _build_task(
@@ -55,7 +69,7 @@ def build_task_flow_verification_crew(
         **build_sequential_crew_kwargs(
             tasks=[verify_task],
             knowledge_sources=[vision_knowledge(vision_context)],
-            memory=crew_memory(vision_context, "task_verify"),
+            memory=None,
         ),
     )
 
@@ -78,18 +92,20 @@ def _build_agent() -> Agent:
             "You verify implementations by reading actual project files and checking "
             "whether the touched surface still hangs together. Be objective: artifacts, "
             "imports, references, and related supporting files either line up or they do not. "
-            "Use the stack-aware validation tool when it helps confirm language-specific checks."
+            "Use the stack-aware validation tool when it helps confirm language-specific checks. "
+            f"{_TASK_VERIFIER_SUFFIX}"
         ),
         verbose=is_verbose(),
         allow_delegation=False,
-        reasoning=True,
-        max_reasoning_attempts=2,
+        reasoning=False,
         llm=llm_simple,
-        tools=[file_read_tool, directory_read_tool, stack_validation_tool],
+        tools=[file_read_tool, stack_validation_tool],
     )
 
 
-def _build_task(template: dict[str, Any], placeholders: dict[str, Any], agent: Any) -> Task:
+def _build_task(
+    template: dict[str, Any], placeholders: dict[str, Any], agent: Any
+) -> Task:
     """Create the task-flow verification task from YAML configuration."""
     config = dict(render_yaml_config(template, placeholders))
     output_schema = config.pop("output_schema", None)

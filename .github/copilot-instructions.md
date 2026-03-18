@@ -62,6 +62,15 @@ PRD generation, execution, and self-improve all support persistence/resume behav
 ### Runtime defaults are intentional
 CrewAI telemetry is disabled by default and tracing prompts are suppressed unless explicitly enabled. Do not re-enable noisy runtime behavior casually.
 
+### Self-improve log hygiene
+When running `uv run dialectic-crew self-improve` during active development — with or without `--resume` — clear the transient runtime logs in `.dialectic/` before each new run so the agent iterates on fresh evidence instead of stale failures.
+
+- Delete `.dialectic/app.log` before the run when it exists.
+- Delete `.dialectic/crewai_verbose.log.txt` before the run when it exists.
+- Delete `.dialectic/error.log` before the run when it exists.
+- Treat this as log hygiene for development/debugging only; it must not change durable persistence, checkpoints, resumable state, or other authoritative artifacts.
+- For `--resume` runs, keep the resume data and checkpoints intact; only clear the transient logs listed above.
+
 ### Import surfaces require value-based thinking
 This repository still has multiple import surfaces in active use: canonical packages such as `dialectic.*`, `execution.*`, and `main.*`, plus legacy/bootstrap paths such as `src.*` and the root `main.py` shim.
 

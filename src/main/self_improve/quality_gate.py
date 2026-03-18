@@ -210,7 +210,10 @@ def _run_mypy(
             )
 
     python_targets = resolve_python_targets(project_root, target_path, touched_files)
-    mypy_command = build_mypy_command(python_targets)
+    mypy_command = build_mypy_command(
+        python_targets,
+        prefer_precise_paths=touched_files is not None,
+    )
     if mypy_command is None:
         return QualityCheckResult(
             tool="mypy",

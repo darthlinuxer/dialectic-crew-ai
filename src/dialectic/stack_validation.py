@@ -189,7 +189,8 @@ def run_validation_plan(
     )
     selected_labels = set(include_steps or [])
     steps = [
-        step for step in plan.steps
+        step
+        for step in plan.steps
         if not selected_labels or step.label in selected_labels
     ]
     runner = run_cmd_fn or subprocess.run
@@ -282,7 +283,9 @@ def _command_available(command: str) -> bool:
     return shutil.which(command) is not None
 
 
-def _select_stacks(detected: list[StackName], target_stack: str | None) -> list[StackName]:
+def _select_stacks(
+    detected: list[StackName], target_stack: str | None
+) -> list[StackName]:
     if target_stack is None:
         return detected
     if target_stack not in _KNOWN_STACKS:
@@ -304,6 +307,13 @@ def _python_steps(
     )
     lint_targets = _existing_targets(project_root, "src", "tests") or ["."]
     type_targets = ["src"] if (project_root / "src").exists() else ["."]
+    mypy_command = _python_mypy_command(
+        project_root,
+        prefix,
+        python_executable,
+        command_available_fn,
+        fallback_targets=type_targets,
+    )
     return [
         ValidationStep(
             stack="python",
@@ -314,7 +324,7 @@ def _python_steps(
         ValidationStep(
             stack="python",
             label="mypy",
-            command=[*prefix, "mypy", *type_targets],
+            command=mypy_command,
             reason="Catch type and symbol-resolution issues before runtime.",
         ),
         ValidationStep(
@@ -324,6 +334,43 @@ def _python_steps(
             reason="Exercise the repository test suite from the active environment.",
         ),
     ]
+
+
+def _python_mypy_command(
+    project_root: Path,
+    prefix: list[str],
+    python_executable: str,
+    command_available_fn: Callable[[str], bool],
+    *,
+    fallback_targets: list[str],
+) -> list[str]:
+    src_root = project_root / "src"
+    if src_root.exists() and command_available_fn("env"):
+        package_targets = sorted(
+            child.name
+            for child in src_root.iterdir()
+            if child.is_dir() and (child / "__init__.py").exists()
+        )
+        module_targets = sorted(
+            child.stem
+            for child in src_root.iterdir()
+            if child.is_file() and child.suffix == ".py"
+        )
+        if package_targets or module_targets:
+            base_command = (
+                [*prefix, "python", "-m", "mypy"]
+                if prefix[:2] == ["uv", "run"]
+                else [python_executable, "-m", "mypy"]
+            )
+            return [
+                "env",
+                f"MYPYPATH={src_root.name}",
+                *base_command,
+                *[arg for package in package_targets for arg in ("-p", package)],
+                *[arg for module in module_targets for arg in ("-m", module)],
+            ]
+
+    return [*prefix, "mypy", *fallback_targets]
 
 
 def _dotnet_steps(project_root: Path) -> list[ValidationStep]:

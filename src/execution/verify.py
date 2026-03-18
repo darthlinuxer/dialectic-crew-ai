@@ -54,7 +54,10 @@ DEFAULT_VERIFICATION_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "7.5"))
 # Verify task with LLM (acceptance criteria check)
 # ---------------------------------------------------------------------------
 
-def _load_prd_for_plan(plan: UserStoryExecutionPlan, prd_path: str | None) -> PRDSchema | None:
+
+def _load_prd_for_plan(
+    plan: UserStoryExecutionPlan, prd_path: str | None
+) -> PRDSchema | None:
     """Try to load the PRD that contains the user story for this plan."""
     if prd_path:
         with open(prd_path, "r", encoding="utf-8") as f:
@@ -95,6 +98,7 @@ def _extract_acceptance_criteria(
 # Core verification (reusable by both CLI and execution flow)
 # ---------------------------------------------------------------------------
 
+
 # pylint: disable=too-many-locals
 def _run_verification(
     task: ImplementationTask,
@@ -108,32 +112,28 @@ def _run_verification(
     """
     ctx = vision_context or VisionContext.PROJECT
     checks_to_verify = acceptance_criteria or []
-    fallback = _run_local_verification_fallback(
-        checks_to_verify,
-        resolve_active_project_root(),
-    )
-    if fallback is not None:
-        verified = fallback.verified
-        notes = fallback.notes
-        if verified:
-            gate = run_stack_validation_gate("story")
-            verified = gate.verified
-            notes = _join_notes(notes, gate.notes)
-        score = DEFAULT_VERIFICATION_SCORE if verified else 0.0
-        return {
-            "task_id": task.id,
-            "verified": verified,
-            "score": score,
-            "notes": notes,
-        }
+    fallback_result = _run_verification_fallback_result(task.id, checks_to_verify)
+    if fallback_result is not None:
+        return fallback_result
 
     crew = build_verification_crew(
         task=task,
         acceptance_criteria=checks_to_verify,
         vision_context=ctx,
     )
-    with temporary_working_directory(resolve_active_project_root()):
-        result = run_crew_kickoff(crew)
+    try:
+        with temporary_working_directory(resolve_active_project_root()):
+            result = run_crew_kickoff(crew)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        task_fallback = _run_task_acceptance_fallback(task)
+        if task_fallback is not None:
+            return task_fallback
+        return {
+            "task_id": task.id,
+            "verified": False,
+            "score": 0.0,
+            "notes": f"Verification execution failed: {exc}",
+        }
 
     validation: ValidationOutput | None = None
     pydantic_result = getattr(result, "pydantic", None)
@@ -148,6 +148,9 @@ def _run_verification(
 
     if validation is None:
         raw = getattr(result, "raw", str(result))
+        task_fallback = _run_task_acceptance_fallback(task)
+        if task_fallback is not None:
+            return task_fallback
         return {
             "task_id": task.id,
             "verified": False,
@@ -173,9 +176,53 @@ def _join_notes(*parts: str) -> str:
     return " | ".join(part for part in parts if part)
 
 
+def _run_task_acceptance_fallback(task: ImplementationTask) -> dict | None:
+    if not task.acceptance_checks:
+        return None
+    return _run_verification_fallback_result(
+        task.id,
+        task.acceptance_checks,
+        apply_stack_gate=False,
+        note_prefix="Task acceptance fallback verification executed.",
+    )
+
+
+def _run_verification_fallback_result(
+    task_id: str,
+    checks: list[str],
+    *,
+    gate_profile: Literal["task", "story"] = "story",
+    apply_stack_gate: bool = True,
+    note_prefix: str | None = None,
+) -> dict | None:
+    fallback = _run_local_verification_fallback(
+        checks,
+        resolve_active_project_root(),
+    )
+    if fallback is None:
+        return None
+
+    verified = fallback.verified
+    notes = fallback.notes
+    if note_prefix is not None:
+        notes = _join_notes(note_prefix, notes)
+    if verified and apply_stack_gate:
+        gate = run_stack_validation_gate(gate_profile)
+        verified = gate.verified
+        notes = _join_notes(notes, gate.notes)
+    score = DEFAULT_VERIFICATION_SCORE if verified else 0.0
+    return {
+        "task_id": task_id,
+        "verified": verified,
+        "score": score,
+        "notes": notes,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI-facing: verify single task
 # ---------------------------------------------------------------------------
+
 
 def verify_task(
     task_id: str,
@@ -198,7 +245,9 @@ def verify_task(
     print(f"\n  Verifying {task.id} — {task.title}...")
     vr = _run_verification(task, acceptance_criteria)
 
-    new_status: Literal["completed", "failed"] = "completed" if vr["verified"] else "failed"
+    new_status: Literal["completed", "failed"] = (
+        "completed" if vr["verified"] else "failed"
+    )
     task.status = new_status
     task.verification_notes = vr["notes"]
     if vr["verified"]:
@@ -224,6 +273,7 @@ def verify_task(
 # ---------------------------------------------------------------------------
 # Verify all tasks in a user story and update story-level status
 # ---------------------------------------------------------------------------
+
 
 # pylint: disable=too-many-locals
 def verify_user_story(
@@ -255,10 +305,10 @@ def verify_user_story(
             "already_failed_tasks": failed_before,
         }
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  Verifying user story: {plan.user_story_id} — {plan.user_story_title}")
     print(f"  Tasks to verify: {len(completed_tasks)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     verified_ids: list[str] = []
     failed_verification_ids: list[str] = []

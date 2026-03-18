@@ -137,7 +137,9 @@ class TestRunVerification:
 
         schema_dir = tmp_path / "schemas"
         schema_dir.mkdir(parents=True)
-        (schema_dir / "adapter_manifest.schema.json").write_text("{}\n", encoding="utf-8")
+        (schema_dir / "adapter_manifest.schema.json").write_text(
+            "{}\n", encoding="utf-8"
+        )
 
         monkeypatch.setattr(
             "execution.verify.resolve_active_project_root",
@@ -145,7 +147,9 @@ class TestRunVerification:
         )
         monkeypatch.setattr(
             "execution.verify.build_verification_crew",
-            lambda **kwargs: pytest.fail("LLM verifier should not run for deterministic fallback"),
+            lambda **kwargs: pytest.fail(
+                "LLM verifier should not run for deterministic fallback"
+            ),
         )
         monkeypatch.setattr(
             "execution.verify.run_stack_validation_gate",
@@ -156,7 +160,9 @@ class TestRunVerification:
             ),
         )
 
-        task = make_task(id="T-002", title="Adapter SDK", description="Write adapter SDK doc")
+        task = make_task(
+            id="T-002", title="Adapter SDK", description="Write adapter SDK doc"
+        )
         result = _run_verification(
             task,
             [
@@ -184,11 +190,19 @@ class TestRunVerification:
 
         class FakeCrew:
             def kickoff(self):
-                return type("CrewResult", (), {"pydantic": None, "tasks_output": [], "raw": "not-json"})()
+                return type(
+                    "CrewResult",
+                    (),
+                    {"pydantic": None, "tasks_output": [], "raw": "not-json"},
+                )()
 
-        monkeypatch.setattr("execution.verify.build_verification_crew", lambda **kwargs: FakeCrew())
+        monkeypatch.setattr(
+            "execution.verify.build_verification_crew", lambda **kwargs: FakeCrew()
+        )
 
-        task = make_task(id="T-099", title="Speculative", description="Future roadmap artifact")
+        task = make_task(
+            id="T-099", title="Speculative", description="Future roadmap artifact"
+        )
         result = _run_verification(task, ["docs/dil/adapter_sdk.md committed"])
 
         assert result["verified"] is False
@@ -200,8 +214,20 @@ class TestRunVerification:
 
         class FakeCrew:
             def kickoff(self):
-                task_output = type("TaskOutput", (), {"pydantic": ValidationOutput(quality_score=8.5, consensus_reached=True, final_validation_notes="looks good")})()
-                return type("CrewResult", (), {"pydantic": None, "tasks_output": [task_output]})()
+                task_output = type(
+                    "TaskOutput",
+                    (),
+                    {
+                        "pydantic": ValidationOutput(
+                            quality_score=8.5,
+                            consensus_reached=True,
+                            final_validation_notes="looks good",
+                        )
+                    },
+                )()
+                return type(
+                    "CrewResult", (), {"pydantic": None, "tasks_output": [task_output]}
+                )()
 
         captured: dict = {}
 
@@ -211,7 +237,9 @@ class TestRunVerification:
             captured["vision_context"] = vision_context
             return FakeCrew()
 
-        monkeypatch.setattr("execution.verify.build_verification_crew", fake_build_verification_crew)
+        monkeypatch.setattr(
+            "execution.verify.build_verification_crew", fake_build_verification_crew
+        )
         monkeypatch.setattr(
             "execution.verify.run_stack_validation_gate",
             lambda profile: VerificationResult(
@@ -221,7 +249,9 @@ class TestRunVerification:
             ),
         )
 
-        task = make_task(id="T-001", title="Ship feature", description="Implement feature")
+        task = make_task(
+            id="T-001", title="Ship feature", description="Implement feature"
+        )
         result = _run_verification(task, ["AC1"])
 
         assert captured["task"].id == "T-001"
@@ -236,7 +266,11 @@ class TestRunVerification:
     def test_returns_failure_when_structured_result_missing(self, monkeypatch):
         class FakeCrew:
             def kickoff(self):
-                return type("CrewResult", (), {"pydantic": None, "tasks_output": [], "raw": "not-json"})()
+                return type(
+                    "CrewResult",
+                    (),
+                    {"pydantic": None, "tasks_output": [], "raw": "not-json"},
+                )()
 
         monkeypatch.setattr(
             "execution.verify.build_verification_crew",
@@ -250,6 +284,60 @@ class TestRunVerification:
         assert result["verified"] is False
         assert result["score"] == 0.0
         assert "Failed to obtain structured result" in result["notes"]
+
+    def test_returns_failure_when_verification_crew_raises(self, monkeypatch):
+        class FakeCrew:
+            def kickoff(self):
+                raise RuntimeError("verification exploded")
+
+        monkeypatch.setattr(
+            "execution.verify.build_verification_crew",
+            lambda **kwargs: FakeCrew(),
+        )
+
+        task = make_task(id="T-500", title="Explode", description="Crew raises")
+        result = _run_verification(task, ["AC1"])
+
+        assert result["task_id"] == "T-500"
+        assert result["verified"] is False
+        assert result["score"] == 0.0
+        assert "Verification execution failed" in result["notes"]
+
+    def test_falls_back_to_task_acceptance_checks_when_verification_crew_raises(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        class FakeCrew:
+            def kickoff(self):
+                raise RuntimeError("verification exploded")
+
+        monkeypatch.setattr(
+            "execution.verify.build_verification_crew",
+            lambda **kwargs: FakeCrew(),
+        )
+        monkeypatch.setattr(
+            "execution.verify.resolve_active_project_root",
+            lambda: tmp_path,
+        )
+        schema_dir = tmp_path / "schemas"
+        schema_dir.mkdir(parents=True)
+        (schema_dir / "adapter_manifest.schema.json").write_text(
+            "{}\n", encoding="utf-8"
+        )
+
+        task = make_task(
+            id="T-501",
+            title="Fallback",
+            description="Crew raises but task checks are deterministic",
+            acceptance_checks=["schemas/adapter_manifest.schema.json exists"],
+        )
+        result = _run_verification(task, ["unsupported story-level check"])
+
+        assert result["task_id"] == "T-501"
+        assert result["verified"] is True
+        assert result["score"] == 7.5
+        assert "Task acceptance fallback verification executed." in result["notes"]
 
     def test_fails_when_stack_validation_gate_fails(self, monkeypatch):
         from schemas import ValidationOutput, VerificationResult
@@ -267,9 +355,13 @@ class TestRunVerification:
                         )
                     },
                 )()
-                return type("CrewResult", (), {"pydantic": None, "tasks_output": [task_output]})()
+                return type(
+                    "CrewResult", (), {"pydantic": None, "tasks_output": [task_output]}
+                )()
 
-        monkeypatch.setattr("execution.verify.build_verification_crew", lambda **kwargs: FakeCrew())
+        monkeypatch.setattr(
+            "execution.verify.build_verification_crew", lambda **kwargs: FakeCrew()
+        )
         monkeypatch.setattr(
             "execution.verify.run_stack_validation_gate",
             lambda profile: VerificationResult(

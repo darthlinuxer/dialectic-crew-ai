@@ -34,7 +34,12 @@ def test_detect_project_stacks_uses_repo_markers(tmp_path: Path) -> None:
     _write(tmp_path / "tsconfig.json", "{}")
     _write(tmp_path / "demo.csproj", "<Project Sdk='Microsoft.NET.Sdk'></Project>")
 
-    assert detect_project_stacks(tmp_path) == ["python", "dotnet", "typescript", "react"]
+    assert detect_project_stacks(tmp_path) == [
+        "python",
+        "dotnet",
+        "typescript",
+        "react",
+    ]
 
 
 def test_build_validation_plan_for_python_repo_prefers_uv(tmp_path: Path) -> None:
@@ -44,18 +49,38 @@ def test_build_validation_plan_for_python_repo_prefers_uv(tmp_path: Path) -> Non
 
     plan = build_validation_plan(
         tmp_path,
-        command_available_fn=lambda command: command == "uv",
+        command_available_fn=lambda command: command in {"uv", "env"},
         python_executable="/tmp/venv/bin/python",
     )
 
     assert plan.detected_stacks == ["python"]
     assert [step.label for step in plan.steps] == ["ruff", "mypy", "pytest"]
     assert plan.steps[0].command == ["uv", "run", "ruff", "check", "src", "tests"]
-    assert plan.steps[1].command == ["uv", "run", "mypy", "src"]
-    assert plan.steps[2].command == ["uv", "run", "pytest", "--tb=short", "-q", "--reruns", "1"]
+    assert plan.steps[1].command == [
+        "env",
+        "MYPYPATH=src",
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "mypy",
+        "-m",
+        "app",
+    ]
+    assert plan.steps[2].command == [
+        "uv",
+        "run",
+        "pytest",
+        "--tb=short",
+        "-q",
+        "--reruns",
+        "1",
+    ]
 
 
-def test_build_validation_plan_for_react_repo_prefers_package_scripts(tmp_path: Path) -> None:
+def test_build_validation_plan_for_react_repo_prefers_package_scripts(
+    tmp_path: Path,
+) -> None:
     _write(
         tmp_path / "package.json",
         json.dumps(
@@ -102,7 +127,7 @@ def test_run_validation_plan_executes_allowlisted_steps(tmp_path: Path) -> None:
     report = run_validation_plan(
         tmp_path,
         include_steps=["ruff", "mypy"],
-        command_available_fn=lambda command: command in {"uv", "python"},
+        command_available_fn=lambda command: command in {"uv", "python", "env"},
         python_executable="python",
         run_cmd_fn=fake_run_cmd,
     )
@@ -112,11 +137,13 @@ def test_run_validation_plan_executes_allowlisted_steps(tmp_path: Path) -> None:
     assert [result.label for result in report.results] == ["ruff", "mypy"]
     assert observed_commands == [
         ["uv", "run", "ruff", "check", "src"],
-        ["uv", "run", "mypy", "src"],
+        ["env", "MYPYPATH=src", "uv", "run", "python", "-m", "mypy", "-m", "app"],
     ]
 
 
-def test_stack_validation_tool_guide_mode_returns_json(monkeypatch, tmp_path: Path) -> None:
+def test_stack_validation_tool_guide_mode_returns_json(
+    monkeypatch, tmp_path: Path
+) -> None:
     _write(tmp_path / "pyproject.toml", "[project]\nname='demo'\n")
     _write(tmp_path / "src" / "app.py", "print('hi')\n")
 

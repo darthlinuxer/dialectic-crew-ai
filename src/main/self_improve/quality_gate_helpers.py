@@ -122,10 +122,13 @@ def resolve_python_targets(
 
 def build_mypy_command(
     python_targets: list[str],
+    *,
+    prefer_precise_paths: bool = False,
 ) -> tuple[list[str], dict[str, str]] | None:
     """Build a repo-compatible mypy command for the requested source targets."""
     packages: set[str] = set()
     modules: set[str] = set()
+    file_targets: set[str] = set()
 
     for target in python_targets:
         path = Path(target)
@@ -137,16 +140,22 @@ def build_mypy_command(
         parts = path.parts
         if not parts or parts[0] != "src":
             continue
+        if prefer_precise_paths and path.suffix == ".py":
+            file_targets.add(path.as_posix())
+            continue
         if len(parts) >= 2 and parts[1] in _TYPED_SOURCE_PACKAGES:
             packages.add(parts[1])
             continue
         if len(parts) == 2 and path.suffix == ".py" and path.stem != "__init__":
             modules.add(path.stem)
 
-    if not packages and not modules:
+    if not packages and not modules and not file_targets:
         return None
 
     cmd = ["mypy", "--explicit-package-bases"]
+    if file_targets:
+        cmd.append("--follow-imports=skip")
+        cmd.extend(sorted(file_targets))
     for package in sorted(packages):
         cmd.extend(["-p", package])
     for module in sorted(modules):
