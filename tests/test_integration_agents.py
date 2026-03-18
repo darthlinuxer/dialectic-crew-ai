@@ -72,7 +72,9 @@ def test_single_agent_simple_task(tmp_path, monkeypatch):
     crew = Crew(agents=[agent], tasks=[task], verbose=False)
     result = crew.kickoff()
     structured = getattr(result, "pydantic", None)
-    assert isinstance(structured, ValidationOutput), f"Expected ValidationOutput, got: {type(structured)!r}"
+    assert isinstance(structured, ValidationOutput), (
+        f"Expected ValidationOutput, got: {type(structured)!r}"
+    )
     assert 0.0 <= structured.quality_score <= 10.0
     assert isinstance(structured.consensus_reached, bool)
     assert structured.final_validation_notes.strip()

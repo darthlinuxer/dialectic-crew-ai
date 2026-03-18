@@ -15,7 +15,9 @@ DEFAULT_FLOW_DB_PATH = ".dialectic/flows.db"
 
 def get_flow_persistence_db_path() -> str:
     """Return the configured SQLite path for persisted CrewAI flow state."""
-    raw_path = os.getenv(FLOW_DB_ENV_VAR, DEFAULT_FLOW_DB_PATH).strip() or DEFAULT_FLOW_DB_PATH
+    raw_path = (
+        os.getenv(FLOW_DB_ENV_VAR, DEFAULT_FLOW_DB_PATH).strip() or DEFAULT_FLOW_DB_PATH
+    )
     path = Path(raw_path).expanduser()
     if not path.is_absolute():
         path = resolve_project_root() / path

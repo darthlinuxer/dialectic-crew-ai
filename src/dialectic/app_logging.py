@@ -146,7 +146,8 @@ def get_logging_config() -> LoggingConfig:
     )
     error_log_path = (
         log_dir / "error.log"
-        if log_dir != default_log_dir and _uses_default_log_path(error_raw, error_default)
+        if log_dir != default_log_dir
+        and _uses_default_log_path(error_raw, error_default)
         else _resolve_path(error_raw, log_dir / "error.log")
     )
 
@@ -237,7 +238,9 @@ class JsonLogFormatter(logging.Formatter):
         for key in _LOG_CONTEXT_KEYS + _OPTIONAL_RECORD_KEYS:
             payload[key] = getattr(record, key, "-")
         if record.exc_info:
-            payload["exception"] = _redact_secrets(self.formatException(record.exc_info))
+            payload["exception"] = _redact_secrets(
+                self.formatException(record.exc_info)
+            )
         return json.dumps(payload, ensure_ascii=False)
 
 

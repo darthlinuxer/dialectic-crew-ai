@@ -105,7 +105,9 @@ class MetricsStore:
             )
             self._conn().commit()
         except Exception:
-            logger.debug("Failed to record metric %s", metric.metric_type, exc_info=True)
+            logger.debug(
+                "Failed to record metric %s", metric.metric_type, exc_info=True
+            )
 
     def query(
         self,

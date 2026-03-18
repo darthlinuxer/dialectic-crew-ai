@@ -255,10 +255,7 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
             return
         if not simulate and artifact_path is None:
             resume_cycle_id = rows[0]["cycle_id"]
-            print(
-                "Auto-resuming latest resumable cycle: "
-                f"{resume_cycle_id}"
-            )
+            print(f"Auto-resuming latest resumable cycle: {resume_cycle_id}")
 
     record = run_self_improve(
         max_improvements,

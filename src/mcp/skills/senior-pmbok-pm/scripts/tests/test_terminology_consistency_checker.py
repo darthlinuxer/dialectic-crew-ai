@@ -25,20 +25,29 @@ class TestTerminologyConsistencyChecker(unittest.TestCase):
 
             stdout = io.StringIO()
             argv = ["terminology_consistency_checker.py", str(bad_path)]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 2)
             self.assertIn("inconsistencies", stdout.getvalue())
 
             stdout = io.StringIO()
             argv = ["terminology_consistency_checker.py", str(good_path)]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
 
             stdout = io.StringIO()
             argv = ["terminology_consistency_checker.py", str(good_path), "--pretty"]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
             self.assertIn("\n", stdout.getvalue())

@@ -1,60 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
 from typing import Any, Final, Mapping
 
-
-class PublicationLifecycle(str, Enum):
-    PRE_APPROVAL_PREVIEW = "pre_approval_preview"
-    AD_HOC_EXPORT = "ad_hoc_export"
-    PUBLISH = "publish"
-    APPROVED_PUBLICATION = "approved_publication"
-
-
-class EmittedView(str, Enum):
-    MARKDOWN = "markdown"
-    JSON = "json"
-    BOTH = "both"
-    MARKDOWN_ONLY = "markdown"
-    JSON_ONLY = "json"
-
-
-class RequestedView(str, Enum):
-    MARKDOWN = "markdown"
-    JSON = "json"
-    BOTH = "both"
-
-
-@dataclass(frozen=True)
-class PersistencePlan:
-    persist_markdown: bool
-    persist_json: bool
-    output_dir: str | None = None
-
-    @property
-    def requires_persistence(self) -> bool:
-        return self.persist_markdown or self.persist_json
-
-
-@dataclass(frozen=True)
-class PublicationPolicyDecision:
-    lifecycle: PublicationLifecycle
-    requested_view: RequestedView
-    emitted_view: EmittedView
-    persistence: PersistencePlan
+from .emitted_view import EmittedView
+from .lifecycle import PublicationLifecycle
+from .persistence_plan import PersistencePlan
+from .policy_decision import PublicationPolicyDecision
+from .publication_policy import PublicationPolicy
+from .requested_view import RequestedView
 
 
 PRD_OUTPUT_DIR: Final[str] = "prd_output/"
-
-
-@dataclass(frozen=True)
-class PublicationPolicy:
-    lifecycle: PublicationLifecycle
-    emitted_view: EmittedView
-    approval_grade: bool
-    persist_to_prd_output: bool
-    required_artifacts: tuple[str, ...]
 
 
 def _normalize_lifecycle(value: Any) -> PublicationLifecycle:

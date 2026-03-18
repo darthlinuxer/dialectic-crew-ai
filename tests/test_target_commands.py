@@ -29,7 +29,9 @@ def _make_target(tmp_path: Path, name: str = "demo") -> TargetConfig:
 
 
 class TestTargetCommands:
-    def test_cmd_get_target_prints_helpful_message_when_unset(self, monkeypatch, capsys):
+    def test_cmd_get_target_prints_helpful_message_when_unset(
+        self, monkeypatch, capsys
+    ):
         monkeypatch.setattr(target_commands, "get_active_target", lambda: None)
 
         target_commands.cmd_get_target()
@@ -84,7 +86,9 @@ class TestTargetCommands:
     def test_cmd_list_targets_prints_known_targets(self, tmp_path, monkeypatch, capsys):
         target_config = _make_target(tmp_path)
         monkeypatch.setattr(target_commands, "get_active_target", lambda: target_config)
-        monkeypatch.setattr(target_commands, "list_known_targets", lambda: [target_config])
+        monkeypatch.setattr(
+            target_commands, "list_known_targets", lambda: [target_config]
+        )
 
         target_commands.cmd_list_targets()
 
@@ -108,7 +112,9 @@ class TestTargetCliRouting:
         captured = {}
         repo_path = tmp_path / "demo"
 
-        monkeypatch.setattr(cli, "cmd_set_target", lambda path: captured.setdefault("path", path))
+        monkeypatch.setattr(
+            cli, "cmd_set_target", lambda path: captured.setdefault("path", path)
+        )
 
         result = RUNNER.invoke(cli.app, ["set-target", str(repo_path)])
 

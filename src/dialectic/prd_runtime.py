@@ -19,7 +19,12 @@ from dialectic.crew_builder import (
     build_dialectic_sequential_crew,
     build_task_from_agent_mapping,
 )
-from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
+from dialectic.knowledge import (
+    _vision_label,
+    _vision_path,
+    crew_memory,
+    vision_knowledge,
+)
 from dialectic.vision import VisionContext
 from dialectic.yaml_config import load_yaml_config
 
@@ -85,8 +90,12 @@ def _build_agents(vision_context: VisionContext) -> dict[str, Any]:
         "critico_socratico": _disable_interactive_agent_io(
             create_critico_socratico(vision_context)
         ),
-        "sintetizador": _disable_interactive_agent_io(create_sintetizador(vision_context)),
-        "validador_macro": _disable_interactive_agent_io(create_validador_macro(vision_context)),
+        "sintetizador": _disable_interactive_agent_io(
+            create_sintetizador(vision_context)
+        ),
+        "validador_macro": _disable_interactive_agent_io(
+            create_validador_macro(vision_context)
+        ),
     }
 
 

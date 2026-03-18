@@ -20,17 +20,20 @@ logger = logging.getLogger(__name__)
 
 class ValidationError(Exception):
     """Raised when input validation fails."""
+
     pass
 
 
 class CalculationError(Exception):
     """Raised when calculations produce invalid results."""
+
     pass
 
 
 @dataclass
 class Activity:
     """Represents a project activity/task."""
+
     id: str
     name: str
     duration: float
@@ -92,20 +95,24 @@ class CriticalPathAnalyzer:
         for act_data in activities_data:
             try:
                 activity = Activity(
-                    id=act_data['id'],
-                    name=act_data['name'],
-                    duration=float(act_data['duration']),
-                    predecessors=act_data.get('predecessors', [])
+                    id=act_data["id"],
+                    name=act_data["name"],
+                    duration=float(act_data["duration"]),
+                    predecessors=act_data.get("predecessors", []),
                 )
                 self.activities[activity.id] = activity
             except KeyError as e:
-                raise ValidationError(f"Missing required field {e} in activity {act_data.get('id', '<unknown>')}")
+                raise ValidationError(
+                    f"Missing required field {e} in activity {act_data.get('id', '<unknown>')}"
+                )
 
         # Build graph
         for act_id, activity in self.activities.items():
             for pred_id in activity.predecessors:
                 if pred_id not in self.activities:
-                    raise ValidationError(f"Unknown predecessor '{pred_id}' for activity '{act_id}'")
+                    raise ValidationError(
+                        f"Unknown predecessor '{pred_id}' for activity '{act_id}'"
+                    )
                 self.graph[pred_id].append(act_id)
                 self.reverse_graph[act_id].append(pred_id)
 
@@ -193,14 +200,15 @@ class CriticalPathAnalyzer:
                 activity.ES = 0
             else:
                 activity.ES = max(
-                    self.activities[pred_id].EF
-                    for pred_id in activity.predecessors
+                    self.activities[pred_id].EF for pred_id in activity.predecessors
                 )
 
             activity.EF = activity.ES + activity.duration
 
         project_duration = max(act.EF for act in self.activities.values())
-        logger.info(f"Forward pass complete. Project duration: {project_duration} {self.unit}")
+        logger.info(
+            f"Forward pass complete. Project duration: {project_duration} {self.unit}"
+        )
 
         return project_duration
 
@@ -226,8 +234,7 @@ class CriticalPathAnalyzer:
                 activity.LF = project_duration
             else:
                 activity.LF = min(
-                    self.activities[succ_id].LS
-                    for succ_id in self.graph[act_id]
+                    self.activities[succ_id].LS for succ_id in self.graph[act_id]
                 )
 
             activity.LS = activity.LF - activity.duration
@@ -254,13 +261,15 @@ class CriticalPathAnalyzer:
             List of activity IDs on the critical path in order
         """
         critical_activities = [
-            act_id for act_id, act in self.activities.items()
-            if act.critical
+            act_id for act_id, act in self.activities.items() if act.critical
         ]
 
         # Sort critical activities in dependency order
-        return [act_id for act_id in self._topological_sort()
-                if act_id in critical_activities]
+        return [
+            act_id
+            for act_id in self._topological_sort()
+            if act_id in critical_activities
+        ]
 
     def _identify_bottlenecks(self) -> List[Dict]:
         """
@@ -274,17 +283,20 @@ class CriticalPathAnalyzer:
         for act_id, activity in self.activities.items():
             if activity.critical and len(activity.predecessors) > 1:
                 critical_preds = [
-                    pred_id for pred_id in activity.predecessors
+                    pred_id
+                    for pred_id in activity.predecessors
                     if self.activities[pred_id].critical
                 ]
 
                 if len(critical_preds) > 1:
-                    bottlenecks.append({
-                        'id': act_id,
-                        'name': activity.name,
-                        'critical_predecessors': critical_preds,
-                        'risk': 'high'
-                    })
+                    bottlenecks.append(
+                        {
+                            "id": act_id,
+                            "name": activity.name,
+                            "critical_predecessors": critical_preds,
+                            "risk": "high",
+                        }
+                    )
 
         return bottlenecks
 
@@ -299,16 +311,18 @@ class CriticalPathAnalyzer:
 
         for act_id, activity in self.activities.items():
             if not activity.critical and activity.slack > 0:
-                opportunities.append({
-                    'activity': act_id,
-                    'name': activity.name,
-                    'slack': round(activity.slack, 2),
-                    'slack_unit': self.unit,
-                    'recommendation': f"Can delay up to {activity.slack:.1f} {self.unit} without impacting project"
-                })
+                opportunities.append(
+                    {
+                        "activity": act_id,
+                        "name": activity.name,
+                        "slack": round(activity.slack, 2),
+                        "slack_unit": self.unit,
+                        "recommendation": f"Can delay up to {activity.slack:.1f} {self.unit} without impacting project",
+                    }
+                )
 
         # Sort by slack (descending)
-        opportunities.sort(key=lambda x: x['slack'], reverse=True)
+        opportunities.sort(key=lambda x: x["slack"], reverse=True)
 
         return opportunities
 
@@ -350,40 +364,47 @@ class CriticalPathAnalyzer:
 
             # Build result
             result = {
-                'project_duration': round(project_duration, 2),
-                'unit': self.unit,
-                'activities': [
+                "project_duration": round(project_duration, 2),
+                "unit": self.unit,
+                "activities": [
                     {
-                        'id': act.id,
-                        'name': act.name,
-                        'duration': act.duration,
-                        'predecessors': act.predecessors,  # Include for diagram generation
-                        'ES': round(act.ES, 2),
-                        'EF': round(act.EF, 2),
-                        'LS': round(act.LS, 2),
-                        'LF': round(act.LF, 2),
-                        'slack': round(act.slack, 2),
-                        'critical': act.critical
+                        "id": act.id,
+                        "name": act.name,
+                        "duration": act.duration,
+                        "predecessors": act.predecessors,  # Include for diagram generation
+                        "ES": round(act.ES, 2),
+                        "EF": round(act.EF, 2),
+                        "LS": round(act.LS, 2),
+                        "LF": round(act.LF, 2),
+                        "slack": round(act.slack, 2),
+                        "critical": act.critical,
                     }
                     for act in self.activities.values()
                 ],
-                'critical_path': critical_path,
-                'critical_path_duration': round(project_duration, 2),
-                'bottlenecks': bottlenecks,
-                'optimization_opportunities': opportunities[:10],  # Top 10
-                'statistics': {
-                    'total_activities': len(self.activities),
-                    'critical_activities': len(critical_path),
-                    'non_critical_activities': len(self.activities) - len(critical_path),
-                    'average_slack': round(
-                        sum(act.slack for act in self.activities.values() if not act.critical)
+                "critical_path": critical_path,
+                "critical_path_duration": round(project_duration, 2),
+                "bottlenecks": bottlenecks,
+                "optimization_opportunities": opportunities[:10],  # Top 10
+                "statistics": {
+                    "total_activities": len(self.activities),
+                    "critical_activities": len(critical_path),
+                    "non_critical_activities": len(self.activities)
+                    - len(critical_path),
+                    "average_slack": round(
+                        sum(
+                            act.slack
+                            for act in self.activities.values()
+                            if not act.critical
+                        )
                         / max(1, len(self.activities) - len(critical_path)),
-                        2
-                    )
-                }
+                        2,
+                    ),
+                },
             }
 
-            logger.info(f"CPM analysis complete: {len(critical_path)}/{len(self.activities)} activities critical")
+            logger.info(
+                f"CPM analysis complete: {len(critical_path)}/{len(self.activities)} activities critical"
+            )
             return result
 
         except Exception as e:
@@ -435,26 +456,26 @@ if __name__ == "__main__":
             "id": "A",
             "name": "Epic: Authentication System",
             "duration": 3,
-            "predecessors": []
+            "predecessors": [],
         },
         {
             "id": "B",
             "name": "Epic: User Dashboard",
             "duration": 2,
-            "predecessors": ["A"]
+            "predecessors": ["A"],
         },
         {
             "id": "C",
             "name": "Epic: Reports Module",
             "duration": 4,
-            "predecessors": ["A"]
+            "predecessors": ["A"],
         },
         {
             "id": "D",
             "name": "Epic: External Integration",
             "duration": 1,
-            "predecessors": ["B", "C"]
-        }
+            "predecessors": ["B", "C"],
+        },
     ]
 
     try:
@@ -462,25 +483,31 @@ if __name__ == "__main__":
 
         print(f"\n✅ Project Duration: {result['project_duration']} {result['unit']}")
         print(f"🔴 Critical Path: {' → '.join(result['critical_path'])}")
-        print(f"📈 Critical Activities: {result['statistics']['critical_activities']}/{result['statistics']['total_activities']}")
+        print(
+            f"📈 Critical Activities: {result['statistics']['critical_activities']}/{result['statistics']['total_activities']}"
+        )
 
         print("\n📋 Activity Details:")
-        print(f"{'ID':<5} {'Name':<30} {'Dur':<5} {'ES':<5} {'EF':<5} {'LS':<5} {'LF':<5} {'Slack':<6} {'Crit?':<6}")
+        print(
+            f"{'ID':<5} {'Name':<30} {'Dur':<5} {'ES':<5} {'EF':<5} {'LS':<5} {'LF':<5} {'Slack':<6} {'Crit?':<6}"
+        )
         print("-" * 80)
-        for act in result['activities']:
-            print(f"{act['id']:<5} {act['name']:<30} {act['duration']:<5.0f} "
-                  f"{act['ES']:<5.0f} {act['EF']:<5.0f} {act['LS']:<5.0f} {act['LF']:<5.0f} "
-                  f"{act['slack']:<6.1f} {'✓' if act['critical'] else '':<6}")
+        for act in result["activities"]:
+            print(
+                f"{act['id']:<5} {act['name']:<30} {act['duration']:<5.0f} "
+                f"{act['ES']:<5.0f} {act['EF']:<5.0f} {act['LS']:<5.0f} {act['LF']:<5.0f} "
+                f"{act['slack']:<6.1f} {'✓' if act['critical'] else '':<6}"
+            )
 
-        if result['bottlenecks']:
+        if result["bottlenecks"]:
             print("\n⚠️  Bottlenecks (High Risk):")
-            for bn in result['bottlenecks']:
+            for bn in result["bottlenecks"]:
                 print(f"   - {bn['name']} (ID: {bn['id']})")
                 print(f"     Depends on: {', '.join(bn['critical_predecessors'])}")
 
-        if result['optimization_opportunities']:
+        if result["optimization_opportunities"]:
             print("\n💡 Optimization Opportunities (Top 3):")
-            for opp in result['optimization_opportunities'][:3]:
+            for opp in result["optimization_opportunities"][:3]:
                 print(f"   - {opp['name']}: {opp['recommendation']}")
 
         # Example 2: Complex project
@@ -488,23 +515,70 @@ if __name__ == "__main__":
         print("-" * 60)
 
         complex_activities = [
-            {"id": "INIT", "name": "Project Kickoff", "duration": 0.5, "predecessors": []},
-            {"id": "REQ", "name": "Requirements Analysis", "duration": 2, "predecessors": ["INIT"]},
-            {"id": "ARCH", "name": "Architecture Design", "duration": 3, "predecessors": ["REQ"]},
-            {"id": "UI", "name": "UI/UX Design", "duration": 2, "predecessors": ["REQ"]},
-            {"id": "BE-DEV", "name": "Backend Development", "duration": 5, "predecessors": ["ARCH"]},
-            {"id": "FE-DEV", "name": "Frontend Development", "duration": 4, "predecessors": ["UI", "ARCH"]},
-            {"id": "DB", "name": "Database Setup", "duration": 1, "predecessors": ["ARCH"]},
-            {"id": "INT", "name": "Integration", "duration": 2, "predecessors": ["BE-DEV", "FE-DEV", "DB"]},
+            {
+                "id": "INIT",
+                "name": "Project Kickoff",
+                "duration": 0.5,
+                "predecessors": [],
+            },
+            {
+                "id": "REQ",
+                "name": "Requirements Analysis",
+                "duration": 2,
+                "predecessors": ["INIT"],
+            },
+            {
+                "id": "ARCH",
+                "name": "Architecture Design",
+                "duration": 3,
+                "predecessors": ["REQ"],
+            },
+            {
+                "id": "UI",
+                "name": "UI/UX Design",
+                "duration": 2,
+                "predecessors": ["REQ"],
+            },
+            {
+                "id": "BE-DEV",
+                "name": "Backend Development",
+                "duration": 5,
+                "predecessors": ["ARCH"],
+            },
+            {
+                "id": "FE-DEV",
+                "name": "Frontend Development",
+                "duration": 4,
+                "predecessors": ["UI", "ARCH"],
+            },
+            {
+                "id": "DB",
+                "name": "Database Setup",
+                "duration": 1,
+                "predecessors": ["ARCH"],
+            },
+            {
+                "id": "INT",
+                "name": "Integration",
+                "duration": 2,
+                "predecessors": ["BE-DEV", "FE-DEV", "DB"],
+            },
             {"id": "TEST", "name": "Testing", "duration": 3, "predecessors": ["INT"]},
-            {"id": "DEPLOY", "name": "Deployment", "duration": 1, "predecessors": ["TEST"]}
+            {
+                "id": "DEPLOY",
+                "name": "Deployment",
+                "duration": 1,
+                "predecessors": ["TEST"],
+            },
         ]
 
         result2 = analyze_critical_path(complex_activities, unit="weeks")
 
         print(f"\n✅ Project Duration: {result2['project_duration']} {result2['unit']}")
         print(f"🔴 Critical Path: {' → '.join(result2['critical_path'])}")
-        print(f"📊 Avg Slack (non-critical): {result2['statistics']['average_slack']} {result2['unit']}")
+        print(
+            f"📊 Avg Slack (non-critical): {result2['statistics']['average_slack']} {result2['unit']}"
+        )
 
         print("\n💾 Full JSON Output:")
         print(json.dumps(result2, indent=2))

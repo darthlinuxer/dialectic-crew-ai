@@ -8,56 +8,33 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
-from dataclasses import dataclass, field
 from pathlib import Path
+
+from dialectic.stack_validation import (
+    ValidationStepResult,
+    build_validation_plan,
+    run_validation_plan,
+    step_labels_for_profile,
+)
 
 from .quality_gate_helpers import (
     DEFAULT_QUALITY_GATE_TIMEOUT,
     build_mypy_command,
+    build_repo_mypy_command,
     collect_touched_python_files,
     command_available,
     parse_pyright_output,
     resolve_python_targets,
     run_cmd,
 )
+from .quality_gate_models import QualityCheckResult, QualityGateResult
+from .quality_gate_output import print_quality_gate_result
+from .quality_gate_remediation import (
+    run_python_remediation as _run_python_remediation,
+    should_attempt_python_remediation as _should_attempt_python_remediation,
+)
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class QualityCheckResult:
-    """Result of a single quality check."""
-
-    tool: str
-    passed: bool
-    error_count: int = 0
-    warning_count: int = 0
-    output: str = ""
-    errors: list[str] = field(default_factory=list)
-
-
-@dataclass
-class QualityGateResult:
-    """Aggregated result of all quality checks."""
-
-    passed: bool
-    checks: list[QualityCheckResult] = field(default_factory=list)
-    summary: str = ""
-
-    def add_check(self, check: QualityCheckResult) -> None:
-        """Record a check result and update aggregate pass/fail state."""
-        self.checks.append(check)
-        if not check.passed:
-            self.passed = False
-
-    def build_summary(self) -> str:
-        """Build and cache a single-line human-readable summary."""
-        lines = []
-        for check in self.checks:
-            status = "PASS" if check.passed else "FAIL"
-            lines.append(f"{check.tool}: {status} ({check.error_count} errors)")
-        self.summary = "; ".join(lines)
-        return self.summary
 
 
 def _run_ruff_check(
@@ -187,7 +164,7 @@ def _run_ruff_format_check(
         )
 
 
-def _run_mypy(
+def _run_mypy(  # pylint: disable=too-many-return-statements
     project_root: Path,
     target_path: str = "src/",
     touched_files: list[str] | None = None,
@@ -221,9 +198,11 @@ def _run_mypy(
             output="No touched typed source modules to type-check, skipping",
         )
 
-    cmd, env = mypy_command
-    cmd.append("--no-error-summary")
-    try:
+    def _execute_mypy(
+        command_and_env: tuple[list[str], dict[str, str]],
+    ) -> QualityCheckResult:
+        cmd, env = command_and_env
+        cmd = [*cmd, "--no-error-summary"]
         result = run_cmd(cmd, project_root, env=env)
         errors: list[str] = []
         error_count = 0
@@ -243,6 +222,37 @@ def _run_mypy(
             output=result.stdout[:1000],
             errors=errors,
         )
+
+    try:
+        precise_result = _execute_mypy(mypy_command)
+        if precise_result.passed or touched_files is None:
+            return precise_result
+
+        fallback_command = build_mypy_command(
+            python_targets,
+            prefer_precise_paths=False,
+        )
+        if fallback_command is None:
+            return precise_result
+
+        fallback_result = _execute_mypy(fallback_command)
+        if fallback_result.passed:
+            fallback_result.output = (
+                "Precise-path mypy failed; package-level fallback passed.\n"
+                f"Precise summary: {precise_result.output[:400]}"
+            )
+            return fallback_result
+
+        canonical_result = _execute_mypy(build_repo_mypy_command())
+        if canonical_result.passed:
+            canonical_result.output = (
+                "Precise-path and derived package-level mypy failed; "
+                "canonical repo-wide fallback passed.\n"
+                f"Precise summary: {precise_result.output[:400]}"
+            )
+            return canonical_result
+
+        return precise_result
     except subprocess.TimeoutExpired:
         return QualityCheckResult(
             tool="mypy",
@@ -314,47 +324,110 @@ def run_quality_gate(
     project_root: Path,
     target_path: str = "src/",
     include_pyright: bool = True,
+    allow_python_remediation: bool = True,
+    previous_remediation_attempt_count: int = 0,
+    max_python_remediation_attempts: int = 1,
 ) -> QualityGateResult:
     """Run all quality checks and return aggregated result."""
-    result = QualityGateResult(passed=True)
+    del target_path
     touched_files = collect_touched_python_files(project_root)
-
-    logger.info("Running ruff lint check...")
-    result.add_check(
-        _run_ruff_check(project_root, target_path, touched_files=touched_files)
+    logger.info(
+        "Running shared release validation plan for %s touched Python files...",
+        len(touched_files),
     )
+    plan = build_validation_plan(project_root)
+    selected_labels = step_labels_for_profile(plan, "release")
+    if not include_pyright:
+        selected_labels = [label for label in selected_labels if label != "pyright"]
 
-    logger.info("Running ruff format check...")
-    result.add_check(
-        _run_ruff_format_check(project_root, target_path, touched_files=touched_files)
+    initial_result = _run_quality_gate_validation(project_root, selected_labels)
+    initial_result.remediation_attempt_count = previous_remediation_attempt_count
+    if (
+        initial_result.passed
+        or not allow_python_remediation
+        or not _should_attempt_python_remediation(initial_result.checks, touched_files)
+    ):
+        if (
+            not initial_result.passed
+            and previous_remediation_attempt_count >= max_python_remediation_attempts
+        ):
+            initial_result.remediation_exhausted = True
+            initial_result.remediation_failure_reason = initial_result.build_summary()
+        else:
+            initial_result.build_summary()
+        return initial_result
+
+    if previous_remediation_attempt_count >= max_python_remediation_attempts:
+        initial_result.remediation_exhausted = True
+        initial_result.remediation_failure_reason = initial_result.build_summary()
+        return initial_result
+
+    remediation_attempted, remediation_steps = _run_python_remediation(
+        project_root,
+        touched_files,
     )
+    if not remediation_attempted:
+        initial_result.build_summary()
+        return initial_result
 
-    logger.info("Running mypy type check...")
-    result.add_check(_run_mypy(project_root, target_path, touched_files=touched_files))
+    remediated_result = _run_quality_gate_validation(project_root, selected_labels)
+    remediated_result.remediation_attempted = True
+    remediated_result.remediation_attempt_count = previous_remediation_attempt_count + 1
+    remediated_result.remediation_succeeded = remediated_result.passed
+    remediated_result.remediation_steps = remediation_steps
+    remediated_result.remediation_exhausted = (
+        not remediated_result.passed
+        and remediated_result.remediation_attempt_count
+        >= max_python_remediation_attempts
+    )
+    if not remediated_result.passed:
+        remediated_result.remediation_failure_reason = remediated_result.build_summary()
+        return remediated_result
 
-    if include_pyright:
-        logger.info("Running pyright type check (warn-only)...")
-        result.add_check(
-            _run_pyright(project_root, target_path, touched_files=touched_files)
-        )
+    remediated_result.build_summary()
+    return remediated_result
 
-    result.build_summary()
+
+def _run_quality_gate_validation(
+    project_root: Path,
+    selected_labels: list[str],
+) -> QualityGateResult:
+    """Run the shared validation plan and translate results to quality checks."""
+    result = QualityGateResult(passed=True)
+    report = run_validation_plan(project_root, include_steps=selected_labels)
+    for step_result in report.results:
+        result.add_check(_quality_check_from_validation_result(step_result))
     return result
 
 
-def print_quality_gate_result(
-    result: QualityGateResult,
-    prefix: str = "  ",
-) -> None:
-    """Print quality gate results to console."""
-    for check in result.checks:
-        status = "PASS" if check.passed else "FAIL"
-        print(f"{prefix}{check.tool}: {status}")
-        if check.errors:
-            for error in check.errors[:5]:
-                print(f"{prefix}  {error}")
-            if len(check.errors) > 5:
-                print(f"{prefix}  ... and {len(check.errors) - 5} more")
+def _quality_check_from_validation_result(
+    step_result: ValidationStepResult,
+) -> QualityCheckResult:
+    """Translate a shared validation step result into quality-gate output."""
+    output = step_result.stdout_tail or step_result.stderr_tail
+
+    if step_result.label == "pyright":
+        errors, error_count, warning_count = parse_pyright_output(
+            output,
+            step_result.returncode,
+        )
+        return QualityCheckResult(
+            tool="pyright",
+            passed=True,
+            error_count=error_count,
+            warning_count=warning_count,
+            output=output,
+            errors=errors,
+        )
+
+    errors = [output[:500]] if output and not step_result.passed else []
+    return QualityCheckResult(
+        tool=step_result.label,
+        passed=step_result.passed,
+        error_count=0 if step_result.passed else 1,
+        output=output,
+        errors=errors,
+    )
 
 
 __all__ = [

@@ -9,7 +9,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dialectic import crew_log_summarizer
-from dialectic.crew_log_summarizer import get_step_summarizer_callback, summarize_crew_log
+from dialectic.crew_log_summarizer import (
+    get_step_summarizer_callback,
+    summarize_crew_log,
+)
 
 
 def test_get_step_summarizer_callback_returns_none_when_no_log_file(monkeypatch):
@@ -23,7 +26,9 @@ def test_get_step_summarizer_callback_returns_none_when_no_log_file(monkeypatch)
     assert get_step_summarizer_callback() is None
 
 
-def test_get_step_summarizer_callback_returns_callable_when_log_file_set(monkeypatch, tmp_path):
+def test_get_step_summarizer_callback_returns_callable_when_log_file_set(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("CREWAI_VERBOSE", "true")
     monkeypatch.setenv("CREWAI_OUTPUT_LOG_FILE", str(tmp_path / "crew.log"))
     monkeypatch.setattr(
@@ -69,7 +74,9 @@ def test_summarize_crew_log_whitespace_only(tmp_path):
     log_file = tmp_path / "blank.log"
     log_file.write_text("   \n\n  ")
     out = summarize_crew_log(log_file)
-    assert "empty" in out.lower() or "completed" in out.lower() or "content" in out.lower()
+    assert (
+        "empty" in out.lower() or "completed" in out.lower() or "content" in out.lower()
+    )
 
 
 def test_summarize_crew_log_llm_failure_returns_fallback(tmp_path):
@@ -81,7 +88,9 @@ def test_summarize_crew_log_llm_failure_returns_fallback(tmp_path):
     assert "unavailable" in out.lower() or "error" in out.lower()
 
 
-def test_summarize_crew_log_shutdown_noise_returns_fallback_without_warning(tmp_path, caplog):
+def test_summarize_crew_log_shutdown_noise_returns_fallback_without_warning(
+    tmp_path, caplog
+):
     log_file = tmp_path / "crew.log"
     log_file.write_text("Task 1 started. Agent thinking...")
 

@@ -58,7 +58,9 @@ def _first_readme_summary(repo_root: Path) -> str:
 
 
 def _detect_runtime(repo_root: Path) -> str:
-    if (repo_root / "pyproject.toml").exists() or (repo_root / "requirements.txt").exists():
+    if (repo_root / "pyproject.toml").exists() or (
+        repo_root / "requirements.txt"
+    ).exists():
         return "Python 3.x"
     if (repo_root / "package.json").exists():
         return "Node.js"
@@ -71,7 +73,11 @@ def _detect_runtime(repo_root: Path) -> str:
 
 def _combined_text(repo_root: Path) -> str:
     text_parts = []
-    for path in (repo_root / "README.md", repo_root / "pyproject.toml", repo_root / "package.json"):
+    for path in (
+        repo_root / "README.md",
+        repo_root / "pyproject.toml",
+        repo_root / "package.json",
+    ):
         if path.exists():
             text_parts.append(_read_text(path).lower())
     return "\n".join(text_parts)

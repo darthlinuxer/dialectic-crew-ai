@@ -36,7 +36,9 @@ def execution_result_reusable(
 def _resolve_state_dir(project_root: Path, state_dir: Path) -> Path:
     """Resolve the effective snapshot directory, honoring an env override when present."""
     raw_state_dir = os.getenv(SELF_IMPROVE_STATE_DIR_ENV_VAR, "").strip()
-    resolved_state_dir = Path(raw_state_dir).expanduser() if raw_state_dir else state_dir
+    resolved_state_dir = (
+        Path(raw_state_dir).expanduser() if raw_state_dir else state_dir
+    )
     if not resolved_state_dir.is_absolute():
         resolved_state_dir = project_root / resolved_state_dir
     return resolved_state_dir
@@ -44,7 +46,9 @@ def _resolve_state_dir(project_root: Path, state_dir: Path) -> Path:
 
 def record_prd_artifacts(record: SelfImprovementRecord, flow) -> str:
     """Copy exported PRD artifact metadata from the flow state into the cycle record."""
-    record.prd_flow_id = getattr(flow, "flow_id", "") or getattr(flow.state, "id", "") or ""
+    record.prd_flow_id = (
+        getattr(flow, "flow_id", "") or getattr(flow.state, "id", "") or ""
+    )
     record.prd_path_json = flow.state.prd_path_json or ""
     record.prd_path_md = flow.state.prd_path_md or ""
     return record.prd_path_json
@@ -57,7 +61,9 @@ def record_plan_artifacts(record: SelfImprovementRecord, plan_result: dict) -> s
     return record.plan_path_json
 
 
-def record_execution_artifacts(record: SelfImprovementRecord, exec_result: dict) -> None:
+def record_execution_artifacts(
+    record: SelfImprovementRecord, exec_result: dict
+) -> None:
     """Copy exported execution artifact metadata into the cycle record."""
     record.execution_run_id = exec_result.get("run_id", "") or ""
     record.execution_task_flow_ids = exec_result.get("task_flow_ids", {}) or {}
@@ -116,6 +122,12 @@ def summarize_resume_state(
     """Summarize what a resumed cycle can reuse and which stage remains."""
     reused: list[str] = []
     execution_reusable = execution_result_reusable(record, last_failure_reason)
+    quality_gate_completed = (
+        record.quality_gate_passed
+        or record.tests_passed
+        or record.metrics_stable
+        or record.pr_created
+    )
     if record.prd_generated and record.prd_path_json:
         reused.append(f"PRD: {record.prd_path_json}")
     if record.plan_generated and record.plan_path_json:
@@ -129,6 +141,13 @@ def summarize_resume_state(
         next_stage = "planning"
     elif not execution_reusable:
         next_stage = "execution"
+    elif not quality_gate_completed:
+        if record.quality_remediation_exhausted:
+            next_stage = "quality gate (remediation exhausted)"
+        elif record.quality_remediation_attempted:
+            next_stage = "quality remediation"
+        else:
+            next_stage = "quality gate"
     elif not record.tests_passed:
         next_stage = "test validation"
     elif not record.metrics_stable:
@@ -158,7 +177,9 @@ def list_resumable_cycles(
     rows: list[dict[str, str]] = []
     for path in records_dir.glob("*.json"):
         try:
-            record = SelfImprovementRecord.model_validate_json(path.read_text(encoding="utf-8"))
+            record = SelfImprovementRecord.model_validate_json(
+                path.read_text(encoding="utf-8")
+            )
         except (OSError, ValidationError):
             continue
         summary = summarize_resume_state(record, record.failure_reason)
@@ -186,6 +207,7 @@ def require_artifact(
         raise error_cls(failure_reason)
     return path
 
+
 __all__ = [
     "SELF_IMPROVE_STATE_DIR",
     "SELF_IMPROVE_STATE_DIR_ENV_VAR",
@@ -201,4 +223,3 @@ __all__ = [
     "self_improve_record_path",
     "summarize_resume_state",
 ]
-

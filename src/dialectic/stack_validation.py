@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from dialectic.target import resolve_active_project_root
 
 StackName = Literal["python", "dotnet", "typescript", "react"]
-ValidationProfile = Literal["task", "story"]
+ValidationProfile = Literal["task", "story", "release"]
 PackageManager = Literal["npm", "pnpm", "yarn", "bun"]
 _KNOWN_STACKS: tuple[StackName, ...] = ("python", "dotnet", "typescript", "react")
 
@@ -29,6 +29,7 @@ class ValidationStep:
     label: str
     command: list[str]
     reason: str
+    advisory: bool = False
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class ValidationStepResult:
     returncode: int
     stdout_tail: str
     stderr_tail: str
+    advisory: bool = False
     skipped: bool = False
     reason: str = ""
 
@@ -215,6 +217,7 @@ def run_validation_plan(
                     returncode=completed.returncode,
                     stdout_tail=(completed.stdout or "")[-500:],
                     stderr_tail=(completed.stderr or "")[-500:],
+                    advisory=step.advisory,
                     reason=step.reason,
                 )
             )
@@ -228,6 +231,7 @@ def run_validation_plan(
                     returncode=127,
                     stdout_tail="",
                     stderr_tail=str(exc),
+                    advisory=step.advisory,
                     skipped=True,
                     reason=f"Command unavailable: {step.command[0]}",
                 )
@@ -242,12 +246,15 @@ def run_validation_plan(
                     returncode=-1,
                     stdout_tail=_truncate_process_output(exc.output),
                     stderr_tail=_truncate_process_output(exc.stderr),
+                    advisory=step.advisory,
                     skipped=False,
                     reason=f"Timed out after {timeout}s",
                 )
             )
 
-    passed = all(result.passed for result in results) if results else True
+    passed = (
+        all(result.passed or result.advisory for result in results) if results else True
+    )
     return ValidationReport(
         project_root=plan.project_root,
         detected_stacks=plan.detected_stacks,
@@ -261,8 +268,11 @@ def step_labels_for_profile(
     profile: ValidationProfile,
 ) -> list[str]:
     """Select the appropriate validation step labels for a task or full-story gate."""
-    if profile == "story":
+    if profile == "release":
         return [step.label for step in plan.steps]
+
+    if profile == "story":
+        return [step.label for step in plan.steps if step.label != "pyright"]
 
     preferred_by_stack: dict[StackName, tuple[str, ...]] = {
         "python": ("ruff", "mypy"),
@@ -323,6 +333,12 @@ def _python_steps(
         ),
         ValidationStep(
             stack="python",
+            label="ruff-format",
+            command=[*prefix, "ruff", "format", "--check", *lint_targets],
+            reason="Catch formatting drift before branch publication.",
+        ),
+        ValidationStep(
+            stack="python",
             label="mypy",
             command=mypy_command,
             reason="Catch type and symbol-resolution issues before runtime.",
@@ -333,6 +349,40 @@ def _python_steps(
             command=[*prefix, "pytest", "--tb=short", "-q", "--reruns", "1"],
             reason="Exercise the repository test suite from the active environment.",
         ),
+        *(_pyright_steps(project_root, command_available_fn)),
+    ]
+
+
+def _pyright_steps(
+    project_root: Path,
+    command_available_fn: Callable[[str], bool],
+) -> list[ValidationStep]:
+    """Build optional advisory Pyright steps for Python projects."""
+    if not (project_root / "pyrightconfig.json").exists():
+        return []
+
+    if command_available_fn("pyright"):
+        command = ["pyright", "--project", "pyrightconfig.json", "--outputjson"]
+    elif command_available_fn("npx"):
+        command = [
+            "npx",
+            "--yes",
+            "pyright",
+            "--project",
+            "pyrightconfig.json",
+            "--outputjson",
+        ]
+    else:
+        return []
+
+    return [
+        ValidationStep(
+            stack="python",
+            label="pyright",
+            command=command,
+            reason="Align branch validation with editor-level type diagnostics.",
+            advisory=True,
+        )
     ]
 
 

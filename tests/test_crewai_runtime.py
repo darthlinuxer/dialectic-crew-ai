@@ -77,7 +77,9 @@ def test_configure_crewai_runtime_respects_explicit_tracing_opt_in(monkeypatch):
     assert calls == [("suppress", True), ("hook", False), ("mark", True)]
 
 
-def test_run_crew_kickoff_prints_summary_when_log_file_is_configured(monkeypatch, capsys):
+def test_run_crew_kickoff_prints_summary_when_log_file_is_configured(
+    monkeypatch, capsys
+):
     calls: list[tuple[str, object]] = []
 
     class FakeCrew:
@@ -87,8 +89,12 @@ def test_run_crew_kickoff_prints_summary_when_log_file_is_configured(monkeypatch
             return "crew-result"
 
     monkeypatch.setattr(crewai_runtime, "get_output_log_file", lambda: "/tmp/crew.log")
-    monkeypatch.setattr(crewai_runtime, "is_crewai_event_logger_registered", lambda: False)
-    monkeypatch.setattr(crewai_runtime, "summarize_crew_log", lambda path: f"summary:{path}")
+    monkeypatch.setattr(
+        crewai_runtime, "is_crewai_event_logger_registered", lambda: False
+    )
+    monkeypatch.setattr(
+        crewai_runtime, "summarize_crew_log", lambda path: f"summary:{path}"
+    )
 
     result = crewai_runtime.run_crew_kickoff(FakeCrew(), sample=True)
 
@@ -115,7 +121,9 @@ def test_run_crew_kickoff_skips_summary_when_native_event_logger_is_active(
         raise AssertionError(f"summarize_crew_log should not run for {path}")
 
     monkeypatch.setattr(crewai_runtime, "get_output_log_file", lambda: "/tmp/crew.log")
-    monkeypatch.setattr(crewai_runtime, "is_crewai_event_logger_registered", lambda: True)
+    monkeypatch.setattr(
+        crewai_runtime, "is_crewai_event_logger_registered", lambda: True
+    )
     monkeypatch.setattr(crewai_runtime, "summarize_crew_log", fail_if_called)
 
     result = crewai_runtime.run_crew_kickoff(FakeCrew(), sample=False)

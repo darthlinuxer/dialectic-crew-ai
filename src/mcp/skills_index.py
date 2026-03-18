@@ -117,4 +117,3 @@ class SkillIndex:
         if source is not None:
             items = [s for s in items if s.source == source]
         return list(items)
-

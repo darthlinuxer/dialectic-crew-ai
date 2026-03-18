@@ -52,7 +52,7 @@ class TestPmbokUtils(unittest.TestCase):
     def test_to_json(self):
         payload = {"b": 2, "a": 1}
         compact = to_json(payload, pretty=False)
-        self.assertIn("\"a\"", compact)
+        self.assertIn('"a"', compact)
         pretty = to_json(payload, pretty=True)
         self.assertIn("\n", pretty)
 
@@ -65,12 +65,14 @@ class TestPmbokUtils(unittest.TestCase):
         self.assertIn("graph TD", mermaid)
         plantuml, _, _ = render_output(data, "plantuml")
         # Accept both @startuml and @startjson (both valid PlantUML formats)
-        self.assertTrue(plantuml.startswith("@startuml") or plantuml.startswith("@startjson"),
-                        f"PlantUML should start with @startuml or @startjson, got: {plantuml[:20]}")
+        self.assertTrue(
+            plantuml.startswith("@startuml") or plantuml.startswith("@startjson"),
+            f"PlantUML should start with @startuml or @startjson, got: {plantuml[:20]}",
+        )
         html, _, _ = render_output(data, "html")
         self.assertIn("<html>", html)
         txt, _, _ = render_output(data, "txt")
-        self.assertIn("\"key\"", txt)
+        self.assertIn('"key"', txt)
 
     def test_markdown_nested_and_scalar(self):
         nested = to_markdown([{"a": 1}])

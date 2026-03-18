@@ -21,17 +21,20 @@ logger = logging.getLogger(__name__)
 
 class ValidationError(Exception):
     """Raised when input validation fails."""
+
     pass
 
 
 class CalculationError(Exception):
     """Raised when calculations produce invalid results."""
+
     pass
 
 
 @dataclass
 class TeamMember:
     """Represents a team role with associated costs."""
+
     role: str
     count: int
     hourly_rate: float
@@ -42,9 +45,13 @@ class TeamMember:
         if self.count < 0:
             raise ValidationError(f"Count cannot be negative for role {self.role}")
         if self.hourly_rate < 0:
-            raise ValidationError(f"Hourly rate cannot be negative for role {self.role}")
+            raise ValidationError(
+                f"Hourly rate cannot be negative for role {self.role}"
+            )
         if not (0 < self.dedication_percent <= 100):
-            raise ValidationError(f"Dedication must be between 0 and 100% for role {self.role}")
+            raise ValidationError(
+                f"Dedication must be between 0 and 100% for role {self.role}"
+            )
 
     @property
     def effective_hourly_rate(self) -> float:
@@ -55,6 +62,7 @@ class TeamMember:
 @dataclass
 class BudgetConfig:
     """Configuration for budget calculations."""
+
     total_story_points: int
     points_per_sprint: int
     sprint_duration_weeks: int
@@ -66,17 +74,29 @@ class BudgetConfig:
     def __post_init__(self):
         """Validate configuration and normalize percentage inputs."""
         if self.total_story_points <= 0:
-            raise ValidationError(f"total_story_points must be positive, got {self.total_story_points}")
+            raise ValidationError(
+                f"total_story_points must be positive, got {self.total_story_points}"
+            )
         if self.points_per_sprint <= 0:
-            raise ValidationError(f"points_per_sprint must be positive, got {self.points_per_sprint}")
+            raise ValidationError(
+                f"points_per_sprint must be positive, got {self.points_per_sprint}"
+            )
         if self.sprint_duration_weeks <= 0:
-            raise ValidationError(f"sprint_duration_weeks must be positive, got {self.sprint_duration_weeks}")
+            raise ValidationError(
+                f"sprint_duration_weeks must be positive, got {self.sprint_duration_weeks}"
+            )
         if self.hours_per_sprint <= 0:
-            raise ValidationError(f"hours_per_sprint must be positive, got {self.hours_per_sprint}")
+            raise ValidationError(
+                f"hours_per_sprint must be positive, got {self.hours_per_sprint}"
+            )
         if self.overhead_percentage < 0:
-            raise ValidationError(f"overhead_percentage cannot be negative, got {self.overhead_percentage}")
+            raise ValidationError(
+                f"overhead_percentage cannot be negative, got {self.overhead_percentage}"
+            )
         if self.contingency_percentage < 0:
-            raise ValidationError(f"contingency_percentage cannot be negative, got {self.contingency_percentage}")
+            raise ValidationError(
+                f"contingency_percentage cannot be negative, got {self.contingency_percentage}"
+            )
 
         # Normalize percentages: accept both 0-100 (e.g., 20) and 0.0-1.0 (e.g., 0.20)
         if self.overhead_percentage > 1.0:
@@ -93,6 +113,7 @@ class BudgetConfig:
     def total_sprints(self) -> int:
         """Calculate total number of sprints needed."""
         import math
+
         return math.ceil(self.total_story_points / self.points_per_sprint)
 
     @property
@@ -103,7 +124,7 @@ class BudgetConfig:
 
 def _round_currency(amount: float) -> float:
     """Round currency amount to 2 decimal places."""
-    return float(Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+    return float(Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 class BudgetCalculator:
@@ -136,7 +157,7 @@ class BudgetCalculator:
         self,
         config: BudgetConfig,
         team: List[Dict],
-        fixed_costs: Optional[List[Dict]] = None
+        fixed_costs: Optional[List[Dict]] = None,
     ):
         """
         Initialize budget calculator.
@@ -160,10 +181,10 @@ class BudgetCalculator:
                 # Assume it's a dict and convert
                 self.team_members.append(
                     TeamMember(
-                        role=member['role'],
-                        count=member['count'],
-                        hourly_rate=member['hourly_rate'],
-                        dedication_percent=member.get('dedication_percent', 100.0)
+                        role=member["role"],
+                        count=member["count"],
+                        hourly_rate=member["hourly_rate"],
+                        dedication_percent=member.get("dedication_percent", 100.0),
                     )
                 )
 
@@ -173,15 +194,27 @@ class BudgetCalculator:
         # Handle fixed_costs - can be int/float or list of dicts
         if isinstance(fixed_costs, (int, float)):
             # Simple total value - convert to list format
-            self.fixed_costs = [{"item": "Fixed Costs", "value": fixed_costs, "description": "Total fixed costs"}] if fixed_costs else []
+            self.fixed_costs = (
+                [
+                    {
+                        "item": "Fixed Costs",
+                        "value": fixed_costs,
+                        "description": "Total fixed costs",
+                    }
+                ]
+                if fixed_costs
+                else []
+            )
         elif fixed_costs is None:
             self.fixed_costs = []
         else:
             # Assume it's a list of dicts
             self.fixed_costs = fixed_costs
 
-        logger.info(f"Budget calculator initialized: {self.config.total_story_points} points, "
-                   f"{len(self.team_members)} roles, {self.config.total_sprints} sprints")
+        logger.info(
+            f"Budget calculator initialized: {self.config.total_story_points} points, "
+            f"{len(self.team_members)} roles, {self.config.total_sprints} sprints"
+        )
 
     def _calculate_weighted_average_rate(self) -> float:
         """
@@ -193,8 +226,7 @@ class BudgetCalculator:
             Weighted average hourly rate
         """
         total_cost = sum(
-            member.count * member.effective_hourly_rate
-            for member in self.team_members
+            member.count * member.effective_hourly_rate for member in self.team_members
         )
         total_count = sum(member.count for member in self.team_members)
 
@@ -224,18 +256,18 @@ class BudgetCalculator:
             )
             role_cost = role_hours * member.effective_hourly_rate
             by_role[member.role] = {
-                'count': member.count,
-                'hourly_rate': member.hourly_rate,
-                'dedication_percent': member.dedication_percent,
-                'hours': _round_currency(role_hours),
-                'cost': _round_currency(role_cost)
+                "count": member.count,
+                "hourly_rate": member.hourly_rate,
+                "dedication_percent": member.dedication_percent,
+                "hours": _round_currency(role_hours),
+                "cost": _round_currency(role_cost),
             }
 
         return {
-            'total': _round_currency(base_cost),
-            'hours': _round_currency(total_hours),
-            'weighted_avg_rate': _round_currency(weighted_avg_rate),
-            'by_role': by_role
+            "total": _round_currency(base_cost),
+            "hours": _round_currency(total_hours),
+            "weighted_avg_rate": _round_currency(weighted_avg_rate),
+            "by_role": by_role,
         }
 
     def _calculate_overhead(self, base_cost: float) -> float:
@@ -260,19 +292,19 @@ class BudgetCalculator:
         Returns:
             Dict with total and breakdown
         """
-        total = sum(item.get('value', 0) for item in self.fixed_costs)
+        total = sum(item.get("value", 0) for item in self.fixed_costs)
 
         return {
-            'total': _round_currency(total),
-            'items': [
+            "total": _round_currency(total),
+            "items": [
                 {
-                    'item': item['item'],
-                    'value': _round_currency(item['value']),
-                    'description': item.get('description', ''),
-                    'frequency': item.get('frequency', 'one-time')
+                    "item": item["item"],
+                    "value": _round_currency(item["value"]),
+                    "description": item.get("description", ""),
+                    "frequency": item.get("frequency", "one-time"),
                 }
                 for item in self.fixed_costs
-            ]
+            ],
         }
 
     def _calculate_contingency(self, subtotal: float) -> float:
@@ -309,20 +341,21 @@ class BudgetCalculator:
         for sprint_num in range(1, self.config.total_sprints + 1):
             # Last sprint might have fewer points
             if sprint_num == self.config.total_sprints:
-                remaining_points = (
-                    self.config.total_story_points
-                    - (points_per_sprint * (self.config.total_sprints - 1))
+                remaining_points = self.config.total_story_points - (
+                    points_per_sprint * (self.config.total_sprints - 1)
                 )
                 sprint_points = remaining_points
             else:
                 sprint_points = points_per_sprint
 
-            sprints.append({
-                'sprint': sprint_num,
-                'story_points': sprint_points,
-                'budget': _round_currency(budget_per_sprint),
-                'duration_weeks': self.config.sprint_duration_weeks
-            })
+            sprints.append(
+                {
+                    "sprint": sprint_num,
+                    "story_points": sprint_points,
+                    "budget": _round_currency(budget_per_sprint),
+                    "duration_weeks": self.config.sprint_duration_weeks,
+                }
+            )
 
         return sprints
 
@@ -339,36 +372,36 @@ class BudgetCalculator:
             Dict with scenarios
         """
         baseline_points = self.config.total_story_points
-        baseline_cost = base_result['summary']['total_budget']
+        baseline_cost = base_result["summary"]["total_budget"]
 
         scenarios = {}
 
         # Optimistic: -15% story points (team more efficient than expected)
         opt_points = int(baseline_points * 0.85)
         opt_cost = baseline_cost * 0.85
-        scenarios['optimistic'] = {
-            'story_points': opt_points,
-            'variance_percent': -15,
-            'total_budget': _round_currency(opt_cost),
-            'description': 'Team performs better than expected, fewer complexities'
+        scenarios["optimistic"] = {
+            "story_points": opt_points,
+            "variance_percent": -15,
+            "total_budget": _round_currency(opt_cost),
+            "description": "Team performs better than expected, fewer complexities",
         }
 
         # Realistic: baseline
-        scenarios['realistic'] = {
-            'story_points': baseline_points,
-            'variance_percent': 0,
-            'total_budget': baseline_cost,
-            'description': 'Current estimates hold true'
+        scenarios["realistic"] = {
+            "story_points": baseline_points,
+            "variance_percent": 0,
+            "total_budget": baseline_cost,
+            "description": "Current estimates hold true",
         }
 
         # Pessimistic: +25% story points (unexpected complexities)
         pess_points = int(baseline_points * 1.25)
         pess_cost = baseline_cost * 1.25
-        scenarios['pessimistic'] = {
-            'story_points': pess_points,
-            'variance_percent': 25,
-            'total_budget': _round_currency(pess_cost),
-            'description': 'Technical challenges, scope creep, learning curve'
+        scenarios["pessimistic"] = {
+            "story_points": pess_points,
+            "variance_percent": 25,
+            "total_budget": _round_currency(pess_cost),
+            "description": "Technical challenges, scope creep, learning curve",
         }
 
         return scenarios
@@ -392,14 +425,14 @@ class BudgetCalculator:
         try:
             # Step 1: Calculate base cost (direct labor)
             base_cost_data = self._calculate_base_cost()
-            base_cost = base_cost_data['total']
+            base_cost = base_cost_data["total"]
 
             # Step 2: Calculate overhead
             overhead_cost = self._calculate_overhead(base_cost)
 
             # Step 3: Sum fixed costs
             fixed_costs_data = self._calculate_fixed_costs_total()
-            fixed_costs_total = fixed_costs_data['total']
+            fixed_costs_total = fixed_costs_data["total"]
 
             # Step 4: Calculate subtotal
             subtotal = base_cost + overhead_cost + fixed_costs_total
@@ -412,57 +445,67 @@ class BudgetCalculator:
 
             # Build result
             result = {
-                'summary': {
-                    'total_budget': _round_currency(total_budget),
-                    'base_cost': _round_currency(base_cost),
-                    'overhead_cost': _round_currency(overhead_cost),
-                    'overhead_percentage': self.config.overhead_percentage * 100,
-                    'fixed_costs': _round_currency(fixed_costs_total),
-                    'contingency': _round_currency(contingency_cost),
-                    'contingency_percentage': self.config.contingency_percentage * 100,
-                    'currency': self.config.currency
+                "summary": {
+                    "total_budget": _round_currency(total_budget),
+                    "base_cost": _round_currency(base_cost),
+                    "overhead_cost": _round_currency(overhead_cost),
+                    "overhead_percentage": self.config.overhead_percentage * 100,
+                    "fixed_costs": _round_currency(fixed_costs_total),
+                    "contingency": _round_currency(contingency_cost),
+                    "contingency_percentage": self.config.contingency_percentage * 100,
+                    "currency": self.config.currency,
                 },
-                'breakdown': {
-                    'base_cost': base_cost_data,
-                    'overhead': {
-                        'total': _round_currency(overhead_cost),
-                        'percentage': self.config.overhead_percentage * 100,
-                        'description': 'Management, facilities, admin, utilities'
+                "breakdown": {
+                    "base_cost": base_cost_data,
+                    "overhead": {
+                        "total": _round_currency(overhead_cost),
+                        "percentage": self.config.overhead_percentage * 100,
+                        "description": "Management, facilities, admin, utilities",
                     },
-                    'fixed_costs': fixed_costs_data,
-                    'contingency': {
-                        'total': _round_currency(contingency_cost),
-                        'percentage': self.config.contingency_percentage * 100,
-                        'description': 'Risk reserve for uncertainties'
-                    }
+                    "fixed_costs": fixed_costs_data,
+                    "contingency": {
+                        "total": _round_currency(contingency_cost),
+                        "percentage": self.config.contingency_percentage * 100,
+                        "description": "Risk reserve for uncertainties",
+                    },
                 },
-                'metrics': {
-                    'cost_per_point': _round_currency(total_budget / self.config.total_story_points),
-                    'cost_per_sprint': _round_currency(total_budget / self.config.total_sprints),
-                    'cost_per_hour': _round_currency(total_budget / self.config.total_hours),
-                    'total_story_points': self.config.total_story_points,
-                    'total_sprints': self.config.total_sprints,
-                    'total_hours': _round_currency(self.config.total_hours),
-                    'hours_per_point': _round_currency(self.config.hours_per_point)
+                "metrics": {
+                    "cost_per_point": _round_currency(
+                        total_budget / self.config.total_story_points
+                    ),
+                    "cost_per_sprint": _round_currency(
+                        total_budget / self.config.total_sprints
+                    ),
+                    "cost_per_hour": _round_currency(
+                        total_budget / self.config.total_hours
+                    ),
+                    "total_story_points": self.config.total_story_points,
+                    "total_sprints": self.config.total_sprints,
+                    "total_hours": _round_currency(self.config.total_hours),
+                    "hours_per_point": _round_currency(self.config.hours_per_point),
                 },
-                'timeline': {
-                    'total_sprints': self.config.total_sprints,
-                    'sprint_duration_weeks': self.config.sprint_duration_weeks,
-                    'total_weeks': self.config.total_sprints * self.config.sprint_duration_weeks,
-                    'total_months': round(
-                        (self.config.total_sprints * self.config.sprint_duration_weeks) / 4.33,
-                        1
-                    )
-                }
+                "timeline": {
+                    "total_sprints": self.config.total_sprints,
+                    "sprint_duration_weeks": self.config.sprint_duration_weeks,
+                    "total_weeks": self.config.total_sprints
+                    * self.config.sprint_duration_weeks,
+                    "total_months": round(
+                        (self.config.total_sprints * self.config.sprint_duration_weeks)
+                        / 4.33,
+                        1,
+                    ),
+                },
             }
 
             # Add sprint breakdown
-            result['by_sprint'] = self._calculate_by_sprint(total_budget)
+            result["by_sprint"] = self._calculate_by_sprint(total_budget)
 
             # Add scenario analysis
-            result['scenarios'] = self._scenario_analysis(result)
+            result["scenarios"] = self._scenario_analysis(result)
 
-            logger.info(f"Budget calculation complete: {self.config.currency} {total_budget:,.2f}")
+            logger.info(
+                f"Budget calculation complete: {self.config.currency} {total_budget:,.2f}"
+            )
             return result
 
         except Exception as e:
@@ -479,7 +522,7 @@ def calculate_budget(
     fixed_costs: Optional[List[Dict]] = None,
     overhead_percentage: float = 0.20,
     contingency_percentage: float = 0.15,
-    currency: str = "BRL"
+    currency: str = "BRL",
 ) -> Dict:
     """
     Convenience function to calculate project budget.
@@ -524,7 +567,7 @@ def calculate_budget(
         hours_per_sprint=hours_per_sprint,
         overhead_percentage=overhead_percentage,
         contingency_percentage=contingency_percentage,
-        currency=currency
+        currency=currency,
     )
 
     calculator = BudgetCalculator(config, team, fixed_costs)
@@ -551,66 +594,111 @@ if __name__ == "__main__":
             {"role": "Senior Developer", "count": 2, "hourly_rate": 150},
             {"role": "Developer", "count": 3, "hourly_rate": 100},
             {"role": "QA Engineer", "count": 1, "hourly_rate": 80},
-            {"role": "UX Designer", "count": 1, "hourly_rate": 90, "dedication_percent": 50}
+            {
+                "role": "UX Designer",
+                "count": 1,
+                "hourly_rate": 90,
+                "dedication_percent": 50,
+            },
         ],
         fixed_costs=[
-            {"item": "AWS Infrastructure", "value": 15000, "description": "Servers, storage, CDN", "frequency": "project total"},
-            {"item": "Software Licenses", "value": 8000, "description": "Jira, Confluence, monitoring tools", "frequency": "project total"},
-            {"item": "Design Tools", "value": 2000, "description": "Figma, Adobe CC", "frequency": "project total"}
+            {
+                "item": "AWS Infrastructure",
+                "value": 15000,
+                "description": "Servers, storage, CDN",
+                "frequency": "project total",
+            },
+            {
+                "item": "Software Licenses",
+                "value": 8000,
+                "description": "Jira, Confluence, monitoring tools",
+                "frequency": "project total",
+            },
+            {
+                "item": "Design Tools",
+                "value": 2000,
+                "description": "Figma, Adobe CC",
+                "frequency": "project total",
+            },
         ],
         overhead_percentage=0.20,
         contingency_percentage=0.15,
-        currency="BRL"
+        currency="BRL",
     )
 
     # Print summary
-    summary = result['summary']
+    summary = result["summary"]
     print("\n📊 Budget Summary:")
     print(f"   Total Budget: {summary['currency']} {summary['total_budget']:,.2f}")
     print(f"   Base Cost: {summary['currency']} {summary['base_cost']:,.2f}")
-    print(f"   Overhead ({summary['overhead_percentage']:.0f}%): {summary['currency']} {summary['overhead_cost']:,.2f}")
+    print(
+        f"   Overhead ({summary['overhead_percentage']:.0f}%): {summary['currency']} {summary['overhead_cost']:,.2f}"
+    )
     print(f"   Fixed Costs: {summary['currency']} {summary['fixed_costs']:,.2f}")
-    print(f"   Contingency ({summary['contingency_percentage']:.0f}%): {summary['currency']} {summary['contingency']:,.2f}")
+    print(
+        f"   Contingency ({summary['contingency_percentage']:.0f}%): {summary['currency']} {summary['contingency']:,.2f}"
+    )
 
     # Print metrics
-    metrics = result['metrics']
+    metrics = result["metrics"]
     print("\n📈 Key Metrics:")
-    print(f"   Cost per Story Point: {summary['currency']} {metrics['cost_per_point']:,.2f}")
-    print(f"   Cost per Sprint: {summary['currency']} {metrics['cost_per_sprint']:,.2f}")
+    print(
+        f"   Cost per Story Point: {summary['currency']} {metrics['cost_per_point']:,.2f}"
+    )
+    print(
+        f"   Cost per Sprint: {summary['currency']} {metrics['cost_per_sprint']:,.2f}"
+    )
     print(f"   Total Story Points: {metrics['total_story_points']}")
     print(f"   Total Sprints: {metrics['total_sprints']}")
     print(f"   Total Hours: {metrics['total_hours']:,.0f}")
 
     # Print timeline
-    timeline = result['timeline']
+    timeline = result["timeline"]
     print("\n📅 Timeline:")
-    print(f"   Duration: {timeline['total_sprints']} sprints = {timeline['total_weeks']} weeks = {timeline['total_months']} months")
+    print(
+        f"   Duration: {timeline['total_sprints']} sprints = {timeline['total_weeks']} weeks = {timeline['total_months']} months"
+    )
 
     # Print team breakdown
     print("\n👥 Team Cost Breakdown:")
-    for role, data in result['breakdown']['base_cost']['by_role'].items():
-        print(f"   {role} (x{data['count']}): {summary['currency']} {data['cost']:,.2f} "
-              f"[{data['hours']:,.0f}h @ {summary['currency']} {data['hourly_rate']}/h]")
+    for role, data in result["breakdown"]["base_cost"]["by_role"].items():
+        print(
+            f"   {role} (x{data['count']}): {summary['currency']} {data['cost']:,.2f} "
+            f"[{data['hours']:,.0f}h @ {summary['currency']} {data['hourly_rate']}/h]"
+        )
 
     # Print scenarios
     print("\n🎯 Scenario Analysis:")
-    for scenario_name, scenario in result['scenarios'].items():
-        variance = f"+{scenario['variance_percent']}" if scenario['variance_percent'] > 0 else f"{scenario['variance_percent']}"
-        print(f"   {scenario_name.capitalize()} ({variance}%): {summary['currency']} {scenario['total_budget']:,.2f}")
+    for scenario_name, scenario in result["scenarios"].items():
+        variance = (
+            f"+{scenario['variance_percent']}"
+            if scenario["variance_percent"] > 0
+            else f"{scenario['variance_percent']}"
+        )
+        print(
+            f"   {scenario_name.capitalize()} ({variance}%): {summary['currency']} {scenario['total_budget']:,.2f}"
+        )
         print(f"      {scenario['description']}")
 
     # Print first 3 sprints
     print("\n🏃 Sprint Budget Allocation (first 3 sprints):")
-    for sprint_data in result['by_sprint'][:3]:
-        print(f"   Sprint {sprint_data['sprint']}: {sprint_data['story_points']} points → {summary['currency']} {sprint_data['budget']:,.2f}")
+    for sprint_data in result["by_sprint"][:3]:
+        print(
+            f"   Sprint {sprint_data['sprint']}: {sprint_data['story_points']} points → {summary['currency']} {sprint_data['budget']:,.2f}"
+        )
 
     # Full JSON output
     print("\n💾 Full JSON Output (truncated):")
-    print(json.dumps({
-        'summary': result['summary'],
-        'metrics': result['metrics'],
-        'timeline': result['timeline']
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "summary": result["summary"],
+                "metrics": result["metrics"],
+                "timeline": result["timeline"],
+            },
+            indent=2,
+        )
+    )
 
     print("\n" + "=" * 80)
     print("✅ Budget calculation complete!")

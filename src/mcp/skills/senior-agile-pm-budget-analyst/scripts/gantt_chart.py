@@ -19,17 +19,19 @@ from enum import Enum
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
     """Raised when validation fails"""
+
     pass
 
 
 class TaskStatus(Enum):
     """Task status enumeration"""
+
     NOT_STARTED = "not_started"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -38,6 +40,7 @@ class TaskStatus(Enum):
 
 class TaskType(Enum):
     """Task type enumeration"""
+
     EPIC = "epic"
     SPRINT = "sprint"
     STORY = "story"
@@ -47,6 +50,7 @@ class TaskType(Enum):
 @dataclass
 class Task:
     """Represents a task in the Gantt chart"""
+
     id: str
     name: str
     task_type: TaskType
@@ -67,7 +71,7 @@ class Task:
     @property
     def is_critical(self) -> bool:
         """Check if task is on critical path (set by external analysis)"""
-        return getattr(self, '_is_critical', False)
+        return getattr(self, "_is_critical", False)
 
     @is_critical.setter
     def is_critical(self, value: bool):
@@ -85,6 +89,7 @@ class Task:
 @dataclass
 class GanttConfig:
     """Configuration for Gantt chart generation"""
+
     project_start_date: datetime
     sprint_duration_days: int = 14  # 2 weeks
     work_days_per_week: int = 5
@@ -192,7 +197,9 @@ class GanttChartGenerator:
         for task_id, task in self.tasks.items():
             for dep_id in task.dependencies:
                 if dep_id not in self.tasks:
-                    errors.append(f"Task {task_id} depends on non-existent task {dep_id}")
+                    errors.append(
+                        f"Task {task_id} depends on non-existent task {dep_id}"
+                    )
 
         # Check for circular dependencies
         def has_cycle(task_id: str, visited: set, rec_stack: set) -> bool:
@@ -214,7 +221,9 @@ class GanttChartGenerator:
         for task_id in self.tasks.keys():
             if task_id not in visited:
                 if has_cycle(task_id, visited, set()):
-                    errors.append(f"Circular dependency detected involving task {task_id}")
+                    errors.append(
+                        f"Circular dependency detected involving task {task_id}"
+                    )
 
         return errors
 
@@ -250,7 +259,7 @@ class GanttChartGenerator:
             "working_days": working_days,
             "calendar_weeks": project_duration // 7,
             "total_tasks": len(self.tasks),
-            "milestones": len(self.milestones)
+            "milestones": len(self.milestones),
         }
 
         return timeline
@@ -297,7 +306,7 @@ class GanttChartGenerator:
             "earliest_possible_start": earliest_start.strftime("%Y-%m-%d"),
             "slack_days": slack_days,
             "is_critical": task.is_critical,
-            "assigned_to": task.assigned_to
+            "assigned_to": task.assigned_to,
         }
 
         return timeline
@@ -336,10 +345,7 @@ class GanttChartGenerator:
                 by_assignee[assignee] = []
             by_assignee[assignee].append(task)
 
-        allocation = {
-            "total_resources": len(by_assignee),
-            "by_resource": {}
-        }
+        allocation = {"total_resources": len(by_assignee), "by_resource": {}}
 
         for assignee, tasks in by_assignee.items():
             total_days = sum(t.duration_days for t in tasks)
@@ -351,8 +357,10 @@ class GanttChartGenerator:
                 "total_duration_days": total_days,
                 "completed": len(completed_tasks),
                 "in_progress": len(in_progress_tasks),
-                "not_started": len(tasks) - len(completed_tasks) - len(in_progress_tasks),
-                "task_ids": [t.id for t in tasks]
+                "not_started": len(tasks)
+                - len(completed_tasks)
+                - len(in_progress_tasks),
+                "task_ids": [t.id for t in tasks],
             }
 
         return allocation
@@ -400,7 +408,7 @@ class GanttChartGenerator:
         # Tasks
         for task in display_tasks:
             # Task name (truncate if too long)
-            name_display = task.name[:name_width-2]
+            name_display = task.name[: name_width - 2]
             name_display = f"{name_display:<{name_width}}"
 
             # Calculate bar position and length
@@ -460,10 +468,7 @@ class GanttChartGenerator:
         # Validate dependencies
         dep_errors = self.validate_dependencies()
         if dep_errors:
-            return {
-                "error": "Dependency validation failed",
-                "details": dep_errors
-            }
+            return {"error": "Dependency validation failed", "details": dep_errors}
 
         # Calculate timeline
         timeline = self.calculate_timeline()
@@ -478,9 +483,7 @@ class GanttChartGenerator:
 
         # Critical path tasks
         critical_tasks = [
-            {"id": t.id, "name": t.name}
-            for t in self.tasks.values()
-            if t.is_critical
+            {"id": t.id, "name": t.name} for t in self.tasks.values() if t.is_critical
         ]
 
         # Generate ASCII chart
@@ -491,18 +494,14 @@ class GanttChartGenerator:
             "tasks": tasks_data,
             "critical_path": {
                 "total_critical_tasks": len(critical_tasks),
-                "tasks": critical_tasks
+                "tasks": critical_tasks,
             },
             "resource_allocation": resource_allocation,
             "milestones": [
-                {
-                    "id": m.id,
-                    "name": m.name,
-                    "date": m.start_date.strftime("%Y-%m-%d")
-                }
+                {"id": m.id, "name": m.name, "date": m.start_date.strftime("%Y-%m-%d")}
                 for m in self.milestones
             ],
-            "ascii_chart": ascii_chart
+            "ascii_chart": ascii_chart,
         }
 
         return chart_data
@@ -545,23 +544,22 @@ class GanttChartGenerator:
                 "total_tasks": len(sprint_tasks),
                 "story_points": total_points,
                 "completed_points": completed_points,
-                "completion_rate": (completed_points / total_points * 100) if total_points > 0 else 0,
+                "completion_rate": (completed_points / total_points * 100)
+                if total_points > 0
+                else 0,
                 "tasks": [
                     {
                         "id": t.id,
                         "name": t.name,
                         "points": t.story_points,
                         "status": t.status.value,
-                        "progress": t.progress_percent
+                        "progress": t.progress_percent,
                     }
                     for t in sprint_tasks
-                ]
+                ],
             }
 
-        return {
-            "total_sprints": len(sprints),
-            "sprints": sprint_data
-        }
+        return {"total_sprints": len(sprints), "sprints": sprint_data}
 
 
 def main():
@@ -579,9 +577,7 @@ def main():
     # Configuration
     project_start = datetime(2024, 3, 1)
     config = GanttConfig(
-        project_start_date=project_start,
-        sprint_duration_days=14,
-        ascii_chart_width=100
+        project_start_date=project_start, sprint_duration_days=14, ascii_chart_width=100
     )
 
     generator = GanttChartGenerator(config)
@@ -599,9 +595,8 @@ def main():
             progress_percent=100,
             assigned_to="Team A",
             sprint_number=1,
-            story_points=21
+            story_points=21,
         ),
-
         # Sprint 2
         Task(
             id="EPIC-002",
@@ -614,9 +609,8 @@ def main():
             progress_percent=60,
             assigned_to="Team A",
             sprint_number=2,
-            story_points=18
+            story_points=18,
         ),
-
         Task(
             id="EPIC-003",
             name="Shopping Cart",
@@ -628,9 +622,8 @@ def main():
             progress_percent=40,
             assigned_to="Team B",
             sprint_number=2,
-            story_points=15
+            story_points=15,
         ),
-
         # Sprint 3
         Task(
             id="EPIC-004",
@@ -642,9 +635,8 @@ def main():
             status=TaskStatus.NOT_STARTED,
             assigned_to="Team A",
             sprint_number=3,
-            story_points=20
+            story_points=20,
         ),
-
         Task(
             id="EPIC-005",
             name="Payment Integration",
@@ -655,9 +647,8 @@ def main():
             status=TaskStatus.NOT_STARTED,
             assigned_to="Team B",
             sprint_number=3,
-            story_points=13
+            story_points=13,
         ),
-
         # Sprint 4
         Task(
             id="EPIC-006",
@@ -669,9 +660,8 @@ def main():
             status=TaskStatus.NOT_STARTED,
             assigned_to="Team A",
             sprint_number=4,
-            story_points=18
+            story_points=18,
         ),
-
         # Milestones
         Task(
             id="MILE-001",
@@ -679,16 +669,15 @@ def main():
             task_type=TaskType.MILESTONE,
             start_date=project_start + timedelta(days=28),
             duration_days=1,
-            dependencies=["EPIC-002", "EPIC-003"]
+            dependencies=["EPIC-002", "EPIC-003"],
         ),
-
         Task(
             id="MILE-002",
             name="Beta Launch",
             task_type=TaskType.MILESTONE,
             start_date=project_start + timedelta(days=56),
             duration_days=1,
-            dependencies=["EPIC-006"]
+            dependencies=["EPIC-006"],
         ),
     ]
 
@@ -712,8 +701,10 @@ def main():
     print("\nProject Timeline:")
     print(f"  Start Date: {timeline['project_start']}")
     print(f"  End Date: {timeline['project_end']}")
-    print(f"  Total Duration: {timeline['total_duration_days']} days "
-          f"({timeline['calendar_weeks']} weeks)")
+    print(
+        f"  Total Duration: {timeline['total_duration_days']} days "
+        f"({timeline['calendar_weeks']} weeks)"
+    )
     print(f"  Working Days: {timeline['working_days']}")
     print(f"  Total Tasks: {timeline['total_tasks']}")
     print(f"  Milestones: {timeline['milestones']}")
@@ -774,10 +765,12 @@ def main():
         print(f"  Completed Points: {sprint_data['completed_points']}")
         print(f"  Completion Rate: {sprint_data['completion_rate']:.1f}%")
         print("\n  Tasks:")
-        for task in sprint_data['tasks']:
-            status_icon = "✓" if task['status'] == 'completed' else "•"
-            print(f"    {status_icon} {task['id']}: {task['name']} "
-                  f"({task['points']} pts, {task['progress']:.0f}%)")
+        for task in sprint_data["tasks"]:
+            status_icon = "✓" if task["status"] == "completed" else "•"
+            print(
+                f"    {status_icon} {task['id']}: {task['name']} "
+                f"({task['points']} pts, {task['progress']:.0f}%)"
+            )
 
     print("\n" + "=" * 80)
 

@@ -16,7 +16,9 @@ class TestTargetPersistence:
         app_root = tmp_path / "app"
         (app_root / ".dialectic").mkdir(parents=True)
         (app_root / "knowledge").mkdir(parents=True)
-        (app_root / "knowledge" / "VISION.md").write_text("Default vision", encoding="utf-8")
+        (app_root / "knowledge" / "VISION.md").write_text(
+            "Default vision", encoding="utf-8"
+        )
         return app_root
 
     def test_get_active_target_returns_none_when_unset(self, tmp_path, monkeypatch):
@@ -25,7 +27,9 @@ class TestTargetPersistence:
 
         assert target.get_active_target() is None
 
-    def test_set_target_persists_active_target_and_registry(self, tmp_path, monkeypatch):
+    def test_set_target_persists_active_target_and_registry(
+        self, tmp_path, monkeypatch
+    ):
         app_root = self._app_root(tmp_path)
         repo_root = tmp_path / "repos" / "demo"
         repo_root.mkdir(parents=True)
@@ -60,11 +64,15 @@ class TestTargetPersistence:
         repo_root.mkdir(parents=True)
 
         monkeypatch.setattr(target, "_resolve_app_root", lambda: app_root)
-        monkeypatch.setattr(target, "_utcnow", lambda: datetime(2026, 3, 14, 10, 0, tzinfo=timezone.utc))
+        monkeypatch.setattr(
+            target, "_utcnow", lambda: datetime(2026, 3, 14, 10, 0, tzinfo=timezone.utc)
+        )
         monkeypatch.setattr(
             target,
             "_probe_git_repository",
-            lambda candidate: target.GitTargetInfo(repo_root=repo_root, remote_url=None),
+            lambda candidate: target.GitTargetInfo(
+                repo_root=repo_root, remote_url=None
+            ),
         )
 
         target.set_target(repo_root)
@@ -75,17 +83,23 @@ class TestTargetPersistence:
         assert len(known) == 1
         assert known[0].target_path == repo_root
 
-    def test_resolve_project_vision_path_prefers_active_target_vision(self, tmp_path, monkeypatch):
+    def test_resolve_project_vision_path_prefers_active_target_vision(
+        self, tmp_path, monkeypatch
+    ):
         app_root = self._app_root(tmp_path)
         repo_root = tmp_path / "repos" / "demo"
         repo_root.mkdir(parents=True)
 
         monkeypatch.setattr(target, "_resolve_app_root", lambda: app_root)
-        monkeypatch.setattr(target, "_utcnow", lambda: datetime(2026, 3, 14, 10, 0, tzinfo=timezone.utc))
+        monkeypatch.setattr(
+            target, "_utcnow", lambda: datetime(2026, 3, 14, 10, 0, tzinfo=timezone.utc)
+        )
         monkeypatch.setattr(
             target,
             "_probe_git_repository",
-            lambda candidate: target.GitTargetInfo(repo_root=repo_root, remote_url=None),
+            lambda candidate: target.GitTargetInfo(
+                repo_root=repo_root, remote_url=None
+            ),
         )
 
         config = target.set_target(repo_root)
@@ -97,19 +111,27 @@ class TestTargetPersistence:
 
         target.clear_target()
 
-        assert target.resolve_project_vision_path() == app_root / "knowledge" / "VISION.md"
+        assert (
+            target.resolve_project_vision_path() == app_root / "knowledge" / "VISION.md"
+        )
 
-    def test_resolve_execution_root_uses_target_path_when_active(self, tmp_path, monkeypatch):
+    def test_resolve_execution_root_uses_target_path_when_active(
+        self, tmp_path, monkeypatch
+    ):
         app_root = self._app_root(tmp_path)
         repo_root = tmp_path / "repos" / "demo"
         repo_root.mkdir(parents=True)
 
         monkeypatch.setattr(target, "_resolve_app_root", lambda: app_root)
-        monkeypatch.setattr(target, "_utcnow", lambda: datetime(2026, 3, 14, 10, 0, tzinfo=timezone.utc))
+        monkeypatch.setattr(
+            target, "_utcnow", lambda: datetime(2026, 3, 14, 10, 0, tzinfo=timezone.utc)
+        )
         monkeypatch.setattr(
             target,
             "_probe_git_repository",
-            lambda candidate: target.GitTargetInfo(repo_root=repo_root, remote_url=None),
+            lambda candidate: target.GitTargetInfo(
+                repo_root=repo_root, remote_url=None
+            ),
         )
 
         target.set_target(repo_root)
@@ -127,7 +149,9 @@ class TestTargetPersistence:
         monkeypatch.setattr(
             target,
             "_probe_git_repository",
-            lambda candidate_path: (_ for _ in ()).throw(ValueError(f"Not a git repository: {candidate_path}")),
+            lambda candidate_path: (_ for _ in ()).throw(
+                ValueError(f"Not a git repository: {candidate_path}")
+            ),
         )
 
         with pytest.raises(ValueError, match="Not a git repository"):

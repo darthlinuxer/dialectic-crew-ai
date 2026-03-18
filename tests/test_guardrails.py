@@ -11,6 +11,7 @@ from tests.conftest import make_prd
 
 class _FakeResult:
     """Minimal object mimicking CrewAI task result with a .pydantic attribute."""
+
     def __init__(self, pydantic_obj):
         self.pydantic = pydantic_obj
 
@@ -31,8 +32,8 @@ class TestPrdGuardrail:
         ok, result = _prd_guardrail(NoisyResult(prd))
 
         assert ok is True
-        assert 'file_path' not in result
-        assert 'feature_name' in result
+        assert "file_path" not in result
+        assert "feature_name" in result
 
     def test_no_user_stories(self):
         prd = make_prd()
@@ -53,7 +54,9 @@ class TestPrdGuardrail:
 
 class TestQualityGuardrail:
     def test_valid_output(self):
-        vo = ValidationOutput(quality_score=8.0, consensus_reached=True, final_validation_notes="good")
+        vo = ValidationOutput(
+            quality_score=8.0, consensus_reached=True, final_validation_notes="good"
+        )
         ok, result = _quality_guardrail(_FakeResult(vo))
         assert ok is True
         assert isinstance(result, str)

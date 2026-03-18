@@ -24,9 +24,7 @@ class TestVisionKnowledgeInjection:
 
     @patch("dialectic.knowledge.prepare_vision_runtime")
     @patch("dialectic.knowledge.get_vision_path")
-    def test_vision_knowledge_loads_self_vision(
-        self, mock_get_path, mock_prepare
-    ):
+    def test_vision_knowledge_loads_self_vision(self, mock_get_path, mock_prepare):
         """vision_knowledge should load internal/SELF_VISION.md for SELF context."""
         expected_path = Path("/app/internal/SELF_VISION.md")
         mock_get_path.return_value = expected_path
@@ -46,9 +44,7 @@ class TestVisionKnowledgeInjection:
 
     @patch("dialectic.knowledge.prepare_vision_runtime")
     @patch("dialectic.knowledge.get_vision_path")
-    def test_vision_knowledge_loads_project_vision(
-        self, mock_get_path, mock_prepare
-    ):
+    def test_vision_knowledge_loads_project_vision(self, mock_get_path, mock_prepare):
         """vision_knowledge should load knowledge/VISION.md for PROJECT context."""
         expected_path = Path("/app/knowledge/VISION.md")
         mock_get_path.return_value = expected_path
@@ -138,9 +134,15 @@ class TestExecutionRuntimeStyleGuideInjection:
         """build_task_dialectic_crew should include style guides for SELF context."""
         mock_config.return_value = {
             "execute_task_thesis": {"agent": "implementer", "description": "test"},
-            "execute_task_antithesis": {"agent": "critico_socratico", "description": "test"},
+            "execute_task_antithesis": {
+                "agent": "critico_socratico",
+                "description": "test",
+            },
             "execute_task_synthesis": {"agent": "sintetizador", "description": "test"},
-            "execute_task_validation": {"agent": "validador_macro", "description": "test"},
+            "execute_task_validation": {
+                "agent": "validador_macro",
+                "description": "test",
+            },
         }
         mock_vision_knowledge.return_value = MagicMock()
         mock_style_knowledge.return_value = [MagicMock(), MagicMock()]
@@ -188,9 +190,15 @@ class TestExecutionRuntimeStyleGuideInjection:
         """build_task_dialectic_crew should NOT include style guides for PROJECT context."""
         mock_config.return_value = {
             "execute_task_thesis": {"agent": "implementer", "description": "test"},
-            "execute_task_antithesis": {"agent": "critico_socratico", "description": "test"},
+            "execute_task_antithesis": {
+                "agent": "critico_socratico",
+                "description": "test",
+            },
             "execute_task_synthesis": {"agent": "sintetizador", "description": "test"},
-            "execute_task_validation": {"agent": "validador_macro", "description": "test"},
+            "execute_task_validation": {
+                "agent": "validador_macro",
+                "description": "test",
+            },
         }
         mock_vision_knowledge.return_value = MagicMock()
 
@@ -214,6 +222,7 @@ class TestExecutionRuntimeStyleGuideInjection:
             call_kwargs = mock_crew.call_args.kwargs
             knowledge_sources = call_kwargs.get("knowledge_sources", [])
             assert len(knowledge_sources) == 1  # vision only
+
 
 def test_self_improve_uses_self_vision_context():
     """self_improve package should pass VisionContext.SELF to all stages."""

@@ -29,7 +29,9 @@ def test_vision_knowledge_preserves_absolute_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(
         knowledge,
         "get_vision_path",
-        lambda context: self_vision if context is VisionContext.SELF else project_vision,
+        lambda context: (
+            self_vision if context is VisionContext.SELF else project_vision
+        ),
     )
     monkeypatch.setattr(
         knowledge,

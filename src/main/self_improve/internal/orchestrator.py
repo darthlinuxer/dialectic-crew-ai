@@ -104,7 +104,17 @@ def _kickoff_prd_flow(
     *,
     flow_id: str,
     feature_request: str,
+    roadmap_opportunity: ImprovementOpportunity | None = None,
 ) -> None:
+    flow.state.source_roadmap_path = (
+        (roadmap_opportunity.source_path or "") if roadmap_opportunity else ""
+    )
+    flow.state.source_roadmap_label = (
+        (roadmap_opportunity.source_label or "") if roadmap_opportunity else ""
+    )
+    flow.state.source_roadmap_key = (
+        (roadmap_opportunity.source_key or "") if roadmap_opportunity else ""
+    )
     flow.kickoff(
         inputs={
             "id": flow_id,
@@ -420,6 +430,9 @@ def _can_recreate_resume_branch_from_saved_state(
     if next_stage == "execution":
         return _artifact_exists(record.plan_path_json)
     if next_stage in {
+        "quality gate",
+        "quality gate (remediation exhausted)",
+        "quality remediation",
         "test validation",
         "metrics validation",
         "PR creation",
@@ -445,6 +458,25 @@ def _require_artifact(path: str, failure_reason: str) -> str:
     return require_artifact(path, failure_reason, error_cls=_CycleAbort)
 
 
+def _normalize_roadmap_label(label: str) -> str:
+    return re.sub(r"\s+", " ", label).strip().lower()
+
+
+def _expected_roadmap_labels(
+    opportunities: list[ImprovementOpportunity],
+) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for opportunity in opportunities:
+        if opportunity.category != "vision_gap" and not opportunity.source_label:
+            continue
+        candidate = (opportunity.source_label or "").strip()
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            labels.append(candidate)
+    return labels
+
+
 def _mark_roadmap_items_completed(
     project_root: Path,
     opportunities: list[ImprovementOpportunity],
@@ -453,12 +485,22 @@ def _mark_roadmap_items_completed(
     if not roadmap_path.exists():
         return []
 
-    targets = {
+    exact_targets = {
+        opportunity.source_label.strip()
+        for opportunity in opportunities
+        if opportunity.source_label and opportunity.source_label.strip()
+    }
+    normalized_targets = {
+        opportunity.source_key.strip()
+        for opportunity in opportunities
+        if opportunity.source_key and opportunity.source_key.strip()
+    }
+    fallback_targets = {
         (opportunity.description or opportunity.title).strip()
         for opportunity in opportunities
         if (opportunity.description or opportunity.title).strip()
     }
-    if not targets:
+    if not exact_targets and not normalized_targets and not fallback_targets:
         return []
 
     updated_labels: list[str] = []
@@ -473,7 +515,12 @@ def _mark_roadmap_items_completed(
             continue
 
         label = match.group("label").strip()
-        if label in targets:
+        normalized_label = _normalize_roadmap_label(label)
+        if (
+            label in exact_targets
+            or normalized_label in normalized_targets
+            or label in fallback_targets
+        ):
             updated_lines.append(
                 f"{match.group('prefix')}[x]{match.group('suffix')}{label}"
             )
@@ -760,6 +807,10 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             record.tests_passed = False
             record.metrics_stable = False
             record.pr_created = False
+            record.roadmap_marking_attempted = False
+            record.roadmap_marking_succeeded = False
+            record.completed_roadmap_items = []
+            record.roadmap_marking_failure_reason = ""
             record.execution_failure_reasons = list(record.execution_failure_reasons)
             _save_self_improve_record(project_root, record)
         else:
@@ -1058,6 +1109,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                                     flow,
                                     flow_id=record.prd_flow_id,
                                     feature_request=feature_request,
+                                    roadmap_opportunity=selected[0]
+                                    if selected
+                                    else None,
                                 ),
                             )
                             prd_path = _record_prd_artifacts(record, flow)
@@ -1239,7 +1293,45 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             )
 
             print("\n[7a/9] Validating: running code quality checks...")
-            quality_result = run_quality_gate(project_root)
+            if record.quality_remediation_attempt_count > 0:
+                quality_result = run_quality_gate(
+                    project_root,
+                    previous_remediation_attempt_count=(
+                        record.quality_remediation_attempt_count
+                    ),
+                )
+            else:
+                quality_result = run_quality_gate(project_root)
+            record.quality_gate_passed = quality_result.passed
+            record.quality_gate_summary = quality_result.summary
+            record.quality_remediation_attempted = getattr(
+                quality_result,
+                "remediation_attempted",
+                False,
+            )
+            record.quality_remediation_attempt_count = getattr(
+                quality_result,
+                "remediation_attempt_count",
+                0,
+            )
+            record.quality_remediation_succeeded = getattr(
+                quality_result,
+                "remediation_succeeded",
+                False,
+            )
+            record.quality_remediation_steps = list(
+                getattr(quality_result, "remediation_steps", [])
+            )
+            record.quality_remediation_failure_reason = getattr(
+                quality_result,
+                "remediation_failure_reason",
+                "",
+            )
+            record.quality_remediation_exhausted = getattr(
+                quality_result,
+                "remediation_exhausted",
+                False,
+            )
             if not quality_result.passed:
                 record.failure_reason = f"Quality gate failed: {quality_result.summary}"
                 print(f"  FAIL: {record.failure_reason}")
@@ -1250,10 +1342,14 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 _save_self_improve_record(project_root, record)
                 return record
             print(f"  Quality gate passed: {quality_result.summary}")
+            _save_self_improve_record(project_root, record)
 
             current_stage = "structure validation"
             print("\n[7b/9] Validating: code structure (SOLID, deep modules)...")
-            structure_targets = collect_changed_python_files(project_root)
+            structure_targets = collect_changed_python_files(
+                project_root,
+                semantic_only=True,
+            )
             structure_result = validate_code_structure(
                 project_root,
                 changed_files=structure_targets,
@@ -1328,13 +1424,38 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 _save_self_improve_record(project_root, record)
                 return record
 
+            roadmap_path = project_root / SELF_IMPROVE_ROADMAP_PATH
+            expected_roadmap_labels = _expected_roadmap_labels(selected)
             completed_roadmap_items = _mark_roadmap_items_completed(
                 project_root, selected
             )
+            record.roadmap_marking_attempted = bool(expected_roadmap_labels) and (
+                roadmap_path.exists()
+            )
+            record.completed_roadmap_items = completed_roadmap_items
             if completed_roadmap_items:
                 print("  Updated roadmap items:")
                 for item in completed_roadmap_items:
                     print(f"    - {item}")
+
+            if record.roadmap_marking_attempted:
+                missing_roadmap_labels = [
+                    label
+                    for label in expected_roadmap_labels
+                    if label not in completed_roadmap_items
+                ]
+                if missing_roadmap_labels:
+                    record.roadmap_marking_succeeded = False
+                    record.roadmap_marking_failure_reason = (
+                        "Failed to mark roadmap items complete: "
+                        + ", ".join(missing_roadmap_labels)
+                    )
+                    record.failure_reason = record.roadmap_marking_failure_reason
+                    print(f"  FAIL: {record.failure_reason}")
+                    _persist_record(store, record)
+                    _save_self_improve_record(project_root, record)
+                    return record
+                record.roadmap_marking_succeeded = True
 
             commit_message = f"chore(self-improve): apply cycle {cycle_id}"
             committed, commit_reason = _git_commit_all(project_root, commit_message)

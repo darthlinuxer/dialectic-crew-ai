@@ -18,7 +18,9 @@ from schemas import VerificationResult
 ValidationProfile = Literal["task", "story"]
 
 
-def run_stack_validation_gate(profile: ValidationProfile = "task") -> VerificationResult:
+def run_stack_validation_gate(
+    profile: ValidationProfile = "task",
+) -> VerificationResult:
     """Run the allowlisted stack validation plan as an execution hard gate."""
     project_root = resolve_project_root()
     plan = build_validation_plan(project_root)
@@ -31,14 +33,24 @@ def run_stack_validation_gate(profile: ValidationProfile = "task") -> Verificati
         )
 
     report = run_validation_plan(plan.project_root, include_steps=selected_labels)
-    passed = [f"stack validation: {result.label}" for result in report.results if result.passed]
-    failed = [f"stack validation: {result.label}" for result in report.results if not result.passed]
+    passed = [
+        f"stack validation: {result.label}"
+        for result in report.results
+        if result.passed
+    ]
+    failed = [
+        f"stack validation: {result.label}"
+        for result in report.results
+        if not result.passed
+    ]
 
     return VerificationResult(
         verified=report.passed,
         checks_passed=passed,
         checks_failed=failed,
-        notes=_render_validation_notes(plan, report.passed, selected_labels, report.results),
+        notes=_render_validation_notes(
+            plan, report.passed, selected_labels, report.results
+        ),
     )
 
 

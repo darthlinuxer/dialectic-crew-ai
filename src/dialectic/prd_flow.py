@@ -86,7 +86,9 @@ class DialecticFlow(Flow[DialecticState]):
 
         if self.state.retry_count >= self.state.max_retries:
             self.state.current_phase = "save"
-            print(f"Max retries reached. Finishing with score: {self.state.quality_score}")
+            print(
+                f"Max retries reached. Finishing with score: {self.state.quality_score}"
+            )
             return "aprovar"
 
         self.state.retry_count += 1
@@ -112,13 +114,13 @@ class DialecticFlow(Flow[DialecticState]):
             vision_context=self.state.vision_context,
         )
         logger.info("PRD dialectic flow started")
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("STARTING DIALECTIC FLOW")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Flow ID: {self.flow_id}")
         print(f"Feature: {self.state.feature_objective}")
         print(f"Max retries: {self.state.max_retries}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
     @router(iniciar_dialetica)
     def route_from_start(self):
@@ -141,13 +143,17 @@ class DialecticFlow(Flow[DialecticState]):
         ):
             self.state.current_phase = "dialectic"
             print(f"\nROUND {self.state.retry_count + 1}/{self.state.max_retries}\n")
-            logger.info("Running PRD dialectic round", extra={"retry": self.state.retry_count})
+            logger.info(
+                "Running PRD dialectic round", extra={"retry": self.state.retry_count}
+            )
 
             vision_context = VisionContext(self.state.vision_context)
             retry_feedback = (self.state.final_validation_notes or "").strip()
-            retry_feedback_block, retry_feedback_sources = _build_retry_feedback_context(
-                retry_feedback,
-                self.state.retry_count,
+            retry_feedback_block, retry_feedback_sources = (
+                _build_retry_feedback_context(
+                    retry_feedback,
+                    self.state.retry_count,
+                )
             )
 
             crew = build_prd_crew(
@@ -204,6 +210,7 @@ class DialecticFlow(Flow[DialecticState]):
                     raw_text = last_raw
             try:
                 import re
+
                 matches = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
                 json_str = matches[-1].strip() if matches else raw_text
                 start_idx = json_str.find("{")
@@ -224,28 +231,34 @@ class DialecticFlow(Flow[DialecticState]):
                     "On retry, the Validator MUST return ONLY valid JSON matching PRDSchema "
                     "with all required fields."
                 )
-                debug_dir = _resolved_output_dir(VisionContext(self.state.vision_context))
+                debug_dir = _resolved_output_dir(
+                    VisionContext(self.state.vision_context)
+                )
                 debug_dir.mkdir(parents=True, exist_ok=True)
                 debug_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 debug_path = debug_dir / f"debug_crew_output_{debug_ts}.txt"
                 try:
                     with open(debug_path, "w", encoding="utf-8") as f:
                         f.write("# Raw crew output (parse failed)\n\n")
-                        f.write(raw_text if isinstance(raw_text, str) else str(raw_text))
+                        f.write(
+                            raw_text if isinstance(raw_text, str) else str(raw_text)
+                        )
                     logger.warning("Parse failed; raw output saved to %s", debug_path)
                 except OSError:
                     pass
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"QUALITY SCORE: {self.state.quality_score}/10.0")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         self.state.current_phase = "evaluate"
         return "avaliar"
 
     @router(rodar_rodada_dialetica)
     def avaliar(self):
         bind_log_context(flow_id=self.flow_id, phase="evaluate")
-        logger.info("Evaluating PRD dialectic round", extra={"retry": self.state.retry_count})
+        logger.info(
+            "Evaluating PRD dialectic round", extra={"retry": self.state.retry_count}
+        )
         return self._route_after_evaluation()
 
     # Router outputs remain string labels because CrewAI emits route names here,
@@ -253,7 +266,9 @@ class DialecticFlow(Flow[DialecticState]):
     @listen("aprovar")
     def salvar_prd_final(self):
         bind_log_context(flow_id=self.flow_id, phase="save")
-        if self.state.current_phase == "completed" and (self.state.prd_path_json or self.state.prd_path_md):
+        if self.state.current_phase == "completed" and (
+            self.state.prd_path_json or self.state.prd_path_md
+        ):
             print(f"\nPRD already exported for flow {self.flow_id}.")
             if self.state.prd_path_json:
                 print(f"Saved to: {self.state.prd_path_json}")
@@ -308,16 +323,25 @@ class DialecticFlow(Flow[DialecticState]):
         prd.quality_score = self.state.quality_score
         prd.consensus_reached = self.state.consensus_reached
         prd.final_validation_notes = self.state.final_validation_notes
+        prd.source_roadmap_path = self.state.source_roadmap_path or None
+        prd.source_roadmap_label = self.state.source_roadmap_label or None
+        prd.source_roadmap_key = self.state.source_roadmap_key or None
 
         if float(self.state.quality_score) >= 9.0:
             try:
                 config = get_export_config()
-                config.output_dir = _resolved_output_dir(VisionContext(self.state.vision_context))
+                config.output_dir = _resolved_output_dir(
+                    VisionContext(self.state.vision_context)
+                )
                 exporter = PRDExporter()
                 created_paths = exporter.export(prd, config)
                 created_path_strings = [str(path) for path in created_paths]
-                json_path = next((p for p in created_path_strings if p.endswith(".json")), "")
-                md_path = next((p for p in created_path_strings if p.endswith(".md")), "")
+                json_path = next(
+                    (p for p in created_path_strings if p.endswith(".json")), ""
+                )
+                md_path = next(
+                    (p for p in created_path_strings if p.endswith(".md")), ""
+                )
                 self.state.prd_path_json = json_path
                 self.state.prd_path_md = md_path
                 logger.info("PRD exported via PRDExporter: %s", created_path_strings)
@@ -328,7 +352,9 @@ class DialecticFlow(Flow[DialecticState]):
                 return prd
             except (OSError, TypeError, ValueError) as e:
                 logger.exception("Failed to export PRD via PRDExporter: %s", e)
-                print("Failed to export PRD via PRDExporter; falling back to local save.")
+                print(
+                    "Failed to export PRD via PRDExporter; falling back to local save."
+                )
 
         output_dir = _resolved_output_dir(VisionContext(self.state.vision_context))
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -371,7 +397,9 @@ def run_dialectic_flow(
     consensus_min_score: float | None = None,
 ) -> dict:
     if not resume_id and not feature_request:
-        raise ValueError("feature_request is required when not resuming a persisted PRD flow")
+        raise ValueError(
+            "feature_request is required when not resuming a persisted PRD flow"
+        )
 
     effective_max_retries = max_retries if max_retries is not None else MAX_RETRIES
     if effective_max_retries < 1:
@@ -379,7 +407,10 @@ def run_dialectic_flow(
     effective_consensus_min_score = (
         consensus_min_score if consensus_min_score is not None else CONSENSUS_MIN_SCORE
     )
-    if effective_consensus_min_score is not None and not 0.0 <= effective_consensus_min_score <= 10.0:
+    if (
+        effective_consensus_min_score is not None
+        and not 0.0 <= effective_consensus_min_score <= 10.0
+    ):
         raise ValueError("consensus_min_score must be between 0.0 and 10.0")
 
     flow = DialecticFlow(persistence=_get_persistence())

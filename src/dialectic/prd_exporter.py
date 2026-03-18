@@ -34,7 +34,9 @@ class PRDExporter:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         slug = _slugify(getattr(prd, "feature_name", None) or "")
-        version = getattr(prd, "version", None) or datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        version = getattr(prd, "version", None) or datetime.utcnow().strftime(
+            "%Y%m%d%H%M%S"
+        )
 
         json_path = output_dir / f"{slug}-{version}.json"
         md_path = output_dir / f"{slug}-{version}.md"
@@ -87,11 +89,16 @@ class PRDExporter:
                 try:
                     if json_path.exists():
                         json_path.unlink()
-                        logger.info("Rolled back JSON file %s due to MD write failure", json_path)
+                        logger.info(
+                            "Rolled back JSON file %s due to MD write failure",
+                            json_path,
+                        )
                         if json_path in created:
                             created.remove(json_path)
                 except Exception:
-                    logger.exception("Failed to rollback JSON file %s after MD failure", json_path)
+                    logger.exception(
+                        "Failed to rollback JSON file %s after MD failure", json_path
+                    )
                 raise
             return created
 

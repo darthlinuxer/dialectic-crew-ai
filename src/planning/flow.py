@@ -17,7 +17,10 @@ from typing import Any, Tuple
 from pydantic import BaseModel, ValidationError
 
 from dialectic.crewai_runtime import run_crew_kickoff
-from dialectic.dependency_graph import format_dependency_errors, validate_task_dependencies
+from dialectic.dependency_graph import (
+    format_dependency_errors,
+    validate_task_dependencies,
+)
 from dialectic.export import execution_plan_to_markdown
 from dialectic.output_paths import resolve_prd_output_dir
 from dialectic.prd_guardrails import _build_retry_feedback_context
@@ -34,6 +37,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Guardrail: validates plan structure from output_pydantic
 # ---------------------------------------------------------------------------
+
 
 def _plan_guardrail(result) -> Tuple[bool, Any]:
     """Ensures validation task returns a valid UserStoryExecutionPlan."""
@@ -54,7 +58,10 @@ def _plan_guardrail(result) -> Tuple[bool, Any]:
                     ),
                 )
             return (True, _guardrail_success_output(pydantic_obj))
-        return (False, "Plan must include at least one implementation task (tasks list is empty)")
+        return (
+            False,
+            "Plan must include at least one implementation task (tasks list is empty)",
+        )
     return (
         False,
         "Output must be a valid UserStoryExecutionPlan JSON with fields: "
@@ -80,6 +87,7 @@ class _PlanningPRDMetadata(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolved_output_dir(vision_context: VisionContext) -> Path:
     if OUTPUT_DIR != "prd_output":
         return Path(OUTPUT_DIR)
@@ -96,7 +104,9 @@ def _find_latest_prd(vision_context: VisionContext = VisionContext.PROJECT) -> P
         if _is_prd_payload(data):
             candidates.append(path)
     if not candidates:
-        raise FileNotFoundError(f"No PRD found in {_resolved_output_dir(vision_context)}/")
+        raise FileNotFoundError(
+            f"No PRD found in {_resolved_output_dir(vision_context)}/"
+        )
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
@@ -127,7 +137,9 @@ def _normalize_us_ref(s: str) -> str:
     return s
 
 
-def _get_user_story(prd: PRDSchema | _PlanningPRDMetadata, ref: str | None) -> UserStory:
+def _get_user_story(
+    prd: PRDSchema | _PlanningPRDMetadata, ref: str | None
+) -> UserStory:
     raw_stories: list[UserStory | dict[str, Any]] = list(prd.user_stories)
     if not raw_stories:
         raise ValueError("PRD does not contain any user stories")
@@ -152,7 +164,9 @@ def _get_user_story(prd: PRDSchema | _PlanningPRDMetadata, ref: str | None) -> U
         ) from exc
 
 
-def _validate_user_story(user_story: UserStory | dict[str, Any], *, index: int) -> UserStory:
+def _validate_user_story(
+    user_story: UserStory | dict[str, Any], *, index: int
+) -> UserStory:
     if isinstance(user_story, UserStory):
         return user_story
     try:
@@ -174,7 +188,9 @@ MIN_PLAN_SCORE = float(os.getenv("MIN_PLAN_SCORE", "7.5"))
 MAX_PLAN_RETRIES = int(os.getenv("MAX_PLAN_RETRIES", "3"))
 
 
-def _ensure_acceptance_checks(plan: UserStoryExecutionPlan, us) -> UserStoryExecutionPlan:
+def _ensure_acceptance_checks(
+    plan: UserStoryExecutionPlan, us
+) -> UserStoryExecutionPlan:
     fallback_criteria = [
         f"Contributes to acceptance criterion: {criterion}"
         for criterion in us.acceptance_criteria[:3]
@@ -187,7 +203,9 @@ def _ensure_acceptance_checks(plan: UserStoryExecutionPlan, us) -> UserStoryExec
             f"Task outcome matches description: {task.description}",
             *fallback_criteria,
         ]
-        task.acceptance_checks = list(dict.fromkeys(check for check in derived_checks if check))[:4]
+        task.acceptance_checks = list(
+            dict.fromkeys(check for check in derived_checks if check)
+        )[:4]
     return plan
 
 
@@ -210,6 +228,7 @@ def _extract_plan(result, us) -> UserStoryExecutionPlan | None:
             raw_text = last_raw
     try:
         import re
+
         matches = re.findall(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
         json_str = matches[-1].strip() if matches else raw_text
         start_idx = json_str.find("{")
@@ -238,21 +257,21 @@ def run_user_story_planning(
     """
     if prd_path is None:
         prd_path = str(_find_latest_prd(vision_context))
-    prd, _ = _load_prd(prd_path)
+    prd, data = _load_prd(prd_path)
     us = _get_user_story(prd, user_story_ref)
 
     us_context = f"""
 User Story: {us.id} — {us.title}
 Description: {us.description}
-Acceptance criteria: {chr(10).join('- ' + ac for ac in us.acceptance_criteria)}
+Acceptance criteria: {chr(10).join("- " + ac for ac in us.acceptance_criteria)}
 Effort: {us.effort}
-Dependencies: {', '.join(us.dependencies) or 'None'}
+Dependencies: {", ".join(us.dependencies) or "None"}
 """
     feature_context = f"Feature (PRD): {prd.feature_name}. Objective: {prd.objective}"
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Dialectic planning — {us.id} {us.title}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     plan_valid: UserStoryExecutionPlan | None = None
     retry_feedback = ""
@@ -287,6 +306,9 @@ Dependencies: {', '.join(us.dependencies) or 'None'}
         plan_valid = _ensure_acceptance_checks(plan_valid, us)
         plan_valid.source_prd_path = str(Path(prd_path).resolve())
         plan_valid.vision_hash = get_vision_hash(vision_context)
+        plan_valid.source_roadmap_path = data.get("source_roadmap_path") or None
+        plan_valid.source_roadmap_label = data.get("source_roadmap_label") or None
+        plan_valid.source_roadmap_key = data.get("source_roadmap_key") or None
 
         if plan_valid.quality_score >= MIN_PLAN_SCORE:
             print(f"   Plan approved (score {plan_valid.quality_score}/10)")

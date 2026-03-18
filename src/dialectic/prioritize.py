@@ -166,7 +166,9 @@ def _extract_prioritization(result: Any) -> PrioritizationResult | None:
         data = json.loads(json_str)
         return PrioritizationResult.model_validate(data)
     except (json.JSONDecodeError, ValidationError):
-        logger.debug("Failed to parse PrioritizationResult from raw output", exc_info=True)
+        logger.debug(
+            "Failed to parse PrioritizationResult from raw output", exc_info=True
+        )
         return None
 
 

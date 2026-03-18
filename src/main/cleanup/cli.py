@@ -78,7 +78,9 @@ def cmd_clear_runtime(
     ]
 
     if removed:
-        print("Runtime artifacts to remove:" if dry_run else "Removed runtime artifacts:")
+        print(
+            "Runtime artifacts to remove:" if dry_run else "Removed runtime artifacts:"
+        )
         for path in removed:
             print(_describe_action(path, dry_run=dry_run))
     else:
@@ -143,4 +145,3 @@ def cmd_clear_self_improve(
         _remove_path(path)
     _remove_path(snapshot)
     print(f"Removed self-improve snapshot: {snapshot}")
-

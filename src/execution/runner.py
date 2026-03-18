@@ -48,13 +48,15 @@ def _artifact_markdown(plan: UserStoryExecutionPlan) -> str:
     ]
     for t in sorted(plan.tasks, key=lambda x: (x.order, x.id)):
         deps = f" *Dependencies: {', '.join(t.dependencies)}*" if t.dependencies else ""
-        lines.extend([
-            f"### {t.id} — {t.title}",
-            "",
-            t.description,
-            deps,
-            "",
-        ])
+        lines.extend(
+            [
+                f"### {t.id} — {t.title}",
+                "",
+                t.description,
+                deps,
+                "",
+            ]
+        )
     if plan.risks_mitigated:
         lines.extend(["---", "", "## Mitigated risks", ""])
         for r in plan.risks_mitigated:

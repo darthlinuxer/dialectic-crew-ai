@@ -135,9 +135,7 @@ class TestMetricsStore:
 class TestEmitHelper:
     def test_emit_records_metric(self, tmp_path, monkeypatch):
         db = tmp_path / "emit.db"
-        monkeypatch.setattr(
-            "dialectic.metrics._store", MetricsStore(db_path=db)
-        )
+        monkeypatch.setattr("dialectic.metrics._store", MetricsStore(db_path=db))
         emit("prd_score", 9.5, feature="Login")
         store = get_metrics_store()
         results = store.query("prd_score")

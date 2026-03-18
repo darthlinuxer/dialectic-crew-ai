@@ -19,7 +19,9 @@ def test_build_prioritization_crew_uses_yaml_templates(monkeypatch):
     monkeypatch.setattr(prioritize_runtime, "Task", FakeTask)
     monkeypatch.setattr(prioritize_runtime, "Crew", FakeCrew)
     monkeypatch.setattr(prioritize_runtime, "Agent", lambda **kwargs: kwargs)
-    monkeypatch.setattr(prioritize_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+    monkeypatch.setattr(
+        prioritize_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}"
+    )
 
     prioritize_runtime.build_prioritization_crew(
         opp_text="1. [opp-1] Improve thing",
@@ -31,7 +33,10 @@ def test_build_prioritization_crew_uses_yaml_templates(monkeypatch):
     assert "Improve thing" in captured_tasks[0]["description"]
     assert "SELF_VISION.md" in captured_crew["agents"][0]["backstory"]
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
-    assert captured_tasks[2]["context"] == [captured_crew["tasks"][0], captured_crew["tasks"][1]]
+    assert captured_tasks[2]["context"] == [
+        captured_crew["tasks"][0],
+        captured_crew["tasks"][1],
+    ]
     assert captured_tasks[2]["output_pydantic"].__name__ == "PrioritizationResult"
     assert captured_tasks[2]["guardrail"].__name__ == "_prioritization_guardrail"
     assert captured_crew["knowledge_sources"] == ["vision:self"]

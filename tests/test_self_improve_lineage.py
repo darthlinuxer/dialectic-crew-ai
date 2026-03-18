@@ -10,7 +10,12 @@ import pytest
 
 from dialectic.metrics import MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
-from src.main.self_improve import _build_pr_body, _save_self_improve_record, run_self_improve
+from src.main.self_improve import (
+    _build_pr_body,
+    _save_self_improve_record,
+    run_self_improve,
+)
+from src.main.self_improve.persistence import load_self_improve_record
 from schemas import ImprovementOpportunity, IntrospectionReport, SelfImprovementRecord
 
 
@@ -29,8 +34,10 @@ def store(tmp_path):
 @pytest.fixture
 def vision_file(tmp_path):
     vision = tmp_path / "internal" / "SELF_VISION.md"
+    roadmap = tmp_path / "internal" / "ROADMAP.md"
     vision.parent.mkdir(parents=True, exist_ok=True)
-    vision.write_text("- [ ] Track lineage across self-improve stages\n")
+    vision.write_text("# Anti-drift only\n")
+    roadmap.write_text("- [ ] Track lineage across self-improve stages\n")
     return vision
 
 
@@ -38,7 +45,9 @@ def vision_file(tmp_path):
 def configured_env(tmp_path, monkeypatch, store, vision_file):
     monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
     monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-    monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+    monkeypatch.setattr(
+        "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+    )
     monkeypatch.setattr(
         "main.self_improve._git_commit_all",
         lambda cwd, message: (False, "nothing to commit"),
@@ -49,11 +58,18 @@ def configured_env(tmp_path, monkeypatch, store, vision_file):
     )
     monkeypatch.setattr(
         "main.self_improve._snapshot_tests",
-        lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+        lambda p: {
+            "returncode": 0,
+            "passed": True,
+            "stdout_tail": "",
+            "stderr_tail": "",
+        },
     )
     monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision_file)
     monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-    monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+    monkeypatch.setattr(
+        "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+    )
     monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
     monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
     monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
@@ -86,8 +102,13 @@ class TestSelfImproveLineage:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         assert record.prd_flow_id == "prd-flow-123"
@@ -100,6 +121,50 @@ class TestSelfImproveLineage:
         assert record.execution_output_path == mock_exec["output_path"]
         assert record.execution_report_path == mock_exec["report_path"]
 
+    def test_records_selected_roadmap_provenance_in_saved_cycle(self, configured_env):
+        tmp_path = configured_env
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "prd-flow-123"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "prd_output" / "PRD_test.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+            "plan_path_md": str(tmp_path / "prd_output" / "exec_test.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-123",
+            "task_flow_ids": {"T-001": "task-flow-1"},
+            "output_path": str(tmp_path / "exec_output" / "run-123"),
+            "report_path": str(tmp_path / "exec_output" / "run-123" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        saved_record = load_self_improve_record(tmp_path, record.cycle_id)
+
+        assert record.selected_opportunities[0].source_path == "internal/ROADMAP.md"
+        assert saved_record is not None
+        assert (
+            saved_record.selected_opportunities[0].source_path == "internal/ROADMAP.md"
+        )
+        assert saved_record.selected_opportunities[0].source_label
+        assert saved_record.selected_opportunities[0].source_key
+
     def test_aborts_when_plan_path_missing(self, configured_env):
         mock_flow = MagicMock()
         mock_flow.state.quality_score = 9.5
@@ -111,7 +176,9 @@ class TestSelfImproveLineage:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
                     record = run_self_improve(max_improvements=1)
 
         assert "Planning did not produce an exported artifact" in record.failure_reason
@@ -139,13 +206,23 @@ class TestSelfImproveLineage:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
-        assert "Execution report did not produce an exported artifact" in record.failure_reason
+        assert (
+            "Execution report did not produce an exported artifact"
+            in record.failure_reason
+        )
 
-    def test_resume_reuses_artifacts_and_execution_checkpoint_without_git(self, configured_env, monkeypatch):
+    def test_resume_reuses_artifacts_and_execution_checkpoint_without_git(
+        self, configured_env, monkeypatch
+    ):
         tmp_path = configured_env
         opportunity = ImprovementOpportunity(
             id="opp-1",
@@ -178,7 +255,9 @@ class TestSelfImproveLineage:
             "main.self_improve._command_available",
             lambda command: command != "git",
         )
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
 
         exec_calls = []
 
@@ -190,19 +269,26 @@ class TestSelfImproveLineage:
                 "run_id": "run-123",
                 "task_flow_ids": {"T-001": "task-flow-1"},
                 "output_path": str(tmp_path / "exec_output" / "run-123"),
-                "report_path": str(tmp_path / "exec_output" / "run-123" / "report.json"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-123" / "report.json"
+                ),
             }
 
-        with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=fake_execution):
+        with patch(
+            "execution.dialectic_execution.run_dialectic_execution",
+            side_effect=fake_execution,
+        ):
             resumed = run_self_improve(resume_cycle_id="cycle-resume")
 
         assert resumed.failure_reason == ""
         assert resumed.execution_run_id == "run-123"
-        assert exec_calls == [{
-            "plan_path": str(tmp_path / "prd_output" / "exec_test.json"),
-            "vision_context": VisionContext.SELF,
-            "resume_run_id": "run-123",
-        }]
+        assert exec_calls == [
+            {
+                "plan_path": str(tmp_path / "prd_output" / "exec_test.json"),
+                "vision_context": VisionContext.SELF,
+                "resume_run_id": "run-123",
+            }
+        ]
 
     def test_resume_after_execution_failure_clears_stale_failure_and_skips_completed_stages(
         self,
@@ -238,7 +324,9 @@ class TestSelfImproveLineage:
         )
         _save_self_improve_record(tmp_path, record)
 
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
 
         def fail_if_called(*args, **kwargs):
             raise AssertionError("Completed upstream stage should not rerun on resume")
@@ -253,21 +341,28 @@ class TestSelfImproveLineage:
                 "run_id": "run-123",
                 "task_flow_ids": {"T-001": "task-flow-1"},
                 "output_path": str(tmp_path / "exec_output" / "run-123"),
-                "report_path": str(tmp_path / "exec_output" / "run-123" / "report.json"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-123" / "report.json"
+                ),
             }
 
         with patch("planning.flow.run_user_story_planning", side_effect=fail_if_called):
             with patch("dialectic.prd_flow.DialecticFlow", side_effect=fail_if_called):
-                with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=fake_execution):
+                with patch(
+                    "execution.dialectic_execution.run_dialectic_execution",
+                    side_effect=fake_execution,
+                ):
                     resumed = run_self_improve(resume_cycle_id="cycle-failed-exec")
 
         assert resumed.failure_reason == ""
         assert resumed.execution_output_path.endswith("exec_output/run-123")
-        assert exec_calls == [{
-            "plan_path": str(tmp_path / "prd_output" / "exec_test.json"),
-            "vision_context": VisionContext.SELF,
-            "resume_run_id": "run-123",
-        }]
+        assert exec_calls == [
+            {
+                "plan_path": str(tmp_path / "prd_output" / "exec_test.json"),
+                "vision_context": VisionContext.SELF,
+                "resume_run_id": "run-123",
+            }
+        ]
 
     def test_resume_after_planning_failure_reuses_prd_and_runs_remaining_stages(
         self,
@@ -301,7 +396,9 @@ class TestSelfImproveLineage:
         )
         _save_self_improve_record(tmp_path, record)
 
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
 
         def fail_if_called(*args, **kwargs):
             raise AssertionError("PRD stage should not rerun on planning resume")
@@ -325,27 +422,36 @@ class TestSelfImproveLineage:
                 "run_id": "run-456",
                 "task_flow_ids": {"T-001": "task-flow-2"},
                 "output_path": str(tmp_path / "exec_output" / "run-456"),
-                "report_path": str(tmp_path / "exec_output" / "run-456" / "report.json"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-456" / "report.json"
+                ),
             }
 
         with patch("dialectic.prd_flow.DialecticFlow", side_effect=fail_if_called):
             with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
-                with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=fake_execution):
+                with patch(
+                    "execution.dialectic_execution.run_dialectic_execution",
+                    side_effect=fake_execution,
+                ):
                     resumed = run_self_improve(resume_cycle_id="cycle-failed-plan")
 
         assert resumed.failure_reason == ""
         assert resumed.plan_generated is True
         assert resumed.execution_run_id == "run-456"
-        assert plan_calls == [{
-            "prd_path": str(tmp_path / "prd_output" / "PRD_test.json"),
-            "user_story_ref": None,
-            "vision_context": VisionContext.SELF,
-        }]
-        assert exec_calls == [{
-            "plan_path": str(tmp_path / "prd_output" / "exec_test.json"),
-            "vision_context": VisionContext.SELF,
-            "resume_run_id": None,
-        }]
+        assert plan_calls == [
+            {
+                "prd_path": str(tmp_path / "prd_output" / "PRD_test.json"),
+                "user_story_ref": None,
+                "vision_context": VisionContext.SELF,
+            }
+        ]
+        assert exec_calls == [
+            {
+                "plan_path": str(tmp_path / "prd_output" / "exec_test.json"),
+                "vision_context": VisionContext.SELF,
+                "resume_run_id": None,
+            }
+        ]
 
 
 class TestSelfImprovePrBody:

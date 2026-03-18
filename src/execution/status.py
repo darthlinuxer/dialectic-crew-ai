@@ -73,7 +73,9 @@ def show_status(plan_path: str | None = None) -> dict:
     counts = {"pending": 0, "in_progress": 0, "completed": 0, "failed": 0}
     for task in sorted(plan.tasks, key=lambda item: (item.order, item.id)):
         icon = STATUS_ICONS.get(task.status, "[ ]")
-        dependencies = f"  (deps: {', '.join(task.dependencies)})" if task.dependencies else ""
+        dependencies = (
+            f"  (deps: {', '.join(task.dependencies)})" if task.dependencies else ""
+        )
         notes = f"  -- {task.verification_notes}" if task.verification_notes else ""
         completed = f"  ({task.completed_at})" if task.completed_at else ""
         print(f"  {icon} {task.id} — {task.title}{dependencies}{completed}{notes}")

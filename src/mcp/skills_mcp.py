@@ -21,6 +21,7 @@ try:
     def _make_tool_annotations(**kwargs: Any) -> Any:
         return ToolAnnotations(**kwargs)
 except ModuleNotFoundError:
+
     def _make_tool_annotations(**kwargs: Any) -> Any:
         return kwargs
 
@@ -57,6 +58,7 @@ except ModuleNotFoundError:
 
             _ = mount_path
             self.last_transport = transport
+
 
 from .skills_index import SkillIndex, SkillMetadata, SkillSource
 
@@ -412,7 +414,9 @@ async def skills_resource(skill_id: str) -> str:
         return f"Error: Failed to read SKILL file for '{skill_id}': {exc}"
 
 
-def _resolve_transport(argv: Sequence[str], environ: Mapping[str, str]) -> TransportName:
+def _resolve_transport(
+    argv: Sequence[str], environ: Mapping[str, str]
+) -> TransportName:
     """Resolve the requested MCP transport from environment and CLI flags."""
 
     transport = environ.get("SKILLS_MCP_TRANSPORT", "stdio").strip().lower()
@@ -460,6 +464,3 @@ if __name__ == "__main__":
     import sys
 
     run_server(argv=sys.argv[1:], environ=os.environ)
-
-
-

@@ -21,7 +21,7 @@ def _assert_no_string_method_refs(flow_cls):
             f"{target!r} instead of a string literal"
         )
 
-    for _, _, args in re.findall(r'@(listen|start)\((or_|and_)\((.*?)\)\)', source):
+    for _, _, args in re.findall(r"@(listen|start)\((or_|and_)\((.*?)\)\)", source):
         assert '"' not in args and "'" not in args, (
             f"{flow_cls.__name__} should use direct method references inside composite "
             f"listeners, got: {args}"

@@ -30,8 +30,12 @@ def test_build_planning_crew_uses_yaml_templates(monkeypatch):
         return agent
 
     monkeypatch.setattr(runtime, "_build_agent", fake_build_agent)
-    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}")
-    monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: f"knowledge:{ctx.value}")
+    monkeypatch.setattr(
+        runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}"
+    )
+    monkeypatch.setattr(
+        runtime, "vision_knowledge", lambda ctx: f"knowledge:{ctx.value}"
+    )
 
     prd = make_prd()
     us = prd.user_stories[0]
@@ -83,7 +87,9 @@ def test_build_planning_crew_preserves_agent_order(monkeypatch):
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "_build_agent", lambda template, placeholders: template["role"])
+    monkeypatch.setattr(
+        runtime, "_build_agent", lambda template, placeholders: template["role"]
+    )
     monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "knowledge")
 
@@ -123,7 +129,9 @@ def test_build_planning_crew_appends_retry_feedback_sources(monkeypatch):
 
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(runtime, "_build_agent", lambda template, placeholders: template["role"])
+    monkeypatch.setattr(
+        runtime, "_build_agent", lambda template, placeholders: template["role"]
+    )
     monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision-source")
 
@@ -236,12 +244,18 @@ def test_build_planning_crew_mentions_exact_vision_path(monkeypatch):
 
     assert "internal/SELF_VISION.md" in captured_tasks[0]["description"]
     assert "Treat the knowledge-source content" in captured_tasks[0]["description"]
-    assert "Rely on the provided knowledge sources and task context" in captured_tasks[0]["agent"].backstory
-    assert "If direct file tools are available" not in captured_tasks[0]["agent"].backstory
+    assert (
+        "Rely on the provided knowledge sources and task context"
+        in captured_tasks[0]["agent"].backstory
+    )
+    assert (
+        "If direct file tools are available" not in captured_tasks[0]["agent"].backstory
+    )
 
 
 def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
     from planning import runtime
+
     build_agent = getattr(runtime, "_build_agent")
 
     captured = {}
@@ -250,7 +264,9 @@ def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
         captured.update(config)
         return "agent"
 
-    monkeypatch.setattr(runtime, "build_agent_from_config", fake_build_agent_from_config)
+    monkeypatch.setattr(
+        runtime, "build_agent_from_config", fake_build_agent_from_config
+    )
 
     agent = build_agent(
         {
@@ -280,6 +296,7 @@ def test_build_agent_renders_placeholders_and_binds_runtime(monkeypatch):
 
 def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
     from planning import runtime
+
     build_agent = getattr(runtime, "_build_agent")
     agents_config_path = getattr(runtime, "_AGENTS_CONFIG_PATH")
 
@@ -289,7 +306,9 @@ def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
         captured.update(config)
         return "agent"
 
-    monkeypatch.setattr(runtime, "build_agent_from_config", fake_build_agent_from_config)
+    monkeypatch.setattr(
+        runtime, "build_agent_from_config", fake_build_agent_from_config
+    )
 
     agent_templates = runtime.load_yaml_config(agents_config_path)
 
@@ -312,7 +331,9 @@ def test_planning_visionary_yaml_uses_local_read_bundle(monkeypatch):
 
 
 def test_planning_bundle_avoids_recursive_directory_context():
-    tool_names = [getattr(tool, "name", "") for tool in TOOL_BUNDLES["planning_read_only"]]
+    tool_names = [
+        getattr(tool, "name", "") for tool in TOOL_BUNDLES["planning_read_only"]
+    ]
 
     assert tool_names == ["search_a_files_content"]
 

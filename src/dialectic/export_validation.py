@@ -84,7 +84,12 @@ def validate_consistency(
 
     frontmatter = _parse_frontmatter(md_text)
 
-    required_headers = ["# Objective", "## Macro Impact", "## User Stories", "## Anti-Drift Questions"]
+    required_headers = [
+        "# Objective",
+        "## Macro Impact",
+        "## User Stories",
+        "## Anti-Drift Questions",
+    ]
     body = md_text
     if md_text.lstrip().startswith("---"):
         parts = md_text.split("---", 2)
@@ -105,7 +110,9 @@ def validate_consistency(
         else:
             warnings.append("quality_score not found in MD frontmatter")
     except Exception:
-        errors.append(f"Invalid quality_score value in MD frontmatter: {frontmatter_quality}")
+        errors.append(
+            f"Invalid quality_score value in MD frontmatter: {frontmatter_quality}"
+        )
 
     frontmatter_vision_hash = frontmatter.get("vision_hash")
     current_vision_hash = get_vision_hash(vision_context)
@@ -126,7 +133,9 @@ def validate_consistency(
         json_object = json.loads(Path(json_path).read_text(encoding="utf-8"))
     except Exception as exc:
         errors.append(f"Could not read/parse JSON file {json_path}: {exc}")
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+        return ValidationResult(
+            is_valid=len(errors) == 0, errors=errors, warnings=warnings
+        )
 
     json_feature = json_object.get("feature_name")
     json_version = json_object.get("version")
@@ -136,7 +145,9 @@ def validate_consistency(
     if json_feature is None:
         errors.append("JSON missing required field: feature_name")
     elif json_feature != prd.feature_name:
-        errors.append(f"feature_name mismatch: JSON={json_feature} vs PRD={prd.feature_name}")
+        errors.append(
+            f"feature_name mismatch: JSON={json_feature} vs PRD={prd.feature_name}"
+        )
 
     if json_version is None:
         errors.append("JSON missing required field: version")

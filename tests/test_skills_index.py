@@ -65,4 +65,3 @@ def test_skill_index_search_filters_by_query_and_source(tmp_path: Path) -> None:
     results = index.search(source=SkillSource.AGENTS)
     assert len(results) == 1
     assert results[0].skill_id == "test-driven-development"
-

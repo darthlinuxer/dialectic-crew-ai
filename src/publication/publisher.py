@@ -75,7 +75,9 @@ def publish_prd(
         elif policy.emitted_view is EmittedView.JSON_ONLY:
             response_artifacts.append(str(json_path))
         else:
-            raise ValueError("Unsupported emitted view for approved publication response shaping.")
+            raise ValueError(
+                "Unsupported emitted view for approved publication response shaping."
+            )
 
         return PublishResult(
             lifecycle=policy.lifecycle.value,

@@ -58,6 +58,9 @@ class PRDSchema(BaseModel):
     consensus_reached: bool = False
     final_validation_notes: str
     vision_hash: Optional[str] = None
+    source_roadmap_path: Optional[str] = None
+    source_roadmap_label: Optional[str] = None
+    source_roadmap_key: Optional[str] = None
 
 
 # --- Execution plans (dialectic per user story) ---
@@ -80,6 +83,7 @@ class ImplementationTask(BaseModel):
 
 class UserStoryExecutionPlan(BaseModel):
     """Approved implementation plan for a user story (output of the dialectic execution flow)."""
+
     user_story_id: str
     user_story_title: str
     approach_summary: str = Field(..., description="Summary of the technical approach")
@@ -91,6 +95,9 @@ class UserStoryExecutionPlan(BaseModel):
     final_validation_notes: str = ""
     source_prd_path: Optional[str] = None
     vision_hash: Optional[str] = None
+    source_roadmap_path: Optional[str] = None
+    source_roadmap_label: Optional[str] = None
+    source_roadmap_key: Optional[str] = None
     status: Literal[
         "pending", "in_progress", "completed", "partially_completed", "failed"
     ] = "pending"
@@ -102,6 +109,7 @@ class UserStoryExecutionPlan(BaseModel):
 
 class ValidationOutput(BaseModel):
     """Structured output from the Validator agent (used with output_pydantic)."""
+
     quality_score: float = Field(..., ge=0.0, le=10.0)
     consensus_reached: bool = False
     final_validation_notes: str = ""
@@ -109,6 +117,7 @@ class ValidationOutput(BaseModel):
 
 class VerificationResult(BaseModel):
     """Result of post-execution verification (Phase A)."""
+
     verified: bool = False
     checks_passed: List[str] = Field(default_factory=list)
     checks_failed: List[str] = Field(default_factory=list)
@@ -137,6 +146,9 @@ class ExecutionReport(BaseModel):
     run_id: str
     plan_path: Optional[str] = None
     vision_hash: Optional[str] = None
+    source_roadmap_path: Optional[str] = None
+    source_roadmap_label: Optional[str] = None
+    source_roadmap_key: Optional[str] = None
     task_results: List[TaskExecutionResult] = Field(default_factory=list)
     overall_success: bool = False
     verified_tasks: List[str] = Field(default_factory=list)
@@ -166,6 +178,7 @@ class ExecutionCheckpoint(BaseModel):
 
 class PrioritizedOpportunity(BaseModel):
     """Result of dialectic debate ranking for a single improvement opportunity."""
+
     opportunity_id: str
     rank: int
     justification: str
@@ -176,6 +189,7 @@ class PrioritizedOpportunity(BaseModel):
 
 class PrioritizationResult(BaseModel):
     """Output of the dialectic prioritization crew."""
+
     ranked: List[PrioritizedOpportunity] = Field(default_factory=list)
     debate_summary: str = ""
 
@@ -192,6 +206,9 @@ class ImprovementOpportunity(BaseModel):
     description: str
     evidence: List[str] = Field(default_factory=list)
     estimated_impact: Literal["low", "medium", "high"] = "medium"
+    source_path: Optional[str] = None
+    source_label: Optional[str] = None
+    source_key: Optional[str] = None
 
 
 class IntrospectionReport(BaseModel):
@@ -210,6 +227,14 @@ class SelfImprovementRecord(BaseModel):
     prd_generated: bool = False
     plan_generated: bool = False
     execution_attempted: bool = False
+    quality_gate_passed: bool = False
+    quality_gate_summary: str = ""
+    quality_remediation_attempted: bool = False
+    quality_remediation_attempt_count: int = 0
+    quality_remediation_succeeded: bool = False
+    quality_remediation_steps: List[str] = Field(default_factory=list)
+    quality_remediation_failure_reason: str = ""
+    quality_remediation_exhausted: bool = False
     tests_passed: bool = False
     metrics_stable: bool = False
     pr_created: bool = False
@@ -225,6 +250,10 @@ class SelfImprovementRecord(BaseModel):
     execution_story_status: str = ""
     execution_output_path: str = ""
     execution_report_path: str = ""
+    roadmap_marking_attempted: bool = False
+    roadmap_marking_succeeded: bool = False
+    completed_roadmap_items: List[str] = Field(default_factory=list)
+    roadmap_marking_failure_reason: str = ""
     execution_attempt_count: int = 0
     execution_failure_reasons: List[str] = Field(default_factory=list)
     failure_reason: str = ""

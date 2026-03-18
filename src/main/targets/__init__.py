@@ -13,4 +13,3 @@ __all__ = [
     "cmd_clear_target",
     "cmd_list_targets",
 ]
-

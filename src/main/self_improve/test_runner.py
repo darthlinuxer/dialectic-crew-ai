@@ -73,8 +73,12 @@ def snapshot_tests(
             "stderr_tail": result.stderr[-500:] if result.stderr else "",
         }
     except subprocess.TimeoutExpired as exc:
-        stdout_tail = exc.output[-500:] if isinstance(exc.output, str) and exc.output else ""
-        stderr_tail = exc.stderr[-500:] if isinstance(exc.stderr, str) and exc.stderr else ""
+        stdout_tail = (
+            exc.output[-500:] if isinstance(exc.output, str) and exc.output else ""
+        )
+        stderr_tail = (
+            exc.stderr[-500:] if isinstance(exc.stderr, str) and exc.stderr else ""
+        )
         return {
             "returncode": -1,
             "passed": False,
@@ -99,7 +103,9 @@ def emit_test_failure_details(
     if snapshot.get("timed_out"):
         print_fn(f"{prefix}Pytest timed out after {timeout_seconds}s: {command_str}")
     else:
-        print_fn(f"{prefix}Pytest exited with code {snapshot.get('returncode')}: {command_str}")
+        print_fn(
+            f"{prefix}Pytest exited with code {snapshot.get('returncode')}: {command_str}"
+        )
 
     stdout_tail = (snapshot.get("stdout_tail") or "").strip()
     stderr_tail = (snapshot.get("stderr_tail") or "").strip()
@@ -111,10 +117,10 @@ def emit_test_failure_details(
         print_fn(f"{prefix}stderr tail:")
         print_fn(textwrap.indent(stderr_tail[-500:], prefix + "  "))
 
+
 __all__ = [
     "emit_test_failure_details",
     "pytest_command",
     "self_improve_test_timeout",
     "snapshot_tests",
 ]
-

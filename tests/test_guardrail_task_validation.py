@@ -58,7 +58,9 @@ def test_text_result_guardrail_logs_tool_call_rejection(caplog):
         ok, _message = task_guardrails._text_result_guardrail(Result())
 
     assert ok is False
-    assert any("tool-call-output-rejected" in record.message for record in caplog.records)
+    assert any(
+        "tool-call-output-rejected" in record.message for record in caplog.records
+    )
 
 
 def test_text_result_guardrail_accepts_normal_text():

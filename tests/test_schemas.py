@@ -1,5 +1,8 @@
 """Tests for Pydantic schema validation in schemas.py."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=too-few-public-methods
+
 from typing import Any, cast
 
 import pytest
@@ -123,6 +126,23 @@ class TestPRDSchema:
         assert prd2.feature_name == prd.feature_name
         assert len(prd2.user_stories) == len(prd.user_stories)
 
+    def test_supports_roadmap_provenance_fields(self):
+        prd = make_prd(
+            source_roadmap_path="internal/ROADMAP.md",
+            source_roadmap_label="Expose output-format selection through the CLI/runtime UX",
+            source_roadmap_key="expose output-format selection through the cli/runtime ux",
+        )
+
+        assert prd.source_roadmap_path == "internal/ROADMAP.md"
+        assert (
+            prd.source_roadmap_label
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            prd.source_roadmap_key
+            == "expose output-format selection through the cli/runtime ux"
+        )
+
 
 class TestImplementationTask:
     def test_defaults(self):
@@ -150,6 +170,23 @@ class TestUserStoryExecutionPlan:
     def test_quality_score_bounds(self):
         with pytest.raises(ValidationError, match="quality_score"):
             make_plan(quality_score=11.0)
+
+    def test_supports_roadmap_provenance_fields(self):
+        plan = make_plan(
+            source_roadmap_path="internal/ROADMAP.md",
+            source_roadmap_label="Expose output-format selection through the CLI/runtime UX",
+            source_roadmap_key="expose output-format selection through the cli/runtime ux",
+        )
+
+        assert plan.source_roadmap_path == "internal/ROADMAP.md"
+        assert (
+            plan.source_roadmap_label
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            plan.source_roadmap_key
+            == "expose output-format selection through the cli/runtime ux"
+        )
 
 
 class TestValidationOutput:
@@ -194,6 +231,26 @@ class TestExecutionReport:
         assert report.overall_success is False
         assert report.task_results == []
         assert report.task_flow_ids == {}
+
+    def test_supports_roadmap_provenance_fields(self):
+        report = ExecutionReport(
+            plan_id="US-001",
+            plan_title="Story",
+            run_id="20260101",
+            source_roadmap_path="internal/ROADMAP.md",
+            source_roadmap_label="Expose output-format selection through the CLI/runtime UX",
+            source_roadmap_key="expose output-format selection through the cli/runtime ux",
+        )
+
+        assert report.source_roadmap_path == "internal/ROADMAP.md"
+        assert (
+            report.source_roadmap_label
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            report.source_roadmap_key
+            == "expose output-format selection through the cli/runtime ux"
+        )
 
 
 class TestExecutionCheckpoint:

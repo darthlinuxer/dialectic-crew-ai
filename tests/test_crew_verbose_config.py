@@ -38,7 +38,9 @@ def test_get_output_log_file_explicit_path_when_verbose(monkeypatch):
     assert get_output_log_file() == "/tmp/crew.log"
 
 
-def test_get_output_log_file_default_under_dialectic_when_verbose_no_path(monkeypatch, tmp_path):
+def test_get_output_log_file_default_under_dialectic_when_verbose_no_path(
+    monkeypatch, tmp_path
+):
     monkeypatch.setenv("CREWAI_VERBOSE", "true")
     monkeypatch.delenv("CREWAI_OUTPUT_LOG_FILE", raising=False)
     monkeypatch.setenv("DIALECTIC_LOG_DIR", str(tmp_path))

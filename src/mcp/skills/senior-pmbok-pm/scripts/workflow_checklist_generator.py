@@ -10,7 +10,9 @@ from typing import Dict
 from pmbok_utils import read_text, write_output
 
 
-CHECKLIST_PATTERN = re.compile(r"```\n(?P<title>[^\n]+Progress:[\s\S]+?)```", re.MULTILINE)
+CHECKLIST_PATTERN = re.compile(
+    r"```\n(?P<title>[^\n]+Progress:[\s\S]+?)```", re.MULTILINE
+)
 
 
 def extract_checklists(text: str) -> Dict[str, str]:
@@ -49,14 +51,20 @@ def get_fallback_checklist(command: str) -> str:
 - [ ] Run quality audit checks
 - [ ] Check terminology consistency
 - [ ] Validate traceability and ownership
-- [ ] Provide feedback and recommendations"""
+- [ ] Provide feedback and recommendations""",
     }
-    return fallback_checklists.get(command, f"No checklist available for command: {command}")
+    return fallback_checklists.get(
+        command, f"No checklist available for command: {command}"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate workflow checklist for a command.")
-    parser.add_argument("command", choices=["create", "update", "review"], help="Workflow command")
+    parser = argparse.ArgumentParser(
+        description="Generate workflow checklist for a command."
+    )
+    parser.add_argument(
+        "command", choices=["create", "update", "review"], help="Workflow command"
+    )
     parser.add_argument("--workflows", help="Path to workflows.md")
     parser.add_argument(
         "--format",
@@ -73,7 +81,11 @@ def main() -> int:
     args = parser.parse_args()
 
     base_dir = Path(__file__).resolve().parents[1]
-    workflows_path = Path(args.workflows) if args.workflows else base_dir / "reference" / "workflows.md"
+    workflows_path = (
+        Path(args.workflows)
+        if args.workflows
+        else base_dir / "reference" / "workflows.md"
+    )
 
     # Try to read workflows file, use fallback if not available
     checklists: Dict[str, str] = {}
@@ -91,7 +103,12 @@ def main() -> int:
         checklist = get_fallback_checklist(args.command)
 
     output_path = Path(args.output) if args.output else None
-    write_output({"command": args.command, "checklist": checklist}, args.format, output_path, pretty=args.pretty)
+    write_output(
+        {"command": args.command, "checklist": checklist},
+        args.format,
+        output_path,
+        pretty=args.pretty,
+    )
     return 0
 
 

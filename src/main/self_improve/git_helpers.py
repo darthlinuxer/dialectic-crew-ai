@@ -179,7 +179,9 @@ def git_stash_worktree(
     )
     if result.returncode != 0:
         return False, "failed to stash current branch changes"
-    return True, (result.stdout or result.stderr or "stashed current branch changes").strip()
+    return True, (
+        result.stdout or result.stderr or "stashed current branch changes"
+    ).strip()
 
 
 def dirty_worktree_guidance(
@@ -207,7 +209,9 @@ def git_worktree_clean(
     if result.returncode != 0:
         return False, "Unable to determine git worktree status"
 
-    dirty_entries = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    dirty_entries = [
+        line.strip() for line in result.stdout.splitlines() if line.strip()
+    ]
     if not dirty_entries:
         return True, "clean"
 
@@ -225,7 +229,9 @@ def git_commit_all(
     """Stage all changes and create a commit, reporting why it succeeded or failed."""
     add_result = run_cmd_fn(["git", "add", "-A"], cwd=cwd)
     if add_result.returncode != 0:
-        reason = (add_result.stderr or add_result.stdout or "failed to stage changes").strip()
+        reason = (
+            add_result.stderr or add_result.stdout or "failed to stage changes"
+        ).strip()
         return False, reason
 
     commit_result = run_cmd_fn(["git", "commit", "-m", message], cwd=cwd)
@@ -251,9 +257,7 @@ def git_has_commits_ahead(
     result = run_cmd_fn(["git", "rev-list", "--count", f"{base_branch}..HEAD"], cwd=cwd)
     if result.returncode != 0:
         reason = (
-            result.stderr
-            or result.stdout
-            or f"failed to compare against {base_branch}"
+            result.stderr or result.stdout or f"failed to compare against {base_branch}"
         ).strip()
         return False, reason
 
@@ -266,6 +270,7 @@ def git_has_commits_ahead(
     if ahead_count > 0:
         return True, f"{ahead_count} commit(s) ahead of {base_branch}"
     return False, f"no commits ahead of {base_branch}"
+
 
 __all__ = [
     "command_available",
@@ -286,4 +291,3 @@ __all__ = [
     "recover_stale_self_improve_worktree",
     "run_cmd",
 ]
-

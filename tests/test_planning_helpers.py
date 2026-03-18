@@ -1,5 +1,8 @@
 # pyright: reportPrivateUsage=none
 
+# pylint: disable=missing-module-docstring,missing-class-docstring
+# pylint: disable=missing-function-docstring,too-few-public-methods
+
 import json
 import logging
 from typing import Any, cast
@@ -16,7 +19,9 @@ normalize_us_ref = cast(Any, planning_flow.__dict__["_normalize_us_ref"])
 get_user_story = cast(Any, planning_flow.__dict__["_get_user_story"])
 planning_prd_metadata = cast(Any, planning_flow.__dict__["_PlanningPRDMetadata"])
 plan_guardrail = cast(Any, planning_flow.__dict__["_plan_guardrail"])
-ensure_acceptance_checks = cast(Any, planning_flow.__dict__["_ensure_acceptance_checks"])
+ensure_acceptance_checks = cast(
+    Any, planning_flow.__dict__["_ensure_acceptance_checks"]
+)
 find_latest_prd = cast(Any, planning_flow.__dict__["_find_latest_prd"])
 
 
@@ -53,10 +58,20 @@ class TestGetUserStory:
     def test_by_id(self):
         prd = make_prd(
             user_stories=[
-                UserStory(id="US-001", title="A", description="...",
-                         acceptance_criteria=["a", "b", "c"], effort="S"),
-                UserStory(id="US-002", title="B", description="...",
-                         acceptance_criteria=["a", "b", "c"], effort="M"),
+                UserStory(
+                    id="US-001",
+                    title="A",
+                    description="...",
+                    acceptance_criteria=["a", "b", "c"],
+                    effort="S",
+                ),
+                UserStory(
+                    id="US-002",
+                    title="B",
+                    description="...",
+                    acceptance_criteria=["a", "b", "c"],
+                    effort="M",
+                ),
             ]
         )
         us = get_user_story(prd, "US-002")
@@ -65,10 +80,20 @@ class TestGetUserStory:
     def test_by_index(self):
         prd = make_prd(
             user_stories=[
-                UserStory(id="US-001", title="A", description="...",
-                         acceptance_criteria=["a", "b", "c"], effort="S"),
-                UserStory(id="US-002", title="B", description="...",
-                         acceptance_criteria=["a", "b", "c"], effort="M"),
+                UserStory(
+                    id="US-001",
+                    title="A",
+                    description="...",
+                    acceptance_criteria=["a", "b", "c"],
+                    effort="S",
+                ),
+                UserStory(
+                    id="US-002",
+                    title="B",
+                    description="...",
+                    acceptance_criteria=["a", "b", "c"],
+                    effort="M",
+                ),
             ]
         )
         us = get_user_story(prd, "1")
@@ -119,7 +144,10 @@ class TestGetUserStory:
                         "id": "US-008",
                         "title": "Broken story",
                         "description": "Legacy malformed data",
-                        "acceptance_criteria": ["Golden dataset owner defined.", "effort "],
+                        "acceptance_criteria": [
+                            "Golden dataset owner defined.",
+                            "effort ",
+                        ],
                         "effort": "M",
                         "dependencies": [],
                     }
@@ -156,14 +184,18 @@ class TestPlanGuardrail:
 
     def test_empty_tasks(self):
         plan = UserStoryExecutionPlan.__new__(UserStoryExecutionPlan)
-        object.__setattr__(plan, "__dict__", {
-            "user_story_id": "US-001",
-            "user_story_title": "Story",
-            "approach_summary": "approach",
-            "tasks": [],
-            "quality_score": 9.0,
-            "final_validation_notes": "ok",
-        })
+        object.__setattr__(
+            plan,
+            "__dict__",
+            {
+                "user_story_id": "US-001",
+                "user_story_title": "Story",
+                "approach_summary": "approach",
+                "tasks": [],
+                "quality_score": 9.0,
+                "final_validation_notes": "ok",
+            },
+        )
 
         class FakeResult:
             pydantic = plan
@@ -175,6 +207,7 @@ class TestPlanGuardrail:
     def test_non_pydantic(self):
         class FakeResult:
             pydantic = None
+
         ok, msg = plan_guardrail(FakeResult())
         assert ok is False
         assert "UserStoryExecutionPlan" in msg
@@ -245,7 +278,10 @@ class TestEnsureAcceptanceChecks:
         normalized = ensure_acceptance_checks(plan, us)
 
         assert normalized.tasks[0].acceptance_checks
-        assert any("Contributes to acceptance criterion" in item for item in normalized.tasks[0].acceptance_checks)
+        assert any(
+            "Contributes to acceptance criterion" in item
+            for item in normalized.tasks[0].acceptance_checks
+        )
 
     def test_preserves_existing_checks(self):
         prd = make_prd()
@@ -305,7 +341,9 @@ class TestPlanningRetryFeedback:
             captured_retry_blocks.append(kwargs["retry_feedback_block"])
             return FakeCrew(plans[len(captured_retry_blocks) - 1])
 
-        monkeypatch.setattr(planning_flow, "build_planning_crew", fake_build_planning_crew)
+        monkeypatch.setattr(
+            planning_flow, "build_planning_crew", fake_build_planning_crew
+        )
 
         result = planning_flow.run_user_story_planning(
             prd_path=str(prd_path),
@@ -336,7 +374,11 @@ class TestLatestPrdLoading:
 
         assert find_latest_prd() == latest
 
-    def test_run_user_story_planning_loads_requested_story_from_legacy_prd(self, tmp_path, monkeypatch):
+    def test_run_user_story_planning_loads_requested_story_from_legacy_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
         payload = make_prd(
             feature_name="Memory Fabric",
             objective="Plan valid selected story from legacy artifact",
@@ -386,7 +428,9 @@ class TestLatestPrdLoading:
             def kickoff(self):
                 return type("CrewResult", (), {"pydantic": plan})()
 
-        monkeypatch.setattr(planning_flow, "build_planning_crew", lambda **kwargs: FakeCrew())
+        monkeypatch.setattr(
+            planning_flow, "build_planning_crew", lambda **kwargs: FakeCrew()
+        )
 
         result = planning_flow.run_user_story_planning(
             prd_path=str(prd_path),
@@ -395,3 +439,56 @@ class TestLatestPrdLoading:
         )
 
         assert result["plan"]["user_story_id"] == "US-001"
+
+    def test_run_user_story_planning_propagates_roadmap_provenance(
+        self, tmp_path, monkeypatch
+    ):
+        payload = make_prd(
+            feature_name="Memory Fabric",
+            objective="Carry roadmap provenance into execution planning",
+        ).model_dump()
+        payload["source_roadmap_path"] = "internal/ROADMAP.md"
+        payload["source_roadmap_label"] = (
+            "Expose output-format selection through the CLI/runtime UX"
+        )
+        payload["source_roadmap_key"] = (
+            "expose output-format selection through the cli/runtime ux"
+        )
+        prd_path = tmp_path / "prd.json"
+        prd_path.write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setattr(planning_flow, "OUTPUT_DIR", str(tmp_path))
+
+        plan = UserStoryExecutionPlan(
+            user_story_id="US-001",
+            user_story_title="Sample Story",
+            approach_summary="Minimal plan",
+            tasks=[make_task()],
+            quality_score=8.6,
+            final_validation_notes="Approved",
+        )
+
+        class FakeCrew:
+            def kickoff(self):
+                return type("CrewResult", (), {"pydantic": plan})()
+
+        monkeypatch.setattr(
+            planning_flow,
+            "build_planning_crew",
+            lambda **kwargs: FakeCrew(),
+        )
+
+        result = planning_flow.run_user_story_planning(
+            prd_path=str(prd_path),
+            user_story_ref="US-001",
+            vision_context=VisionContext.PROJECT,
+        )
+
+        assert result["plan"]["source_roadmap_path"] == "internal/ROADMAP.md"
+        assert (
+            result["plan"]["source_roadmap_label"]
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            result["plan"]["source_roadmap_key"]
+            == "expose output-format selection through the cli/runtime ux"
+        )

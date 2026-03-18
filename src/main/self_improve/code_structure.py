@@ -15,6 +15,11 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .code_structure_semantics import (
+    has_semantic_changes_since_ref,
+    read_file_at_ref,
+)
+
 logger = logging.getLogger(__name__)
 
 MAX_FILE_LINES = 400
@@ -146,6 +151,16 @@ def _extract_classes(file_path: Path) -> list[ast.ClassDef]:
     return [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
 
 
+def _extract_classes_from_content(content: str) -> list[ast.ClassDef]:
+    """Extract all class definitions from Python source text."""
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return []
+
+    return [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+
+
 def _count_public_methods(class_def: ast.ClassDef) -> int:
     """Count public methods (not starting with _) in a class."""
     count = 0
@@ -207,6 +222,25 @@ def _is_dataclass_or_model(class_def: ast.ClassDef) -> bool:
     return False
 
 
+def _count_main_classes_in_content(content: str) -> int:
+    """Count non-dataclass/model classes in Python source text."""
+    classes = _extract_classes_from_content(content)
+    return sum(1 for class_def in classes if not _is_dataclass_or_model(class_def))
+
+
+def _count_main_classes_at_ref(
+    project_root: Path,
+    file_path: Path,
+    git_ref: str,
+) -> int | None:
+    """Count main classes for a file as stored at a given git ref."""
+    content = read_file_at_ref(project_root, file_path, git_ref)
+    if content is None:
+        return None
+
+    return _count_main_classes_in_content(content)
+
+
 def _check_file_line_count(
     file_path: Path,
     project_root: Path,
@@ -237,12 +271,21 @@ def _check_classes_per_file(
     file_path: Path,
     project_root: Path,
     result: StructureValidationResult,
+    baseline_branch: str | None = None,
 ) -> None:
     """Check if file has more than one main class (excluding dataclasses/models)."""
     classes = _extract_classes(file_path)
     main_classes = [c for c in classes if not _is_dataclass_or_model(c)]
 
     if len(main_classes) > 1:
+        if baseline_branch is not None:
+            baseline_count = _count_main_classes_at_ref(
+                project_root,
+                file_path,
+                baseline_branch,
+            )
+            if baseline_count is not None and baseline_count > 1:
+                return
         rel_path = file_path.relative_to(project_root)
         class_names = [c.name for c in main_classes]
         result.add_violation(
@@ -322,6 +365,7 @@ def collect_changed_python_files(
     project_root: Path,
     *,
     base_branch: str = "main",
+    semantic_only: bool = False,
 ) -> list[Path]:
     """Collect changed Python files from git diff and working tree status."""
     if not (project_root / ".git").exists():
@@ -354,7 +398,17 @@ def collect_changed_python_files(
             if entry:
                 candidates.add(entry)
 
-    return [project_root / path for path in sorted(candidates) if path.endswith(".py")]
+    python_files = [
+        project_root / path for path in sorted(candidates) if path.endswith(".py")
+    ]
+    if not semantic_only:
+        return python_files
+
+    return [
+        file_path
+        for file_path in python_files
+        if has_semantic_changes_since_ref(project_root, file_path, base_branch)
+    ]
 
 
 def validate_code_structure(
@@ -384,7 +438,12 @@ def validate_code_structure(
             result,
             baseline_branch=baseline_branch,
         )
-        _check_classes_per_file(file_path, project_root, result)
+        _check_classes_per_file(
+            file_path,
+            project_root,
+            result,
+            baseline_branch=baseline_branch,
+        )
         _check_god_class(file_path, project_root, result)
         _check_file_location(file_path, project_root, result)
 

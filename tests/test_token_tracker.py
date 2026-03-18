@@ -4,7 +4,11 @@ import threading
 
 import pytest
 
-from dialectic.token_tracker import TokenBudgetTracker, count_messages_tokens, count_tokens
+from dialectic.token_tracker import (
+    TokenBudgetTracker,
+    count_messages_tokens,
+    count_tokens,
+)
 
 
 class TestTokenBudgetTracker:

@@ -43,7 +43,10 @@ Create Progress:
                 "--workflows",
                 str(workflows_path),
             ]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
             self.assertIn("Create Progress", stdout.getvalue())
@@ -55,7 +58,10 @@ Create Progress:
                 "--workflows",
                 str(workflows_path),
             ]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             # With fallback checklists, script now returns 0 and provides default checklist
             self.assertEqual(code, 0)
@@ -66,7 +72,10 @@ Create Progress:
     def test_main_default_workflows_path(self):
         stdout = io.StringIO()
         argv = ["workflow_checklist_generator.py", "create"]
-        with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+        with (
+            unittest.mock.patch("sys.argv", argv),
+            unittest.mock.patch("sys.stdout", stdout),
+        ):
             code = main()
         self.assertEqual(code, 0)
 

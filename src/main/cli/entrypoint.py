@@ -162,7 +162,7 @@ def _normalize_legacy_args(args: Sequence[str]) -> list[str]:
         next_index = resume_index + 1
         if next_index >= len(normalized) or normalized[next_index].startswith("-"):
             normalized = (
-                normalized[: next_index]
+                normalized[:next_index]
                 + [SELF_IMPROVE_AUTO_RESUME]
                 + normalized[next_index:]
             )
@@ -672,8 +672,12 @@ def make_vision_command(
 @app.command("clear-runtime")
 def clear_runtime_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     logs: bool = typer.Option(False, "--logs", help="Clear application log files."),
-    metrics: bool = typer.Option(False, "--metrics", help="Clear the metrics database."),
-    flows: bool = typer.Option(False, "--flows", help="Clear the CrewAI flow database."),
+    metrics: bool = typer.Option(
+        False, "--metrics", help="Clear the metrics database."
+    ),
+    flows: bool = typer.Option(
+        False, "--flows", help="Clear the CrewAI flow database."
+    ),
     prd: bool = typer.Option(
         False,
         "--prd",
@@ -792,10 +796,3 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 __all__ = ["app", "main"]
-
-
-
-
-
-
-

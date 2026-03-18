@@ -80,21 +80,22 @@ except (ImportError, AttributeError):
 
 
 if _HAS_PYDANTIC_SETTINGS:
+
     class _ExportSettings(_PydanticBaseSettings):  # pylint: disable=useless-object-inheritance
         # Note: intentionally using simple types; validation/coercion is minimal here
         prd_output_format: Optional[str] = _PYDANTIC_FIELD(
             default=None,
-            validation_alias='PRD_OUTPUT_FORMAT',
+            validation_alias="PRD_OUTPUT_FORMAT",
         )  # keep None here so get_export_config() owns fallback/logging behavior
         prd_output_dir: Optional[Path] = _PYDANTIC_FIELD(
             default=None,
-            validation_alias='PRD_OUTPUT_DIR',
+            validation_alias="PRD_OUTPUT_DIR",
         )
 
         model_config = _PydanticSettingsConfigDict(
-            env_file='.env',
-            env_file_encoding='utf-8',
-            extra='ignore',
+            env_file=".env",
+            env_file_encoding="utf-8",
+            extra="ignore",
             populate_by_name=True,
         )
 
@@ -104,8 +105,8 @@ def _load_from_environ_fallback() -> tuple[Optional[str], Optional[str]]:
 
     Returns a tuple (format_raw, dir_raw) where values may be None.
     """
-    fmt = os.environ.get('PRD_OUTPUT_FORMAT')
-    d = os.environ.get('PRD_OUTPUT_DIR')
+    fmt = os.environ.get("PRD_OUTPUT_FORMAT")
+    d = os.environ.get("PRD_OUTPUT_DIR")
     return fmt, d
 
 
@@ -172,7 +173,7 @@ def get_export_config(*, _env_file: Optional[Path | str] = None) -> ExportConfig
 
     # Resolve output dir
     if dir_raw is None or (isinstance(dir_raw, str) and dir_raw.strip() == ""):
-        out_dir = Path('prd_output')
+        out_dir = Path("prd_output")
     else:
         out_dir = Path(dir_raw)
 
@@ -188,7 +189,7 @@ def get_export_config(*, _env_file: Optional[Path | str] = None) -> ExportConfig
         )
         cfg = ExportConfig(
             output_format=_DEFAULT_OUTPUT_FORMAT,
-            output_dir=Path('prd_output'),
+            output_dir=Path("prd_output"),
         )
 
     return cfg
