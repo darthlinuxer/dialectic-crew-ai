@@ -496,6 +496,23 @@ def _can_recreate_resume_branch_from_saved_state(
     return False
 
 
+def _can_recreate_resume_branch_from_current_branch(
+    current_branch: str,
+    record: SelfImprovementRecord,
+    resume_summary: dict[str, str | list[str]],
+) -> bool:
+    if not _can_recreate_resume_branch_from_saved_state(record, resume_summary):
+        return False
+    normalized_branch = current_branch.strip()
+    if not normalized_branch:
+        return False
+    if normalized_branch == "main":
+        return True
+    if normalized_branch == record.branch_name.strip():
+        return True
+    return False
+
+
 def _print_resume_guidance(record: SelfImprovementRecord, branch_name: str) -> None:
     if branch_name:
         print(f"  Branch preserved for resume/debugging: {branch_name}")
@@ -1305,11 +1322,12 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             branch_name, project_root
                         )
                         if not switched:
-                            can_recreate_from_saved_state = current_branch.startswith(
-                                "self-improve/"
-                            ) or _can_recreate_resume_branch_from_saved_state(
-                                record,
-                                resume_summary,
+                            can_recreate_from_saved_state = (
+                                _can_recreate_resume_branch_from_current_branch(
+                                    current_branch,
+                                    record,
+                                    resume_summary,
+                                )
                             )
                             if can_recreate_from_saved_state:
                                 recreated, recreate_reason = (
@@ -1336,7 +1354,16 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                                 )
                             else:
                                 # pylint: disable-next=line-too-long
-                                record.failure_reason = f"Failed to resume on branch '{branch_name}': {switch_reason}"
+                                current_branch_hint = (
+                                    f"; refusing to recreate from current branch "
+                                    f"'{current_branch}'"
+                                    if current_branch.strip()
+                                    else ""
+                                )
+                                record.failure_reason = (
+                                    f"Failed to resume on branch '{branch_name}': "
+                                    f"{switch_reason}{current_branch_hint}"
+                                )
                                 print(f"  ABORT: {record.failure_reason}")
                                 _persist_record(store, record)
                                 _save_self_improve_record(project_root, record)

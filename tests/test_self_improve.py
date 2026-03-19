@@ -4601,7 +4601,7 @@ class TestRunSelfImprove:
         assert resumed.failure_reason == ""
         assert switched == [("self-improve/cycle-switch", str(tmp_path))]
 
-    def test_resume_recreates_missing_recorded_branch_from_current_self_improve_head(
+    def test_resume_does_not_recreate_missing_recorded_branch_from_other_self_improve_head(
         self,
         tmp_path,
         monkeypatch,
@@ -4689,8 +4689,13 @@ class TestRunSelfImprove:
 
         resumed = run_self_improve(resume_cycle_id="cycle-recreate")
 
-        assert resumed.failure_reason == ""
-        assert recreated == [("self-improve/cycle-recreate", str(tmp_path))]
+        assert (
+            resumed.failure_reason
+            == "Failed to resume on branch 'self-improve/cycle-recreate': "
+            "pathspec 'self-improve/cycle-recreate' did not match any file(s) known to git; "
+            "refusing to recreate from current branch 'self-improve/other-cycle'"
+        )
+        assert not recreated
 
     def test_resume_recreates_missing_recorded_branch_from_main_when_artifacts_exist(
         self,
