@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 from dialectic import run_dialectic_flow
 from dialectic.prd_flow import get_prd_resume_state
@@ -19,7 +19,10 @@ from planning.flow import run_user_story_planning
 from schemas import SelfImprovementRecord
 
 from ..self_improve import _list_resumable_cycles, run_self_improve
-from ..self_improve.persistence import load_self_improve_record
+from ..self_improve.persistence import (
+    list_unfinished_self_prds,
+    load_self_improve_record,
+)
 
 
 SELF_IMPROVE_AUTO_RESUME = "__AUTO_RESUME__"
@@ -91,6 +94,7 @@ def _build_self_improve_run_kwargs(
     next_roadmap_item: bool,
     next_available_story: bool,
     continue_prd: bool,
+    selected_story_ref: str | None = None,
 ) -> dict[str, object]:
     run_kwargs: dict[str, object] = {
         "artifact_path": artifact_path,
@@ -100,6 +104,8 @@ def _build_self_improve_run_kwargs(
         run_kwargs["next_available_story"] = True
     if continue_prd:
         run_kwargs["continue_prd"] = True
+    if selected_story_ref:
+        run_kwargs["selected_story_ref"] = selected_story_ref
     return run_kwargs
 
 
@@ -110,6 +116,111 @@ def _validate_story_continuation_mode_conflict(
     if next_available_story and continue_prd:
         print("Provide either --continue-prd or --next-available-story, not both.")
         sys.exit(1)
+
+
+def _self_improve_prompt_supported() -> bool:
+    stdin = getattr(sys, "stdin", None)
+    stdout = getattr(sys, "stdout", None)
+    if stdin is None or stdout is None:
+        return False
+    return bool(getattr(stdin, "isatty", lambda: False)()) and bool(
+        getattr(stdout, "isatty", lambda: False)()
+    )
+
+
+def _prompt_for_choice(
+    prompt: str,
+    valid_choices: set[str],
+    *,
+    default: str,
+) -> str:
+    while True:
+        response = input(prompt).strip() or default
+        if response in valid_choices:
+            return response
+        print(
+            f"Invalid choice: {response}. "
+            f"Choose one of {', '.join(sorted(valid_choices))}."
+        )
+
+
+def _prompt_for_story_selection(
+    unfinished_prds: list[dict[str, Any]],
+) -> tuple[str, str]:
+    story_options: list[tuple[str, str, str, str]] = []
+    print("\nAvailable unfinished stories:")
+    for summary in unfinished_prds:
+        prd_path = str(summary["path"])
+        feature_name = str(summary.get("feature_name") or Path(prd_path).name)
+        prd_name = Path(prd_path).name
+        for story_ref in list(summary["unfinished_story_refs"]):
+            story_options.append((prd_path, str(story_ref), feature_name, prd_name))
+
+    for index, (_, story_ref, feature_name, prd_name) in enumerate(story_options, 1):
+        print(f"  {index}. {story_ref} — {feature_name} ({prd_name})")
+
+    selected = _prompt_for_choice(
+        f"Select story [1-{len(story_options)}]: ",
+        {str(index) for index in range(1, len(story_options) + 1)},
+        default="1",
+    )
+    prd_path, story_ref, _, _ = story_options[int(selected) - 1]
+    return prd_path, story_ref
+
+
+def _prompt_for_smart_self_improve_mode(
+    unfinished_prds: list[dict[str, Any]],
+) -> dict[str, object]:
+    latest = unfinished_prds[0]
+    print("\nUnfinished SELF PRDs detected:")
+    for index, summary in enumerate(unfinished_prds, 1):
+        prd_path = str(summary["path"])
+        feature_name = str(summary.get("feature_name") or Path(prd_path).name)
+        print(
+            f"  {index}. {feature_name} ({Path(prd_path).name}) — completed "
+            f"{summary['completed_story_count']}/{summary['total_story_count']}, "
+            f"next {summary['next_story_ref']}"
+        )
+
+    print("\nChoose how to proceed:")
+    print("  1. Continue the next unfinished story from the latest PRD")
+    print("  2. Continue all remaining stories from the latest PRD")
+    print("  3. Choose a specific unfinished story")
+    print("  4. Start a new self-improve cycle")
+
+    choice = _prompt_for_choice(
+        "Select [1-4] (default 1): ",
+        {"1", "2", "3", "4"},
+        default="1",
+    )
+    if choice == "1":
+        return {
+            "artifact_path": str(latest["path"]),
+            "next_available_story": True,
+            "continue_prd": False,
+            "selected_story_ref": None,
+        }
+    if choice == "2":
+        return {
+            "artifact_path": str(latest["path"]),
+            "next_available_story": False,
+            "continue_prd": True,
+            "selected_story_ref": None,
+        }
+    if choice == "3":
+        prd_path, story_ref = _prompt_for_story_selection(unfinished_prds)
+        return {
+            "artifact_path": prd_path,
+            "next_available_story": False,
+            "continue_prd": False,
+            "selected_story_ref": story_ref,
+        }
+    return {
+        "artifact_path": None,
+        "next_available_story": False,
+        "continue_prd": False,
+        "selected_story_ref": None,
+    }
 
 
 class PrdFlowKwargs(TypedDict):
@@ -301,7 +412,7 @@ def cmd_verify_story(plan_path: str | None, prd_path: str | None) -> None:
         sys.exit(1)
 
 
-def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches
     simulate: bool = False,
     max_improvements: int = 1,
     stash_dirty: bool = False,
@@ -314,6 +425,7 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
     continue_prd: bool = False,
 ) -> None:
     """Run or inspect the guarded self-improve workflow from the CLI."""
+    selected_story_ref: str | None = None
     if max_improvements != 1:
         raise ValueError(
             "self-improve currently only supports max_improvements=1 while "
@@ -343,9 +455,36 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
     )
 
     _check_vision_exists(VisionContext.SELF)
+    project_root = resolve_project_root()
+    has_explicit_mode = any(
+        (
+            simulate,
+            stash_dirty,
+            resume_cycle_id is not None,
+            list_resumable,
+            skip_baseline_tests,
+            artifact_path is not None,
+            next_roadmap_item,
+            next_available_story,
+            continue_prd,
+        )
+    )
+    if not has_explicit_mode and _self_improve_prompt_supported():
+        unfinished_prds = list_unfinished_self_prds(project_root)
+        if unfinished_prds:
+            smart_defaults = _prompt_for_smart_self_improve_mode(unfinished_prds)
+            artifact_path = (
+                cast(str | None, smart_defaults["artifact_path"]) or artifact_path
+            )
+            next_available_story = bool(smart_defaults["next_available_story"])
+            continue_prd = bool(smart_defaults["continue_prd"])
+            selected_story_ref = (
+                cast(str | None, smart_defaults["selected_story_ref"]) or None
+            )
+
     should_auto_resume = resume_cycle_id == SELF_IMPROVE_AUTO_RESUME
     if list_resumable:
-        rows = _list_resumable_cycles(resolve_project_root())
+        rows = _list_resumable_cycles(project_root)
         if not rows:
             print("\nNo resumable self-improve cycles found.")
             return
@@ -358,13 +497,13 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
         return
 
     if should_auto_resume:
-        rows = _list_resumable_cycles(resolve_project_root())
+        rows = _list_resumable_cycles(project_root)
         if not rows:
             print("\nNo resumable self-improve cycles found.")
             return
         if not simulate and artifact_path is None:
             resume_cycle_id = _select_auto_resume_cycle(
-                resolve_project_root(),
+                project_root,
                 rows,
             )
             print(f"Auto-resuming latest resumable cycle: {resume_cycle_id}")
@@ -374,6 +513,7 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
         next_roadmap_item,
         next_available_story,
         continue_prd,
+        selected_story_ref,
     )
 
     record = run_self_improve(

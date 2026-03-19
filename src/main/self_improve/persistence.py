@@ -156,6 +156,26 @@ def next_available_story_for_prd(prd_path: str) -> str | None:
     return None
 
 
+def unfinished_story_ids_for_prd(prd_path: str) -> list[str]:
+    """Return unfinished PRD user story ids in PRD order using exported plan artifacts."""
+    resolved_prd_path = Path(prd_path).expanduser().resolve()
+    payload = _load_json_object(resolved_prd_path)
+    user_stories = cast(list[dict[str, Any]], _user_stories_from_prd_payload(payload))
+    if not user_stories:
+        return []
+
+    ordered_story_ids = _story_ids_from_prd_payload(user_stories)
+    completed_story_ids = {
+        _normalize_story_id(story_id)
+        for story_id in completed_story_ids_for_prd(str(resolved_prd_path))
+    }
+    return [
+        story_id
+        for story_id in ordered_story_ids
+        if _normalize_story_id(story_id) not in completed_story_ids
+    ]
+
+
 def latest_self_prd_path(project_root: Path) -> str | None:
     """Return the newest valid SELF-scope PRD artifact path, if one exists."""
     prd_dir = project_root / SELF_IMPROVE_PRD_DIR
@@ -191,6 +211,42 @@ def latest_unfinished_self_prd_path(project_root: Path) -> str | None:
     if not candidates:
         return None
     return str(max(candidates, key=lambda candidate: candidate.stat().st_mtime))
+
+
+def list_unfinished_self_prds(project_root: Path) -> list[dict[str, Any]]:
+    """Return newest-first summaries for SELF PRDs that still have unfinished stories."""
+    prd_dir = project_root / SELF_IMPROVE_PRD_DIR
+    if not prd_dir.exists():
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for path in prd_dir.glob("*.json"):
+        payload = _load_json_object(path)
+        if not _is_prd_payload(payload):
+            continue
+        unfinished_story_refs = unfinished_story_ids_for_prd(str(path))
+        if not unfinished_story_refs:
+            continue
+        feature_name = payload.get("feature_name") if isinstance(payload, dict) else ""
+        total_story_count = len(
+            _story_ids_from_prd_payload(_user_stories_from_prd_payload(payload))
+        )
+        rows.append(
+            {
+                "path": str(path),
+                "feature_name": feature_name if isinstance(feature_name, str) else "",
+                "completed_story_count": total_story_count - len(unfinished_story_refs),
+                "total_story_count": total_story_count,
+                "next_story_ref": unfinished_story_refs[0],
+                "unfinished_story_refs": unfinished_story_refs,
+            }
+        )
+
+    rows.sort(
+        key=lambda row: Path(cast(str, row["path"])).stat().st_mtime,
+        reverse=True,
+    )
+    return rows
 
 
 def execution_result_reusable(
@@ -452,8 +508,10 @@ __all__ = [
     "SELF_IMPROVE_PRD_DIR",
     "completed_story_ids_for_prd",
     "latest_self_prd_path",
+    "list_unfinished_self_prds",
     "latest_unfinished_self_prd_path",
     "next_available_story_for_prd",
+    "unfinished_story_ids_for_prd",
     "list_resumable_cycles",
     "load_self_improve_record",
     "execution_result_reusable",

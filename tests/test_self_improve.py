@@ -1025,6 +1025,112 @@ class TestRunSelfImprove:
 
         assert "No unfinished user stories remain" in record.failure_reason
 
+    def test_specific_story_uses_supplied_prd_story_selection(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        artifact_path = tmp_path / "input_prd.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Shortcut PRD",
+                    "objective": "Pick a specific unfinished story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                        {"id": "US3", "title": "Story three"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        completed_plan = tmp_path / "exec_US1_20260317_091912.json"
+        completed_plan.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(artifact_path.resolve()),
+                    "status": "completed",
+                    "tasks": [
+                        {"id": "T-001", "title": "Done", "status": "completed"}
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("Specific PRD shortcut should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-prd-specific",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-prd-specific"},
+                    "output_path": str(tmp_path / "exec_output" / "run-shortcut-prd-specific"),
+                    "report_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-prd-specific" / "report.json"
+                    ),
+                },
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(artifact_path),
+                    selected_story_ref="US3",
+                )
+
+        assert plan_calls == [{"prd_path": str(artifact_path), "user_story_ref": "US3"}]
+        assert record.planning_user_story_ref == "US3"
+
     def test_next_available_story_auto_discovers_latest_self_prd(
         self,
         tmp_path,

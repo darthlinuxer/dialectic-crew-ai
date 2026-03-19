@@ -86,6 +86,7 @@ from ..persistence import (
     save_self_improve_record,
     self_improve_record_path,
     summarize_resume_state,
+    unfinished_story_ids_for_prd,
 )
 from ..pr_builder import build_pr_body, create_pr, print_report
 from ..quality_gate import print_quality_gate_result, run_quality_gate
@@ -971,6 +972,7 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     next_roadmap_item: bool = False,
     next_available_story: bool = False,
     continue_prd: bool = False,
+    selected_story_ref: str | None = None,
 ) -> SelfImprovementRecord:
     """Run a self-improve cycle, optionally as a non-destructive simulation."""
     if max_improvements != 1:
@@ -997,6 +999,19 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     if continue_prd and resume_cycle_id is not None:
         raise ValueError(
             "self-improve does not support using --continue-prd with --resume"
+        )
+    if selected_story_ref and resume_cycle_id is not None:
+        raise ValueError(
+            "self-improve does not support selecting a specific story with --resume"
+        )
+    if selected_story_ref and (continue_prd or next_available_story):
+        raise ValueError(
+            "self-improve does not support selecting a specific story together with "
+            "--continue-prd or --next-available-story"
+        )
+    if selected_story_ref and artifact_path is None:
+        raise ValueError(
+            "self-improve selecting a specific story requires a PRD artifact path"
         )
 
     _configure_crewai_runtime()
@@ -1193,6 +1208,40 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             pass
                         else:
                             record.planning_user_story_ref = next_story_ref
+                    elif selected_story_ref:
+                        unfinished_story_refs = unfinished_story_ids_for_prd(
+                            supplied_artifact_path
+                        )
+                        normalized_selected_story_ref = selected_story_ref.strip().upper()
+                        matching_story_ref = next(
+                            (
+                                story_ref
+                                for story_ref in unfinished_story_refs
+                                if story_ref.strip().upper()
+                                == normalized_selected_story_ref
+                            ),
+                            None,
+                        )
+                        if matching_story_ref is None:
+                            completed_story_ids = _completed_story_ids_for_prd(
+                                supplied_artifact_path
+                            )
+                            completed_suffix = (
+                                f" Completed stories: {', '.join(completed_story_ids)}."
+                                if completed_story_ids
+                                else ""
+                            )
+                            record.failure_reason = (
+                                "Selected user story is not unfinished in PRD: "
+                                f"{selected_story_ref} @ {supplied_artifact_path}."
+                                f"{completed_suffix}"
+                            )
+                            print(f"  ABORT: {record.failure_reason}")
+                            _persist_record(store, record)
+                            _save_self_improve_record(project_root, record)
+                            return record
+                        next_story_ref = matching_story_ref
+                        record.planning_user_story_ref = matching_story_ref
                     else:
                         next_story_ref = None
                     if (

@@ -1203,6 +1203,251 @@ class TestCliRequirementRouting:
         assert "No resumable self-improve cycles found." in out
         assert not run_calls
 
+    def test_cmd_self_improve_bare_command_prompts_for_next_unfinished_story(
+        self,
+        monkeypatch,
+    ):
+        captured = {}
+        project_root = Path("/tmp/project")
+        prd_path = "/tmp/project/prd_output/self/unfinished.json"
+
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+        monkeypatch.setattr(cli_commands, "resolve_project_root", lambda: project_root)
+        monkeypatch.setattr(
+            cli_commands,
+            "_self_improve_prompt_supported",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            cli_commands,
+            "list_unfinished_self_prds",
+            lambda root: [
+                {
+                    "path": prd_path,
+                    "feature_name": "Existing unfinished PRD",
+                    "completed_story_count": 1,
+                    "total_story_count": 2,
+                    "next_story_ref": "US2",
+                    "unfinished_story_refs": ["US2"],
+                }
+            ],
+        )
+        monkeypatch.setattr("builtins.input", lambda prompt="": "1")
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+            next_available_story=False,
+            continue_prd=False,
+            selected_story_ref=None,
+        ):
+            del max_improvements, simulate, stash_dirty, resume_cycle_id
+            del skip_baseline_tests, next_roadmap_item
+            captured.update(
+                {
+                    "artifact_path": artifact_path,
+                    "next_available_story": next_available_story,
+                    "continue_prd": continue_prd,
+                    "selected_story_ref": selected_story_ref,
+                }
+            )
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve()
+
+        assert captured == {
+            "artifact_path": prd_path,
+            "next_available_story": True,
+            "continue_prd": False,
+            "selected_story_ref": None,
+        }
+
+    def test_cmd_self_improve_bare_command_prompts_for_specific_story(
+        self,
+        monkeypatch,
+    ):
+        captured = {}
+        project_root = Path("/tmp/project")
+        prd_path_a = "/tmp/project/prd_output/self/unfinished-a.json"
+        prd_path_b = "/tmp/project/prd_output/self/unfinished-b.json"
+
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+        monkeypatch.setattr(cli_commands, "resolve_project_root", lambda: project_root)
+        monkeypatch.setattr(
+            cli_commands,
+            "_self_improve_prompt_supported",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            cli_commands,
+            "list_unfinished_self_prds",
+            lambda root: [
+                {
+                    "path": prd_path_a,
+                    "feature_name": "PRD A",
+                    "completed_story_count": 0,
+                    "total_story_count": 2,
+                    "next_story_ref": "US1",
+                    "unfinished_story_refs": ["US1", "US2"],
+                },
+                {
+                    "path": prd_path_b,
+                    "feature_name": "PRD B",
+                    "completed_story_count": 1,
+                    "total_story_count": 3,
+                    "next_story_ref": "US2",
+                    "unfinished_story_refs": ["US2", "US3"],
+                },
+            ],
+        )
+
+        answers = iter(["3", "3"])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+            next_available_story=False,
+            continue_prd=False,
+            selected_story_ref=None,
+        ):
+            del max_improvements, simulate, stash_dirty, resume_cycle_id
+            del skip_baseline_tests, next_roadmap_item
+            captured.update(
+                {
+                    "artifact_path": artifact_path,
+                    "next_available_story": next_available_story,
+                    "continue_prd": continue_prd,
+                    "selected_story_ref": selected_story_ref,
+                }
+            )
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve()
+
+        assert captured == {
+            "artifact_path": prd_path_b,
+            "next_available_story": False,
+            "continue_prd": False,
+            "selected_story_ref": "US2",
+        }
+
+    @pytest.mark.parametrize(
+        ("flag_kwargs", "expected"),
+        [
+            ({"simulate": True}, {"simulate": True}),
+            (
+                {"skip_baseline_tests": True},
+                {"skip_baseline_tests": True},
+            ),
+            ({"stash_dirty": True}, {"stash_dirty": True}),
+        ],
+    )
+    def test_cmd_self_improve_explicit_operational_flags_skip_smart_prompt(
+        self,
+        monkeypatch,
+        flag_kwargs,
+        expected,
+    ):
+        captured = {}
+        prompt_calls: list[str] = []
+        project_root = Path("/tmp/project")
+
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+        monkeypatch.setattr(cli_commands, "resolve_project_root", lambda: project_root)
+        monkeypatch.setattr(
+            cli_commands,
+            "_self_improve_prompt_supported",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            cli_commands,
+            "list_unfinished_self_prds",
+            lambda root: prompt_calls.append(str(root)) or [
+                {
+                    "path": "/tmp/project/prd_output/self/unfinished.json",
+                    "feature_name": "Existing unfinished PRD",
+                    "completed_story_count": 1,
+                    "total_story_count": 2,
+                    "next_story_ref": "US2",
+                    "unfinished_story_refs": ["US2"],
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            cli_commands,
+            "_prompt_for_smart_self_improve_mode",
+            lambda unfinished_prds: pytest.fail(
+                "smart prompt should be skipped for explicit operational flags"
+            ),
+        )
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+            next_available_story=False,
+            continue_prd=False,
+            selected_story_ref=None,
+        ):
+            del max_improvements, resume_cycle_id, artifact_path, next_roadmap_item
+            del next_available_story, continue_prd, selected_story_ref
+            captured.update(
+                {
+                    "simulate": simulate,
+                    "stash_dirty": stash_dirty,
+                    "skip_baseline_tests": skip_baseline_tests,
+                }
+            )
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve(**flag_kwargs)
+
+        assert not prompt_calls
+        assert captured == {
+            "simulate": expected.get("simulate", False),
+            "stash_dirty": expected.get("stash_dirty", False),
+            "skip_baseline_tests": expected.get("skip_baseline_tests", False),
+        }
+
 
 class TestVisionResolution:
     def test_resolve_project_root_from_nested_directory(self, tmp_path, monkeypatch):
