@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+from pathlib import Path
 from typing import TypedDict
 
 from dialectic import run_dialectic_flow
@@ -14,11 +16,100 @@ from execution.runner import run_execution
 from execution.status import mark_task, show_status
 from execution.verify import verify_task, verify_user_story
 from planning.flow import run_user_story_planning
+from schemas import SelfImprovementRecord
 
 from ..self_improve import _list_resumable_cycles, run_self_improve
+from ..self_improve.persistence import load_self_improve_record
 
 
 SELF_IMPROVE_AUTO_RESUME = "__AUTO_RESUME__"
+
+
+def _has_meaningful_self_improve_progress(record: SelfImprovementRecord) -> bool:
+    return any(
+        (
+            bool(record.selected_opportunities),
+            record.opportunities_found > 0,
+            record.opportunities_attempted > 0,
+            record.prd_generated,
+            record.plan_generated,
+            record.execution_attempted,
+            record.quality_gate_passed,
+            record.tests_passed,
+            record.metrics_stable,
+            record.pr_created,
+            bool(record.branch_name),
+            bool(record.feature_request),
+        )
+    )
+
+
+def _select_auto_resume_cycle(
+    project_root: Path,
+    rows: list[dict[str, str]],
+) -> str:
+    for row in rows:
+        cycle_id = row["cycle_id"]
+        try:
+            record = load_self_improve_record(project_root, cycle_id)
+        except (FileNotFoundError, OSError, ValueError):
+            continue
+        if _has_meaningful_self_improve_progress(record):
+            return cycle_id
+
+    return rows[0]["cycle_id"]
+
+
+def _looks_like_prd_artifact(artifact_path: str) -> bool:
+    try:
+        payload = json.loads(Path(artifact_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, dict) and isinstance(payload.get("user_stories"), list)
+
+
+def _validate_prd_artifact_mode_request(
+    artifact_path: str | None,
+    resume_cycle_id: str | None,
+    enabled: bool,
+    mode_flag: str,
+) -> None:
+    if not enabled:
+        return
+    if resume_cycle_id:
+        print(f"Provide either {mode_flag} or --resume, not both.")
+        sys.exit(1)
+    if artifact_path is None:
+        return
+    if not _looks_like_prd_artifact(artifact_path):
+        print(f"{mode_flag} requires a PRD JSON artifact with user_stories.")
+        sys.exit(1)
+
+
+def _build_self_improve_run_kwargs(
+    artifact_path: str | None,
+    next_roadmap_item: bool,
+    next_available_story: bool,
+    continue_prd: bool,
+) -> dict[str, object]:
+    run_kwargs: dict[str, object] = {
+        "artifact_path": artifact_path,
+        "next_roadmap_item": next_roadmap_item,
+    }
+    if next_available_story:
+        run_kwargs["next_available_story"] = True
+    if continue_prd:
+        run_kwargs["continue_prd"] = True
+    return run_kwargs
+
+
+def _validate_story_continuation_mode_conflict(
+    next_available_story: bool,
+    continue_prd: bool,
+) -> None:
+    if next_available_story and continue_prd:
+        print("Provide either --continue-prd or --next-available-story, not both.")
+        sys.exit(1)
 
 
 class PrdFlowKwargs(TypedDict):
@@ -219,6 +310,8 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
     skip_baseline_tests: bool = False,
     artifact_path: str | None = None,
     next_roadmap_item: bool = False,
+    next_available_story: bool = False,
+    continue_prd: bool = False,
 ) -> None:
     """Run or inspect the guarded self-improve workflow from the CLI."""
     if max_improvements != 1:
@@ -229,9 +322,25 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
     if artifact_path and resume_cycle_id:
         print("Provide either an artifact path or --resume, not both.")
         sys.exit(1)
+    _validate_story_continuation_mode_conflict(
+        next_available_story,
+        continue_prd,
+    )
     if artifact_path and not os.path.exists(artifact_path):
         print(f"Self-improve artifact not found: {artifact_path}")
         sys.exit(1)
+    _validate_prd_artifact_mode_request(
+        artifact_path,
+        resume_cycle_id,
+        next_available_story,
+        "--next-available-story",
+    )
+    _validate_prd_artifact_mode_request(
+        artifact_path,
+        resume_cycle_id,
+        continue_prd,
+        "--continue-prd",
+    )
 
     _check_vision_exists(VisionContext.SELF)
     should_auto_resume = resume_cycle_id == SELF_IMPROVE_AUTO_RESUME
@@ -254,8 +363,18 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
             print("\nNo resumable self-improve cycles found.")
             return
         if not simulate and artifact_path is None:
-            resume_cycle_id = rows[0]["cycle_id"]
+            resume_cycle_id = _select_auto_resume_cycle(
+                resolve_project_root(),
+                rows,
+            )
             print(f"Auto-resuming latest resumable cycle: {resume_cycle_id}")
+
+    run_kwargs = _build_self_improve_run_kwargs(
+        artifact_path,
+        next_roadmap_item,
+        next_available_story,
+        continue_prd,
+    )
 
     record = run_self_improve(
         max_improvements,
@@ -263,8 +382,7 @@ def cmd_self_improve(  # pylint: disable=too-many-arguments,too-many-positional-
         stash_dirty,
         resume_cycle_id,
         skip_baseline_tests,
-        artifact_path=artifact_path,
-        next_roadmap_item=next_roadmap_item,
+        **run_kwargs,
     )
     if record.pr_created:
         print("\nSelf-improvement cycle completed successfully.")

@@ -1,6 +1,6 @@
 """Tests for CLI runtime gating, logging bootstrap, and VISION helpers."""
 
-# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,too-many-public-methods
+# pylint: disable=missing-class-docstring,missing-function-docstring,too-few-public-methods,too-many-public-methods,too-many-lines
 # pylint: disable=too-many-arguments,too-many-positional-arguments
 # pylint: disable=consider-using-from-import,wrong-import-order,line-too-long
 # pylint: disable=protected-access
@@ -646,6 +646,248 @@ class TestCliRequirementRouting:
 
         assert captured == {"next_roadmap_item": True}
 
+    def test_self_improve_next_available_story_passes_flag_through(
+        self, monkeypatch, tmp_path
+    ):
+        captured = {}
+        artifact_path = tmp_path / "prd.json"
+        artifact_path.write_text(
+            json.dumps({"user_stories": [{"id": "US1"}, {"id": "US2"}]}),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            simulate=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+            next_available_story=False,
+        ):
+            del simulate, max_improvements, stash_dirty, resume_cycle_id, list_resumable
+            del skip_baseline_tests, next_roadmap_item, artifact_path
+            captured["next_available_story"] = next_available_story
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            [
+                "dialectic-crew",
+                "self-improve",
+                str(artifact_path),
+                "--next-available-story",
+            ],
+        )
+
+        cli.main()
+
+        assert captured == {"next_available_story": True}
+
+    def test_self_improve_continue_prd_passes_flag_through(self, monkeypatch, tmp_path):
+        captured = {}
+        artifact_path = tmp_path / "prd.json"
+        artifact_path.write_text(
+            json.dumps({"user_stories": [{"id": "US1"}, {"id": "US2"}]}),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(cli, "_check_api_key", lambda: True)
+        monkeypatch.setattr(cli, "_check_vision_exists", lambda *args, **kwargs: None)
+
+        def fake_cmd_self_improve(
+            simulate=False,
+            max_improvements=1,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            list_resumable=False,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+            next_available_story=False,
+            continue_prd=False,
+        ):
+            del simulate, max_improvements, stash_dirty, resume_cycle_id, list_resumable
+            del (
+                skip_baseline_tests,
+                next_roadmap_item,
+                next_available_story,
+                artifact_path,
+            )
+            captured["continue_prd"] = continue_prd
+
+        monkeypatch.setattr(cli, "cmd_self_improve", fake_cmd_self_improve)
+        monkeypatch.setattr(
+            cli.sys,
+            "argv",
+            [
+                "dialectic-crew",
+                "self-improve",
+                str(artifact_path),
+                "--continue-prd",
+            ],
+        )
+
+        cli.main()
+
+        assert captured == {"continue_prd": True}
+
+    def test_cmd_self_improve_next_available_story_allows_auto_discovery(
+        self,
+        monkeypatch,
+    ):
+        captured = {}
+
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+            next_available_story=False,
+        ):
+            del max_improvements, simulate, stash_dirty, resume_cycle_id
+            del skip_baseline_tests, next_roadmap_item
+            captured.update(
+                {
+                    "artifact_path": artifact_path,
+                    "next_available_story": next_available_story,
+                }
+            )
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve(next_available_story=True)
+
+        assert captured == {
+            "artifact_path": None,
+            "next_available_story": True,
+        }
+
+    def test_cmd_self_improve_continue_prd_allows_auto_discovery(
+        self,
+        monkeypatch,
+    ):
+        captured = {}
+
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+            next_available_story=False,
+            continue_prd=False,
+        ):
+            del max_improvements, simulate, stash_dirty, resume_cycle_id
+            del skip_baseline_tests, next_roadmap_item, next_available_story
+            captured.update(
+                {
+                    "artifact_path": artifact_path,
+                    "continue_prd": continue_prd,
+                }
+            )
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve(continue_prd=True)
+
+        assert captured == {
+            "artifact_path": None,
+            "continue_prd": True,
+        }
+
+    def test_cmd_self_improve_continue_prd_rejects_plan_artifact(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ):
+        artifact_path = tmp_path / "plan.json"
+        artifact_path.write_text(
+            json.dumps({"tasks": [{"id": "T-001", "title": "Implement"}]}),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+
+        with pytest.raises(SystemExit):
+            cli_commands.cmd_self_improve(
+                artifact_path=str(artifact_path),
+                continue_prd=True,
+            )
+
+        out = capsys.readouterr().out
+        assert "--continue-prd requires a PRD JSON artifact with user_stories." in out
+
+    def test_cmd_self_improve_continue_prd_rejects_resume(
+        self,
+        monkeypatch,
+        capsys,
+    ):
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+
+        with pytest.raises(SystemExit):
+            cli_commands.cmd_self_improve(
+                resume_cycle_id="cycle-123",
+                continue_prd=True,
+            )
+
+        out = capsys.readouterr().out
+        assert "Provide either --continue-prd or --resume, not both." in out
+
+    def test_cmd_self_improve_rejects_continue_prd_with_next_available_story(
+        self,
+        monkeypatch,
+        capsys,
+    ):
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+
+        with pytest.raises(SystemExit):
+            cli_commands.cmd_self_improve(
+                continue_prd=True,
+                next_available_story=True,
+            )
+
+        out = capsys.readouterr().out
+        assert (
+            "Provide either --continue-prd or --next-available-story, not both." in out
+        )
+
     def test_self_improve_prd_artifact_path_passes_through(self, monkeypatch, tmp_path):
         captured = {}
         artifact_path = tmp_path / "prd.json"
@@ -843,6 +1085,95 @@ class TestCliRequirementRouting:
 
         assert "Auto-resuming latest resumable cycle: cycle-one" in out
         assert captured["resume_cycle_id"] == "cycle-one"
+
+    def test_cmd_self_improve_auto_resume_skips_empty_interrupted_cycles(
+        self,
+        monkeypatch,
+        capsys,
+    ):
+        captured = {}
+
+        monkeypatch.setattr(
+            cli_commands, "_check_vision_exists", lambda *args, **kwargs: None
+        )
+        monkeypatch.setattr(
+            cli_commands, "resolve_project_root", lambda: Path("/tmp/project")
+        )
+        monkeypatch.setattr(
+            cli_commands,
+            "_list_resumable_cycles",
+            lambda root: [
+                {
+                    "cycle_id": "cycle-empty",
+                    "timestamp": "2026-03-19T12:05:00Z",
+                    "next_stage": "PRD generation",
+                    "last_failure": "Interrupted during baseline tests",
+                },
+                {
+                    "cycle_id": "cycle-meaningful",
+                    "timestamp": "2026-03-17T12:00:00Z",
+                    "next_stage": "quality gate (remediation exhausted)",
+                    "last_failure": "Quality gate failed",
+                },
+            ],
+        )
+
+        monkeypatch.setattr(
+            cli_commands,
+            "load_self_improve_record",
+            lambda project_root, cycle_id: type(
+                "Record",
+                (),
+                {
+                    "selected_opportunities": []
+                    if cycle_id == "cycle-empty"
+                    else [object()],
+                    "opportunities_found": 0 if cycle_id == "cycle-empty" else 1,
+                    "opportunities_attempted": 0 if cycle_id == "cycle-empty" else 1,
+                    "prd_generated": cycle_id == "cycle-meaningful",
+                    "plan_generated": cycle_id == "cycle-meaningful",
+                    "execution_attempted": cycle_id == "cycle-meaningful",
+                    "quality_gate_passed": False,
+                    "tests_passed": False,
+                    "metrics_stable": False,
+                    "pr_created": False,
+                    "branch_name": ""
+                    if cycle_id == "cycle-empty"
+                    else "self-improve/cycle-meaningful",
+                    "feature_request": ""
+                    if cycle_id == "cycle-empty"
+                    else "meaningful feature",
+                },
+            )(),
+        )
+
+        def fake_run_self_improve(
+            max_improvements=1,
+            simulate=False,
+            stash_dirty=False,
+            resume_cycle_id=None,
+            skip_baseline_tests=False,
+            artifact_path=None,
+            next_roadmap_item=False,
+        ):
+            del max_improvements, simulate, stash_dirty, skip_baseline_tests
+            del artifact_path, next_roadmap_item
+            captured["resume_cycle_id"] = resume_cycle_id
+            return type(
+                "Record",
+                (),
+                {"pr_created": False, "failure_reason": ""},
+            )()
+
+        monkeypatch.setattr(cli_commands, "run_self_improve", fake_run_self_improve)
+
+        cli_commands.cmd_self_improve(
+            resume_cycle_id=cli_commands.SELF_IMPROVE_AUTO_RESUME
+        )
+        out = capsys.readouterr().out
+
+        assert "Auto-resuming latest resumable cycle: cycle-meaningful" in out
+        assert captured["resume_cycle_id"] == "cycle-meaningful"
 
     def test_cmd_self_improve_auto_resume_reports_no_saved_cycles(
         self,

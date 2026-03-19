@@ -274,3 +274,41 @@ class TestSelfImprovementRecordResumeMetadata:
         )
         assert record.prd_flow_id == ""
         assert record.execution_task_flow_ids == {}
+        assert record.continue_prd is False
+        assert record.continue_prd_source_prd_path == ""
+        assert record.continue_prd_current_story_ref == ""
+        assert record.continue_prd_completed_story_refs == []
+        assert record.continue_prd_story_history == []
+
+    def test_supports_continue_prd_loop_state_roundtrip(self):
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd",
+            timestamp="2026-03-10T00:00:00Z",
+            continue_prd=True,
+            continue_prd_source_prd_path="prd_output/self/input_prd.json",
+            continue_prd_current_story_ref="US2",
+            continue_prd_completed_story_refs=["US1"],
+            continue_prd_story_history=[
+                {
+                    "story_ref": "US1",
+                    "plan_path_json": "prd_output/self/exec_US1.json",
+                    "execution_run_id": "run-us1",
+                    "story_status": "completed",
+                }
+            ],
+        )
+
+        restored = SelfImprovementRecord.model_validate(record.model_dump())
+
+        assert restored.continue_prd is True
+        assert restored.continue_prd_source_prd_path == "prd_output/self/input_prd.json"
+        assert restored.continue_prd_current_story_ref == "US2"
+        assert restored.continue_prd_completed_story_refs == ["US1"]
+        assert restored.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": "prd_output/self/exec_US1.json",
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            }
+        ]

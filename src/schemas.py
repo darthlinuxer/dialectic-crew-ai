@@ -243,6 +243,12 @@ class SelfImprovementRecord(BaseModel):
     prd_flow_id: str = ""
     prd_path_json: str = ""
     prd_path_md: str = ""
+    continue_prd: bool = False
+    continue_prd_source_prd_path: str = ""
+    continue_prd_current_story_ref: str = ""
+    continue_prd_completed_story_refs: List[str] = Field(default_factory=list)
+    continue_prd_story_history: List[dict[str, str]] = Field(default_factory=list)
+    planning_user_story_ref: str = ""
     plan_path_json: str = ""
     plan_path_md: str = ""
     execution_run_id: str = ""

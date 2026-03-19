@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -266,6 +267,13 @@ class TestRunSelfImprove:
     def test_rejects_resume_during_simulation(self):
         with pytest.raises(ValueError, match="does not support --resume"):
             run_self_improve(simulate=True, resume_cycle_id="cycle-123")
+
+    def test_rejects_continue_prd_with_next_available_story(self):
+        with pytest.raises(
+            ValueError,
+            match=("does not support using --continue-prd with --next-available-story"),
+        ):
+            run_self_improve(continue_prd=True, next_available_story=True)
 
     def test_persists_resumable_state_when_prioritization_is_interrupted(
         self,
@@ -858,6 +866,2044 @@ class TestRunSelfImprove:
         )
         assert record.plan_generated is True
         assert record.execution_attempted is True
+
+    def test_next_available_story_uses_first_unfinished_prd_story(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        artifact_path = tmp_path / "input_prd.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Shortcut PRD",
+                    "objective": "Pick the next story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        completed_plan = tmp_path / "exec_US1_20260317_091912.json"
+        completed_plan.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(artifact_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("PRD shortcut should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-prd",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-prd"},
+                    "output_path": str(tmp_path / "exec_output" / "run-shortcut-prd"),
+                    "report_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-prd" / "report.json"
+                    ),
+                },
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(artifact_path),
+                    next_available_story=True,
+                )
+
+        assert plan_calls == [{"prd_path": str(artifact_path), "user_story_ref": "US2"}]
+        assert record.planning_user_story_ref == "US2"
+
+    def test_next_available_story_reports_when_prd_is_fully_complete(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        artifact_path = tmp_path / "input_prd.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Shortcut PRD",
+                    "objective": "Pick the next story",
+                    "user_stories": [{"id": "US1", "title": "Story one"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        completed_plan = tmp_path / "exec_US1_20260317_091912.json"
+        completed_plan.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(artifact_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        record = run_self_improve(
+            max_improvements=1,
+            artifact_path=str(artifact_path),
+            next_available_story=True,
+        )
+
+        assert "No unfinished user stories remain" in record.failure_reason
+
+    def test_next_available_story_auto_discovers_latest_self_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_dir = tmp_path / "prd_output" / "self"
+        prd_dir.mkdir(parents=True, exist_ok=True)
+        older_artifact_path = prd_dir / "older_prd.json"
+        latest_artifact_path = prd_dir / "latest_prd.json"
+        older_artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Older PRD",
+                    "objective": "Ignore older PRD",
+                    "user_stories": [{"id": "US1", "title": "Story one"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        latest_artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Latest PRD",
+                    "objective": "Pick the next story from the latest PRD",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.utime(older_artifact_path, (1, 1))
+        os.utime(latest_artifact_path, (2, 2))
+
+        completed_plan = prd_dir / "exec_US1_20260317_091912.json"
+        completed_plan.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(latest_artifact_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("Auto-discovered PRD flow should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-prd-latest",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-prd-latest"},
+                    "output_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-prd-latest"
+                    ),
+                    "report_path": str(
+                        tmp_path
+                        / "exec_output"
+                        / "run-shortcut-prd-latest"
+                        / "report.json"
+                    ),
+                },
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    next_available_story=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(latest_artifact_path), "user_story_ref": "US2"}
+        ]
+        assert record.prd_path_json == str(latest_artifact_path)
+        assert record.planning_user_story_ref == "US2"
+
+    def test_next_available_story_prefers_latest_unfinished_self_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_dir = tmp_path / "prd_output" / "self"
+        prd_dir.mkdir(parents=True, exist_ok=True)
+        older_unfinished_prd = prd_dir / "older_unfinished.json"
+        latest_completed_prd = prd_dir / "latest_completed.json"
+        older_unfinished_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Older unfinished PRD",
+                    "objective": "Still has work remaining",
+                    "user_stories": [
+                        {"id": "US1", "title": "Done story"},
+                        {"id": "US2", "title": "Remaining story"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        latest_completed_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Latest completed PRD",
+                    "objective": "Already fully done",
+                    "user_stories": [{"id": "US1", "title": "Done story"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.utime(older_unfinished_prd, (1, 1))
+        os.utime(latest_completed_prd, (2, 2))
+
+        (prd_dir / "exec_older_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(older_unfinished_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_dir / "exec_latest_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(latest_completed_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-002", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("Auto-discovered PRD flow should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-prd-unfinished",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-prd-unfinished"},
+                    "output_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-prd-unfinished"
+                    ),
+                    "report_path": str(
+                        tmp_path
+                        / "exec_output"
+                        / "run-shortcut-prd-unfinished"
+                        / "report.json"
+                    ),
+                },
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    next_available_story=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(older_unfinished_prd), "user_story_ref": "US2"}
+        ]
+        assert record.prd_path_json == str(older_unfinished_prd)
+        assert record.planning_user_story_ref == "US2"
+
+    def test_continue_prd_auto_discovers_latest_unfinished_self_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_dir = tmp_path / "prd_output" / "self"
+        prd_dir.mkdir(parents=True, exist_ok=True)
+        older_unfinished_prd = prd_dir / "older_unfinished.json"
+        latest_completed_prd = prd_dir / "latest_completed.json"
+        older_unfinished_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Older unfinished PRD",
+                    "objective": "Still has one remaining story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Done story"},
+                        {"id": "US2", "title": "Remaining story"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        latest_completed_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Latest completed PRD",
+                    "objective": "Already fully done",
+                    "user_stories": [{"id": "US1", "title": "Done story"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.utime(older_unfinished_prd, (1, 1))
+        os.utime(latest_completed_prd, (2, 2))
+
+        (prd_dir / "exec_older_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(older_unfinished_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_dir / "exec_latest_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(latest_completed_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-002", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError(
+                    "continue-prd auto-discovery should not run introspection"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = prd_dir / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(prd_dir / f"plan_{user_story_ref}.md"),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"run-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (prd_dir / f"exec_{story_ref.lower()}_complete.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(older_unfinished_prd.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"run-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    continue_prd=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(older_unfinished_prd), "user_story_ref": "US2"}
+        ]
+        assert record.prd_path_json == str(older_unfinished_prd)
+        assert record.continue_prd is True
+        assert record.continue_prd_source_prd_path == str(older_unfinished_prd)
+        assert record.continue_prd_current_story_ref == ""
+        assert record.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert record.continue_prd_story_history == [
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_dir / "plan_US2.json"),
+                "execution_run_id": "run-us2",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_runs_all_remaining_stories_for_supplied_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_path = tmp_path / "prd_output" / "self" / "input_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Continue full PRD",
+                    "objective": "Run every remaining story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError(
+                    "continue-prd with PRD artifact should not run introspection"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = prd_path_obj.parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(prd_path_obj.parent / f"plan_{user_story_ref}.md"),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"run-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (
+                prd_path_obj.parent / f"exec_{story_ref.lower()}_complete.json"
+            ).write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path_obj.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"run-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        prd_path_obj = prd_path
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path_obj),
+                    continue_prd=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(prd_path_obj), "user_story_ref": "US1"},
+            {"prd_path": str(prd_path_obj), "user_story_ref": "US2"},
+        ]
+        assert record.continue_prd is True
+        assert record.continue_prd_source_prd_path == str(prd_path_obj)
+        assert record.continue_prd_current_story_ref == ""
+        assert record.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert record.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": str(prd_path_obj.parent / "plan_US1.json"),
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            },
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_path_obj.parent / "plan_US2.json"),
+                "execution_run_id": "run-us2",
+                "story_status": "completed",
+            },
+        ]
+
+    def test_continue_prd_prints_story_progress_summary(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        prd_path = tmp_path / "prd_output" / "self" / "progress_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Progress PRD",
+                    "objective": "Show progress while continuing stories",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            story_ref = json.loads(Path(plan_path).read_text(encoding="utf-8"))[
+                "user_story_id"
+            ]
+            report_dir = tmp_path / "exec_output" / f"progress-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            (prd_path.parent / f"exec_{story_ref.lower()}_progress.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"progress-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-progress-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path),
+                    continue_prd=True,
+                )
+
+        out = capsys.readouterr().out
+        assert "[continue-prd] Completed 0/2 stories. Next: US1" in out
+        assert "[continue-prd] Completed 1/2 stories. Next: US2" in out
+
+    def test_continue_prd_resume_advances_from_saved_next_story(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity
+        from src.main.self_improve import _save_self_improve_record
+
+        prd_path = tmp_path / "prd_output" / "self" / "resume_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Resume continue PRD",
+                    "objective": "Pick up the saved next story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_path.parent / "exec_us1_complete.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(prd_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd-resume",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-continue-prd",
+                    category="code_health",
+                    title="Resume saved continue PRD",
+                    description="Resume the next pending story from saved loop state.",
+                    evidence=[str(prd_path)],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            prd_path_json=str(prd_path),
+            continue_prd=True,
+            continue_prd_source_prd_path=str(prd_path),
+            continue_prd_current_story_ref="US2",
+            continue_prd_completed_story_refs=["US1"],
+            planning_user_story_ref="US2",
+            branch_name="self-improve/cycle-continue-prd-resume",
+            failure_reason="Interrupted during planning",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"resume-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (prd_path.parent / f"exec_{story_ref.lower()}_resume.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"resume-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-resume-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                resumed = run_self_improve(resume_cycle_id="cycle-continue-prd-resume")
+
+        assert plan_calls == [{"prd_path": str(prd_path), "user_story_ref": "US2"}]
+        assert resumed.continue_prd is True
+        assert resumed.continue_prd_current_story_ref == ""
+        assert resumed.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert resumed.continue_prd_story_history == [
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_path.parent / "plan_US2.json"),
+                "execution_run_id": "resume-us2",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_resume_reruns_second_story_execution_without_replanning(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity
+        from src.main.self_improve import _save_self_improve_record
+
+        prd_path = tmp_path / "prd_output" / "self" / "resume_execution_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Resume second execution",
+                    "objective": "Resume execution for the second story only",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_path.parent / "exec_us1_done.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(prd_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        plan_path = prd_path.parent / "plan_US2.json"
+        plan_path.write_text(
+            json.dumps({"user_story_id": "US2", "source_prd_path": str(prd_path)}),
+            encoding="utf-8",
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd-execution-resume",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-continue-prd-execution",
+                    category="code_health",
+                    title="Resume second-story execution",
+                    description="Resume execution without replanning the second story.",
+                    evidence=[str(prd_path)],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            prd_path_json=str(prd_path),
+            continue_prd=True,
+            continue_prd_source_prd_path=str(prd_path),
+            continue_prd_current_story_ref="US2",
+            continue_prd_completed_story_refs=["US1"],
+            continue_prd_story_history=[
+                {
+                    "story_ref": "US1",
+                    "plan_path_json": str(prd_path.parent / "plan_US1.json"),
+                    "execution_run_id": "run-us1",
+                    "story_status": "completed",
+                }
+            ],
+            planning_user_story_ref="US2",
+            plan_path_json=str(plan_path),
+            branch_name="self-improve/cycle-continue-prd-execution-resume",
+            failure_reason="Interrupted during execution",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        planning_calls: list[dict[str, object]] = []
+        execution_calls: list[dict[str, object]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del prd_path, user_story_ref, vision_context
+            planning_calls.append({"called": True})
+            raise AssertionError(
+                "Resume during second-story execution should not replan"
+            )
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context
+            execution_calls.append(
+                {"plan_path": plan_path, "resume_run_id": resume_run_id}
+            )
+            report_dir = tmp_path / "exec_output" / "resume-second-exec"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            (prd_path.parent / "exec_us2_done.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": "US2",
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-002", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "resume-exec-us2",
+                "task_flow_ids": {"T-002": "task-flow-resume-exec-us2"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                resumed = run_self_improve(
+                    resume_cycle_id="cycle-continue-prd-execution-resume"
+                )
+
+        assert not planning_calls
+        assert execution_calls == [{"plan_path": str(plan_path), "resume_run_id": None}]
+        assert resumed.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert resumed.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": str(prd_path.parent / "plan_US1.json"),
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            },
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(plan_path),
+                "execution_run_id": "resume-exec-us2",
+                "story_status": "completed",
+            },
+        ]
+
+    def test_continue_prd_resume_after_completed_story_advances_to_next_story(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity
+        from src.main.self_improve import _save_self_improve_record
+
+        prd_path = tmp_path / "prd_output" / "self" / "resume_after_completion_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Resume after completed story",
+                    "objective": "Advance to the next story after a completed iteration",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_path.parent / "exec_us1_done.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(prd_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd-post-story-resume",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-continue-prd-post-story",
+                    category="code_health",
+                    title="Resume after a completed continue-PRD story",
+                    description="Advance to the next unfinished story before replanning.",
+                    evidence=[str(prd_path)],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            prd_path_json=str(prd_path),
+            continue_prd=True,
+            continue_prd_source_prd_path=str(prd_path),
+            continue_prd_current_story_ref="",
+            continue_prd_completed_story_refs=["US1"],
+            planning_user_story_ref="",
+            plan_generated=False,
+            execution_attempted=False,
+            branch_name="self-improve/cycle-continue-prd-post-story-resume",
+            failure_reason="Interrupted during branch setup",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            story_ref = json.loads(Path(plan_path).read_text(encoding="utf-8"))[
+                "user_story_id"
+            ]
+            report_dir = tmp_path / "exec_output" / "resume-after-completion"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            (prd_path.parent / "exec_us2_done.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-002", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "resume-after-completion-us2",
+                "task_flow_ids": {"T-002": "task-flow-resume-after-completion-us2"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                resumed = run_self_improve(
+                    resume_cycle_id="cycle-continue-prd-post-story-resume"
+                )
+
+        assert plan_calls == [{"prd_path": str(prd_path), "user_story_ref": "US2"}]
+        assert resumed.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert resumed.continue_prd_story_history == [
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_path.parent / "plan_US2.json"),
+                "execution_run_id": "resume-after-completion-us2",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_stops_after_intermediate_execution_failure(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_path = tmp_path / "prd_output" / "self" / "intermediate_failure_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Stop on intermediate failure",
+                    "objective": "Do not start later stories after a failure",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                        {"id": "US3", "title": "Story three"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError(
+                    "continue-prd with PRD artifact should not run introspection"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        plan_calls: list[str] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append(cast(str, user_story_ref))
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        execution_calls: list[str] = []
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            story_ref = json.loads(Path(plan_path).read_text(encoding="utf-8"))[
+                "user_story_id"
+            ]
+            execution_calls.append(story_ref)
+            report_dir = tmp_path / "exec_output" / story_ref.lower()
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            if story_ref == "US1":
+                (prd_path.parent / "exec_us1_done.json").write_text(
+                    json.dumps(
+                        {
+                            "user_story_id": "US1",
+                            "source_prd_path": str(prd_path.resolve()),
+                            "status": "completed",
+                            "tasks": [
+                                {"id": "T-001", "title": "Done", "status": "completed"}
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-us1",
+                    "task_flow_ids": {"T-001": "task-flow-us1"},
+                    "output_path": str(output_path),
+                    "report_path": str(report_path),
+                }
+
+            return {
+                "overall_success": False,
+                "story_status": "failed",
+                "run_id": "run-us2",
+                "task_flow_ids": {"T-002": "task-flow-us2"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path),
+                    continue_prd=True,
+                )
+
+        assert plan_calls == ["US1", "US2"]
+        assert execution_calls == ["US1", "US2"]
+        assert record.failure_reason == "Execution failed: failed"
+        assert record.continue_prd_current_story_ref == "US2"
+        assert record.continue_prd_completed_story_refs == ["US1"]
+        assert record.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": str(prd_path.parent / "plan_US1.json"),
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_marks_roadmap_after_final_story_completion(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        roadmap_label = "Complete the full roadmap-backed PRD through continue-prd"
+        internal_dir = tmp_path / "internal"
+        internal_dir.mkdir(parents=True, exist_ok=True)
+        (internal_dir / "SELF_VISION.md").write_text(
+            "# Anti-drift only\n", encoding="utf-8"
+        )
+        roadmap_path = internal_dir / "ROADMAP.md"
+        roadmap_path.write_text(
+            f"- [ ] {roadmap_label}\n- [ ] Leave another item pending\n",
+            encoding="utf-8",
+        )
+
+        prd_path = tmp_path / "prd_output" / "self" / "roadmap_continue_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Roadmap continue PRD",
+                    "objective": "Finish all roadmap-backed stories",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"roadmap-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (prd_path.parent / f"exec_{story_ref.lower()}_roadmap.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"roadmap-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-roadmap-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path),
+                    continue_prd=True,
+                )
+
+        assert record.completed_roadmap_items == [roadmap_label]
+        assert record.roadmap_marking_succeeded is True
+        assert f"- [x] {roadmap_label}" in roadmap_path.read_text(encoding="utf-8")
+
+    def test_marks_roadmap_item_after_roadmap_backed_prd_story_completion(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("# Anti-drift only\n")
+        roadmap_label = (
+            "Expose output-format selection and configurable Markdown templates "
+            "through the CLI/runtime UX"
+        )
+        roadmap.write_text(
+            f"- [ ] {roadmap_label}\n- [ ] Keep another item pending\n",
+            encoding="utf-8",
+        )
+
+        artifact_path = tmp_path / "prd_output" / "self" / "input_prd.json"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Roadmap-backed PRD",
+                    "objective": "Finish the roadmap-backed story",
+                    "user_stories": [{"id": "US1", "title": "Story one"}],
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("PRD shortcut should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_artifact_path = artifact_path.parent / "exec_shortcut.json"
+
+        def fake_exec(**kwargs):
+            del kwargs
+            plan_artifact_path.write_text(
+                json.dumps(
+                    {
+                        "user_story_id": "US1",
+                        "source_prd_path": str(artifact_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {
+                                "id": "T-001",
+                                "title": "Done",
+                                "status": "completed",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "run-roadmap-backed-prd",
+                "task_flow_ids": {"T-001": "task-flow-roadmap-backed-prd"},
+                "output_path": str(tmp_path / "exec_output" / "run-roadmap-backed-prd"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-roadmap-backed-prd" / "report.json"
+                ),
+            }
+
+        from unittest.mock import patch
+
+        with patch(
+            "planning.flow.run_user_story_planning",
+            return_value={
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_artifact_path),
+                "plan_path_md": str(artifact_path.parent / "exec_shortcut.md"),
+            },
+        ):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_exec,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(artifact_path),
+                    next_available_story=True,
+                )
+
+        roadmap_text = roadmap.read_text(encoding="utf-8")
+        assert f"- [x] {roadmap_label}" in roadmap_text
+        assert record.completed_roadmap_items == [roadmap_label]
+
+    def test_plan_artifact_defers_roadmap_update_until_source_prd_is_complete(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        from unittest.mock import patch
+
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        roadmap.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_label = "Keep roadmap completion gated by full PRD completion"
+        roadmap.write_text(f"- [ ] {roadmap_label}\n", encoding="utf-8")
+
+        prd_path = tmp_path / "prd_output" / "self" / "input_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Roadmap-backed PRD",
+                    "objective": "Complete stories without premature roadmap updates",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        plan_path = prd_path.parent / "exec_us1.json"
+        plan_path.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "user_story_title": "Story one",
+                    "tasks": [{"id": "T-001", "title": "Task", "status": "pending"}],
+                    "source_prd_path": str(prd_path.resolve()),
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                    "status": "pending",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        with patch(
+            "execution.dialectic_execution.run_dialectic_execution",
+            return_value={
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "run-plan-shortcut",
+                "task_flow_ids": {"T-001": "task-flow-plan-shortcut"},
+                "output_path": str(tmp_path / "exec_output" / "run-plan-shortcut"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-plan-shortcut" / "report.json"
+                ),
+            },
+        ):
+            record = run_self_improve(
+                max_improvements=1,
+                artifact_path=str(plan_path),
+            )
+
+        roadmap_text = roadmap.read_text(encoding="utf-8")
+        captured = capsys.readouterr().out
+
+        assert f"- [ ] {roadmap_label}" in roadmap_text
+        assert record.completed_roadmap_items == []
+        assert record.prd_path_json == str(prd_path.resolve())
+        assert (
+            "Deferring roadmap completion until the roadmap-backed PRD has no unfinished user stories."
+            in captured
+        )
 
     def test_skip_baseline_tests_skips_metrics_validation(
         self,
@@ -3240,6 +5286,131 @@ class TestQualityGatePersistence:
         assert (
             record.quality_remediation_failure_reason == "ruff-format: FAIL (1 errors)"
         )
+        assert record.quality_remediation_exhausted is True
+        assert _summarize_resume_state(record, record.failure_reason)["next_stage"] == (
+            "quality gate (remediation exhausted)"
+        )
+
+
+class TestCrewQualityGatePersistence:
+    def test_records_quality_repair_crew_steps_in_existing_remediation_fields(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+        from unittest.mock import MagicMock, patch
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Persist quality repair crew state\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-10T00:00:00Z",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="opp-quality-repair-crew",
+                        category="code_health",
+                        title="Persist quality repair crew state",
+                        description="Remember when the quality repair crew ran.",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        quality_result = type(
+            "QualityResult",
+            (),
+            {
+                "passed": False,
+                "summary": "mypy: FAIL (1 errors)",
+                "checks": [],
+                "remediation_attempted": True,
+                "remediation_attempt_count": 1,
+                "remediation_succeeded": False,
+                "remediation_steps": [
+                    "quality-repair-crew",
+                    "write:src/main/self_improve/quality_gate.py",
+                ],
+                "remediation_failure_reason": "mypy: FAIL (1 errors)",
+                "remediation_exhausted": True,
+            },
+        )()
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd, **kwargs: quality_result,
+        )
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-quality-repair-crew"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-quality-repair-crew",
+            "task_flow_ids": {"T-001": "task-flow-quality-repair-crew"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.failure_reason.startswith("Quality gate failed:")
+        assert record.quality_remediation_attempted is True
+        assert record.quality_remediation_attempt_count == 1
+        assert record.quality_remediation_succeeded is False
+        assert record.quality_remediation_steps == [
+            "quality-repair-crew",
+            "write:src/main/self_improve/quality_gate.py",
+        ]
+        assert record.quality_remediation_failure_reason == "mypy: FAIL (1 errors)"
         assert record.quality_remediation_exhausted is True
         assert _summarize_resume_state(record, record.failure_reason)["next_stage"] == (
             "quality gate (remediation exhausted)"

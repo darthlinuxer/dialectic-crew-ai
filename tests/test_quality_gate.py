@@ -7,7 +7,9 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from schemas import ValidationOutput
 from dialectic.stack_validation import ValidationReport, ValidationStepResult
+from src.main.self_improve import quality_gate_remediation as remediation_module
 from src.main.self_improve.quality_gate import (
     QualityCheckResult,
     QualityGateResult,
@@ -718,6 +720,195 @@ class TestRunQualityGate:
         assert result.remediation_exhausted is True
         assert "ruff-format: FAIL" in result.remediation_failure_reason
         mock_remediate.assert_not_called()
+
+
+class TestCrewRemediation:
+    @patch.dict("os.environ", {}, clear=False)
+    @patch("src.main.self_improve.quality_gate._run_quality_gate_validation")
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
+    @patch("src.main.self_improve.quality_gate._run_crew_remediation")
+    def test_crew_remediation_is_disabled_by_default(
+        self,
+        mock_crew_remediation,
+        mock_collect,
+        mock_build_plan,
+        mock_step_labels,
+        mock_run_validation,
+    ):
+        mock_collect.return_value = ["src/main/self_improve/quality_gate.py"]
+        mock_build_plan.return_value = MagicMock()
+        mock_step_labels.return_value = ["mypy", "pyright"]
+        mock_run_validation.return_value = QualityGateResult(
+            passed=False,
+            checks=[QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+        )
+
+        result = run_quality_gate(Path("/tmp"))
+
+        assert result.passed is False
+        assert result.remediation_attempted is False
+        mock_crew_remediation.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {"DIALECTIC_SELF_IMPROVE_ENABLE_QUALITY_REPAIR_CREW": "1"},
+        clear=False,
+    )
+    @patch("src.main.self_improve.quality_gate._run_quality_gate_validation")
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
+    @patch("src.main.self_improve.quality_gate._run_crew_remediation")
+    @patch("src.main.self_improve.quality_gate._run_python_remediation")
+    def test_crew_remediation_runs_for_mypy_failures_when_enabled(
+        self,
+        mock_python_remediation,
+        mock_crew_remediation,
+        mock_collect,
+        mock_build_plan,
+        mock_step_labels,
+        mock_run_validation,
+    ):
+        mock_collect.return_value = ["src/main/self_improve/quality_gate.py"]
+        mock_build_plan.return_value = MagicMock()
+        mock_step_labels.return_value = ["mypy", "pyright"]
+        mock_python_remediation.return_value = (False, [])
+        mock_crew_remediation.return_value = (
+            True,
+            ["quality-repair-crew", "write:src/main/self_improve/quality_gate.py"],
+            "Crew produced a bounded repair.",
+        )
+        mock_run_validation.side_effect = [
+            QualityGateResult(
+                passed=False,
+                checks=[QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+            ),
+            QualityGateResult(
+                passed=True,
+                checks=[QualityCheckResult(tool="mypy", passed=True, error_count=0)],
+            ),
+        ]
+
+        result = run_quality_gate(Path("/tmp"))
+
+        assert result.passed is True
+        assert result.remediation_attempted is True
+        assert result.remediation_succeeded is True
+        assert result.remediation_attempt_count == 1
+        assert result.remediation_steps == [
+            "quality-repair-crew",
+            "write:src/main/self_improve/quality_gate.py",
+        ]
+        mock_crew_remediation.assert_called_once_with(
+            Path("/tmp"),
+            ["src/main/self_improve/quality_gate.py"],
+            [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+        )
+
+    def test_crew_eligibility_is_limited_to_type_check_failures(self):
+        assert (
+            remediation_module.should_attempt_crew_remediation(
+                [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+                ["src/main/self_improve/quality_gate.py"],
+            )
+            is True
+        )
+        assert (
+            remediation_module.should_attempt_crew_remediation(
+                [
+                    QualityCheckResult(
+                        tool="ruff-format",
+                        passed=False,
+                        error_count=1,
+                    )
+                ],
+                ["src/main/self_improve/quality_gate.py"],
+            )
+            is False
+        )
+        assert (
+            remediation_module.should_attempt_python_remediation(
+                [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+                ["src/main/self_improve/quality_gate.py"],
+            )
+            is False
+        )
+
+    @patch(
+        "src.main.self_improve.quality_gate_remediation._build_quality_remediation_crew"
+    )
+    @patch("execution.task_flow._materialize_generated_files")
+    @patch("dialectic.crewai_runtime.run_crew_kickoff")
+    def test_run_crew_remediation_skips_unapproved_repairs(
+        self,
+        mock_kickoff,
+        mock_materialize,
+        mock_build_crew,
+    ):
+        mock_build_crew.return_value = object()
+        mock_kickoff.return_value = MagicMock(
+            tasks_output=[
+                MagicMock(
+                    raw="--- src/main/self_improve/quality_gate.py ---\nprint('nope')"
+                ),
+                MagicMock(
+                    pydantic=ValidationOutput(
+                        quality_score=4.0,
+                        consensus_reached=False,
+                        final_validation_notes="Unsafe change.",
+                    )
+                ),
+            ]
+        )
+
+        attempted, steps, summary = remediation_module.run_crew_remediation(
+            Path("/tmp"),
+            ["src/main/self_improve/quality_gate.py"],
+            [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+        )
+
+        assert attempted is False
+        assert steps == []
+        assert summary == "Unsafe change."
+        mock_materialize.assert_not_called()
+
+    @patch(
+        "src.main.self_improve.quality_gate_remediation._build_quality_remediation_crew"
+    )
+    @patch("execution.task_flow._materialize_generated_files")
+    @patch("dialectic.crewai_runtime.run_crew_kickoff")
+    def test_run_crew_remediation_skips_no_file_change_responses(
+        self,
+        mock_kickoff,
+        mock_materialize,
+        mock_build_crew,
+    ):
+        mock_build_crew.return_value = object()
+        mock_kickoff.return_value = MagicMock(
+            tasks_output=[
+                MagicMock(raw="NO_FILE_CHANGES"),
+                MagicMock(
+                    pydantic=ValidationOutput(
+                        quality_score=8.5,
+                        consensus_reached=True,
+                        final_validation_notes="No safe bounded repair.",
+                    )
+                ),
+            ]
+        )
+
+        attempted, steps, summary = remediation_module.run_crew_remediation(
+            Path("/tmp"),
+            ["src/main/self_improve/quality_gate.py"],
+            [QualityCheckResult(tool="pyright", passed=False, error_count=1)],
+        )
+
+        assert attempted is False
+        assert steps == []
+        assert summary == "No safe bounded repair."
+        mock_materialize.assert_not_called()
 
 
 class TestPythonRemediation:
