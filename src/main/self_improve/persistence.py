@@ -11,9 +11,21 @@ from pydantic import ValidationError
 
 from schemas import ImprovementOpportunity, SelfImprovementRecord
 
+from .git_helpers import git_branch_exists
+
 SELF_IMPROVE_STATE_DIR = Path(".dialectic") / "self_improve"
 SELF_IMPROVE_STATE_DIR_ENV_VAR = "DIALECTIC_SELF_IMPROVE_STATE_DIR"
 SELF_IMPROVE_PRD_DIR = Path("prd_output") / "self"
+_POST_EXECUTION_RESUME_STAGES = frozenset(
+    {
+        "quality gate",
+        "quality remediation",
+        "quality gate (remediation exhausted)",
+        "test validation",
+        "metrics validation",
+        "PR creation",
+    }
+)
 
 
 def _normalize_story_id(story_id: str) -> str:
@@ -342,6 +354,47 @@ def summarize_resume_state(
     }
 
 
+def has_meaningful_self_improve_progress(record: SelfImprovementRecord) -> bool:
+    """Return whether a saved cycle progressed far enough to be worth resuming."""
+    return any(
+        (
+            bool(record.selected_opportunities),
+            record.opportunities_found > 0,
+            record.opportunities_attempted > 0,
+            record.prd_generated,
+            record.plan_generated,
+            record.execution_attempted,
+            record.quality_gate_passed,
+            record.tests_passed,
+            record.metrics_stable,
+            record.pr_created,
+            bool(record.branch_name),
+            bool(record.feature_request),
+        )
+    )
+
+
+def _resume_stage_requires_live_branch(next_stage: str) -> bool:
+    return next_stage in _POST_EXECUTION_RESUME_STAGES
+
+
+def _record_is_listable_resumable_cycle(
+    project_root: Path,
+    record: SelfImprovementRecord,
+    *,
+    next_stage: str,
+) -> bool:
+    if next_stage == "completed":
+        return False
+    if not has_meaningful_self_improve_progress(record):
+        return False
+    if not _resume_stage_requires_live_branch(next_stage):
+        return True
+    if not record.branch_name:
+        return False
+    return git_branch_exists(record.branch_name, project_root)
+
+
 def list_resumable_cycles(
     project_root: Path,
     *,
@@ -361,11 +414,18 @@ def list_resumable_cycles(
         except (OSError, ValidationError):
             continue
         summary = summarize_resume_state(record, record.failure_reason)
+        next_stage = str(summary["next_stage"])
+        if not _record_is_listable_resumable_cycle(
+            project_root,
+            record,
+            next_stage=next_stage,
+        ):
+            continue
         rows.append(
             {
                 "cycle_id": record.cycle_id,
                 "timestamp": record.timestamp,
-                "next_stage": str(summary["next_stage"]),
+                "next_stage": next_stage,
                 "last_failure": str(summary["last_failure"]),
             }
         )
@@ -397,6 +457,7 @@ __all__ = [
     "list_resumable_cycles",
     "load_self_improve_record",
     "execution_result_reusable",
+    "has_meaningful_self_improve_progress",
     "record_execution_artifacts",
     "record_plan_artifacts",
     "record_prd_artifacts",

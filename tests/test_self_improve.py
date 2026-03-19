@@ -5059,6 +5059,61 @@ class TestResumableCycles:
         assert rows[0]["next_stage"] == "execution"
         assert rows[1]["next_stage"] == "planning"
 
+    def test_skips_empty_interrupted_cycles_without_meaningful_progress(
+        self, tmp_path
+    ):
+        from src.main.self_improve import _save_self_improve_record
+
+        empty = SelfImprovementRecord(
+            cycle_id="cycle-empty",
+            timestamp="2026-03-10T02:00:00Z",
+            failure_reason="Interrupted during baseline tests",
+        )
+        meaningful = SelfImprovementRecord(
+            cycle_id="cycle-meaningful",
+            timestamp="2026-03-10T01:00:00Z",
+            prd_generated=True,
+            failure_reason="Plan quality too low: 6.0",
+        )
+        _save_self_improve_record(tmp_path, empty)
+        _save_self_improve_record(tmp_path, meaningful)
+
+        rows = _list_resumable_cycles(tmp_path)
+
+        assert [row["cycle_id"] for row in rows] == ["cycle-meaningful"]
+
+    def test_skips_post_execution_cycles_when_recorded_branch_is_missing(
+        self, tmp_path, monkeypatch
+    ):
+        from src.main.self_improve import _save_self_improve_record
+
+        monkeypatch.setattr(
+            "main.self_improve.persistence.git_branch_exists",
+            lambda branch, cwd: False,
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-pr-creation",
+            timestamp="2026-03-10T03:00:00Z",
+            prd_generated=True,
+            plan_generated=True,
+            execution_attempted=True,
+            quality_gate_passed=True,
+            tests_passed=True,
+            metrics_stable=True,
+            branch_name="self-improve/cycle-pr-creation",
+            prd_path_json="prd.json",
+            plan_path_json="plan.json",
+            execution_run_id="run-123",
+            execution_output_path="exec-output.json",
+            execution_report_path="exec-report.json",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        rows = _list_resumable_cycles(tmp_path)
+
+        assert rows == []
+
 
 class TestQualityGatePersistence:
     def test_records_quality_remediation_failure_for_resume(
