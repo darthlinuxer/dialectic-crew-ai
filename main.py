@@ -29,6 +29,7 @@ def main(*args, **kwargs):
     """Run the canonical CLI entrypoint through the src.main package surface."""
     return cli_main(*args, **kwargs)
 
+
 __all__ = [
     "cli_main",
     "git_helpers",

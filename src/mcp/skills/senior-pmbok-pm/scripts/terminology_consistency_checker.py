@@ -28,8 +28,14 @@ def check_terms(text: str, term_groups: List[List[str]]) -> Dict[str, List[str]]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Check terminology consistency in files and directories.")
-    parser.add_argument("paths", nargs="+", help="Files or directories to analyze (directories will be searched for *.md files)")
+    parser = argparse.ArgumentParser(
+        description="Check terminology consistency in files and directories."
+    )
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        help="Files or directories to analyze (directories will be searched for *.md files)",
+    )
     parser.add_argument(
         "--format",
         default="json",

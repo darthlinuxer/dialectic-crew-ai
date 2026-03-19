@@ -18,7 +18,9 @@ from dialectic.vision import (
 )
 
 
-def vision_label(vision_paths: dict[VisionContext, Path], context: VisionContext) -> str:
+def vision_label(
+    vision_paths: dict[VisionContext, Path], context: VisionContext
+) -> str:
     """Return the human-readable vision document name for prompts."""
     normalized_context = normalize_vision_context(context)
     return vision_paths[normalized_context].name
@@ -29,7 +31,9 @@ def _vision_label(context: VisionContext = VisionContext.PROJECT) -> str:
     return vision_label(_VISION_PATHS, context)
 
 
-def vision_path_label(vision_paths: dict[VisionContext, Path], context: VisionContext) -> str:
+def vision_path_label(
+    vision_paths: dict[VisionContext, Path], context: VisionContext
+) -> str:
     """Return the repo-relative vision path for prompt rendering."""
     normalized_context = normalize_vision_context(context)
     return vision_paths[normalized_context].as_posix()

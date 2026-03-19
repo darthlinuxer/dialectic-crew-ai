@@ -35,7 +35,9 @@ WRITE_DIR = tempfile.mkdtemp(prefix="llm_tool_test_")
 TEST_FILE = os.path.join(WRITE_DIR, "input.txt")
 OUTPUT_FILE = os.path.join(WRITE_DIR, "output.txt")
 
-Path(TEST_FILE).write_text("Hello from test file. The secret word is BANANA.", encoding="utf-8")
+Path(TEST_FILE).write_text(
+    "Hello from test file. The secret word is BANANA.", encoding="utf-8"
+)
 
 print(f"Test dir: {WRITE_DIR}")
 print(f"Input file: {TEST_FILE}")
@@ -45,9 +47,9 @@ print("=" * 60)
 
 def run_tool_test(model_name: str) -> dict:
     """Run a simple tool-calling test with one agent."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Testing model: {model_name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     llm = LLM(model=model_name, timeout=300)
 
@@ -117,12 +119,14 @@ if __name__ == "__main__":
             r = run_tool_test(model)
             results.append(r)
         except Exception as e:
-            results.append({
-                "model": model,
-                "error": str(e),
-                "tool_was_invoked": False,
-                "correct_answer": False,
-            })
+            results.append(
+                {
+                    "model": model,
+                    "error": str(e),
+                    "tool_was_invoked": False,
+                    "correct_answer": False,
+                }
+            )
         if Path(OUTPUT_FILE).exists():
             Path(OUTPUT_FILE).unlink()
 
@@ -141,10 +145,10 @@ if __name__ == "__main__":
             print(f"  Raw output (first 500 chars): {r['raw_output'][:500]}")
 
     all_ok = all(r.get("tool_was_invoked", False) for r in results)
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     if all_ok:
         print("VERDICT: All configured LLM tiers support tool calling correctly")
     else:
         failed = [r["model"] for r in results if not r.get("tool_was_invoked", False)]
         print(f"VERDICT: Tool calling FAILED for: {', '.join(failed)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")

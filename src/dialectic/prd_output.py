@@ -9,6 +9,7 @@ Behavior:
 This module is intentionally minimal and dependency-free so it can be used
 across the project (CLI, exporters, tests).
 """
+
 from __future__ import annotations
 
 import os

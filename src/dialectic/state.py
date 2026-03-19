@@ -1,3 +1,5 @@
+"""Persistent Pydantic state for the dialectic PRD flow."""
+
 import os
 from typing import Literal
 from uuid import uuid4
@@ -24,6 +26,7 @@ CONSENSUS_MIN_SCORE = _read_optional_float_env("PRD_CONSENSUS_MIN_SCORE")
 
 class DialecticState(BaseModel):
     """Persistent state of the dialectic flow"""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     feature_objective: str = ""
     prd_data: dict = {}
@@ -37,4 +40,9 @@ class DialecticState(BaseModel):
     final_validation_notes: str = ""
     file_paths: list[str] = Field(default_factory=list)
     vision_context: str = VisionContext.PROJECT.value
-    current_phase: Literal["start", "dialectic", "evaluate", "save", "completed"] = "start"
+    source_roadmap_path: str = ""
+    source_roadmap_label: str = ""
+    source_roadmap_key: str = ""
+    current_phase: Literal["start", "dialectic", "evaluate", "save", "completed"] = (
+        "start"
+    )

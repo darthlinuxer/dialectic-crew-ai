@@ -24,7 +24,6 @@ def test_build_task_flow_reimplementation_crew_uses_yaml_templates(monkeypatch):
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
     monkeypatch.setattr(runtime, "_build_agent", lambda: "reimpl")
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "validator")
-    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}")
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
 
     runtime.build_task_flow_reimplementation_crew(
@@ -44,16 +43,22 @@ def test_build_task_flow_reimplementation_crew_uses_yaml_templates(monkeypatch):
     assert "PRIOR DIALECTIC CONTEXT" in captured_tasks[0]["description"]
     assert "config path was inconsistent" in captured_tasks[0]["description"]
     assert "root cause" in captured_tasks[0]["description"]
-    assert "imports, references, tests, or package exports" in captured_tasks[0]["description"]
+    assert (
+        "imports, references, tests, or package exports"
+        in captured_tasks[0]["description"]
+    )
+    assert "--- relative/path/to/file.ext ---" in captured_tasks[0]["description"]
     assert captured_tasks[0]["guardrail"].__name__ == "_text_result_guardrail"
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
     assert captured_tasks[1]["output_pydantic"].__name__ == "ValidationOutput"
     assert captured_tasks[1]["guardrail"].__name__ == "_quality_guardrail"
     assert captured_crew["agents"] == ["reimpl", "validator"]
-    assert captured_crew["memory"] == "memory:self:task_reimplement"
+    assert captured_crew.get("memory") is None
 
 
-def test_build_task_flow_reimplementation_crew_uses_na_for_empty_failed_checks(monkeypatch):
+def test_build_task_flow_reimplementation_crew_uses_na_for_empty_failed_checks(
+    monkeypatch,
+):
     from execution import task_reimplement_runtime as runtime
 
     captured_tasks = []
@@ -71,7 +76,6 @@ def test_build_task_flow_reimplementation_crew_uses_na_for_empty_failed_checks(m
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
     monkeypatch.setattr(runtime, "_build_agent", lambda: "reimpl")
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "validator")
-    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision")
 
     runtime.build_task_flow_reimplementation_crew(
@@ -88,7 +92,9 @@ def test_build_task_flow_reimplementation_crew_uses_na_for_empty_failed_checks(m
     assert "N/A" in captured_tasks[0]["description"]
 
 
-def test_build_task_flow_reimplementation_crew_mentions_self_antidrift_file(monkeypatch):
+def test_build_task_flow_reimplementation_crew_mentions_self_antidrift_file(
+    monkeypatch,
+):
     from execution import task_reimplement_runtime as runtime
 
     captured_tasks = []
@@ -106,7 +112,6 @@ def test_build_task_flow_reimplementation_crew_mentions_self_antidrift_file(monk
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
     monkeypatch.setattr(runtime, "_build_agent", lambda: "reimpl")
     monkeypatch.setattr(runtime, "create_validador_macro", lambda ctx: "validator")
-    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision")
 
     runtime.build_task_flow_reimplementation_crew(
@@ -124,12 +129,12 @@ def test_build_task_flow_reimplementation_crew_mentions_self_antidrift_file(monk
     assert "internal/SELF_VISION.md" in captured_tasks[1]["description"]
 
 
-def test_build_task_flow_reimplementation_agent_exposes_stack_validation_tool():
+def test_build_task_flow_reimplementation_agent_uses_text_first_mode():
     from execution import task_reimplement_runtime as runtime
 
     build_agent = cast(Any, getattr(runtime, "_build_agent"))
     agent = build_agent()
 
-    tool_names = {getattr(tool, "name", "") for tool in agent.tools}
-
-    assert "stack_aware_validation" in tool_names
+    assert agent.tools == []
+    assert agent.reasoning is False
+    assert "Do not use file, directory, memory, or validation tools" in agent.backstory

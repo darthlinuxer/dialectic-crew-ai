@@ -25,7 +25,10 @@ class TestTemplateNormalizer(unittest.TestCase):
             template_path.write_text("Section 1", encoding="utf-8")
             stdout = io.StringIO()
             argv = ["template_normalizer.py", str(template_path), "--apply"]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
             self.assertIn("normalized_path", stdout.getvalue())
@@ -43,7 +46,10 @@ class TestTemplateNormalizer(unittest.TestCase):
                 "--output",
                 str(output_path),
             ]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
             self.assertTrue(output_path.exists())

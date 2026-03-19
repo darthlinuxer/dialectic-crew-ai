@@ -54,7 +54,9 @@ def test_success_consistency(tmp_path, monkeypatch):
     json_path.write_text(prd.model_dump_json(indent=2), encoding="utf-8")
 
     res = validate_consistency(md_path, json_path, prd)
-    assert res.is_valid, f"Expected valid but got errors: {res.errors} warnings: {res.warnings}"
+    assert res.is_valid, (
+        f"Expected valid but got errors: {res.errors} warnings: {res.warnings}"
+    )
 
 
 def test_missing_headers(tmp_path, monkeypatch):
@@ -124,7 +126,10 @@ def test_vision_hash_mismatch(tmp_path, monkeypatch):
 
     res = validate_consistency(md_path, json_path, prd)
     assert not res.is_valid
-    assert any("vision_hash in MD does not match" in e or "could not be read to verify" in e for e in res.errors)
+    assert any(
+        "vision_hash in MD does not match" in e or "could not be read to verify" in e
+        for e in res.errors
+    )
 
 
 def test_json_mismatch(tmp_path, monkeypatch):
@@ -143,7 +148,9 @@ def test_json_mismatch(tmp_path, monkeypatch):
     bad = json.loads(prd.model_dump_json(indent=2))
     bad["feature_name"] = "Different"
     json_path = tmp_path / "bad.json"
-    json_path.write_text(json.dumps(bad, indent=2, ensure_ascii=False), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(bad, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
     res = validate_consistency(md_path, json_path, prd)
     assert not res.is_valid
@@ -153,11 +160,15 @@ def test_json_mismatch(tmp_path, monkeypatch):
 def test_consistency_with_self_vision_context(tmp_path, monkeypatch):
     """validate_consistency works with VisionContext.SELF."""
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='test'\n", encoding="utf-8"
+    )
     (tmp_path / "knowledge").mkdir(exist_ok=True)
     (tmp_path / "knowledge" / "VISION.md").write_text("User Vision", encoding="utf-8")
     (tmp_path / "internal").mkdir(exist_ok=True)
-    (tmp_path / "internal" / "SELF_VISION.md").write_text("Self Vision", encoding="utf-8")
+    (tmp_path / "internal" / "SELF_VISION.md").write_text(
+        "Self Vision", encoding="utf-8"
+    )
 
     prd = _make_prd()
     config = ExportConfig()
@@ -169,8 +180,12 @@ def test_consistency_with_self_vision_context(tmp_path, monkeypatch):
     json_path = tmp_path / "prd_self.json"
     json_path.write_text(prd.model_dump_json(indent=2), encoding="utf-8")
 
-    res = validate_consistency(md_path, json_path, prd, vision_context=VisionContext.SELF)
-    assert res.is_valid, f"Expected valid but got errors: {res.errors} warnings: {res.warnings}"
+    res = validate_consistency(
+        md_path, json_path, prd, vision_context=VisionContext.SELF
+    )
+    assert res.is_valid, (
+        f"Expected valid but got errors: {res.errors} warnings: {res.warnings}"
+    )
 
 
 def test_consistency_rejects_circular_story_dependencies(tmp_path, monkeypatch):
@@ -219,7 +234,9 @@ def test_consistency_rejects_circular_story_dependencies(tmp_path, monkeypatch):
 def test_vision_hash_drift_self_context(tmp_path, monkeypatch):
     """vision_hash mismatch detected when SELF vision document changes after export."""
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname='test'\n", encoding="utf-8"
+    )
     (tmp_path / "knowledge").mkdir(exist_ok=True)
     (tmp_path / "knowledge" / "VISION.md").write_text("User Vision", encoding="utf-8")
     (tmp_path / "internal").mkdir(exist_ok=True)
@@ -237,6 +254,8 @@ def test_vision_hash_drift_self_context(tmp_path, monkeypatch):
     json_path = tmp_path / "prd_drift.json"
     json_path.write_text(prd.model_dump_json(indent=2), encoding="utf-8")
 
-    res = validate_consistency(md_path, json_path, prd, vision_context=VisionContext.SELF)
+    res = validate_consistency(
+        md_path, json_path, prd, vision_context=VisionContext.SELF
+    )
     assert not res.is_valid
     assert any("vision_hash" in e for e in res.errors)

@@ -162,7 +162,7 @@ def _normalize_legacy_args(args: Sequence[str]) -> list[str]:
         next_index = resume_index + 1
         if next_index >= len(normalized) or normalized[next_index].startswith("-"):
             normalized = (
-                normalized[: next_index]
+                normalized[:next_index]
                 + [SELF_IMPROVE_AUTO_RESUME]
                 + normalized[next_index:]
             )
@@ -565,6 +565,23 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
         "--next-roadmap-item",
         help="Skip dialectic prioritization and use the first introspection opportunity.",
     ),
+    next_available_story: bool = typer.Option(
+        False,
+        "--next-available-story",
+        help=(
+            "Plan the first unfinished user story based on completed execution "
+            "plan artifacts, using the supplied PRD artifact or auto-discovering "
+            "the latest SELF PRD when none is provided."
+        ),
+    ),
+    continue_prd: bool = typer.Option(
+        False,
+        "--continue-prd",
+        help=(
+            "Continue the supplied PRD artifact, or the newest unfinished SELF "
+            "PRD when none is supplied, until all unfinished user stories are processed."
+        ),
+    ),
 ) -> None:
     """Run the guarded self-improvement orchestration workflow.
 
@@ -572,6 +589,10 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
       uv run dialectic-crew self-improve --simulate
       uv run dialectic-crew self-improve --skip-baseline-tests
       uv run dialectic-crew self-improve --next-roadmap-item
+            uv run dialectic-crew self-improve --next-available-story
+            uv run dialectic-crew self-improve prd_output/self/my_prd.json --next-available-story
+        uv run dialectic-crew self-improve --continue-prd
+        uv run dialectic-crew self-improve prd_output/self/my_prd.json --continue-prd
       uv run dialectic-crew self-improve --max 1
       uv run dialectic-crew self-improve prd_output/PRD_20260308_1640.json
       uv run dialectic-crew self-improve prd_output/exec_US-01_20260313_125038.json
@@ -597,6 +618,10 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
         args.append("--skip-baseline-tests")
     if next_roadmap_item:
         args.append("--next-roadmap-item")
+    if next_available_story:
+        args.append("--next-available-story")
+    if continue_prd:
+        args.append("--continue-prd")
     if resume_cycle_id:
         args.extend(["--resume", resume_cycle_id])
     if artifact_path:
@@ -614,6 +639,8 @@ def self_improve_command(  # pylint: disable=too-many-arguments,too-many-positio
             skip_baseline_tests=skip_baseline_tests,
             artifact_path=artifact_path,
             next_roadmap_item=next_roadmap_item,
+            **({"next_available_story": True} if next_available_story else {}),
+            **({"continue_prd": True} if continue_prd else {}),
         ),
     )
 
@@ -672,8 +699,12 @@ def make_vision_command(
 @app.command("clear-runtime")
 def clear_runtime_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     logs: bool = typer.Option(False, "--logs", help="Clear application log files."),
-    metrics: bool = typer.Option(False, "--metrics", help="Clear the metrics database."),
-    flows: bool = typer.Option(False, "--flows", help="Clear the CrewAI flow database."),
+    metrics: bool = typer.Option(
+        False, "--metrics", help="Clear the metrics database."
+    ),
+    flows: bool = typer.Option(
+        False, "--flows", help="Clear the CrewAI flow database."
+    ),
     prd: bool = typer.Option(
         False,
         "--prd",
@@ -792,10 +823,3 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 __all__ = ["app", "main"]
-
-
-
-
-
-
-

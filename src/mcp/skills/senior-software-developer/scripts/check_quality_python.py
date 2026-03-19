@@ -30,11 +30,11 @@ def print_section(title: str) -> None:
 def run_command(command: list[str], description: str) -> tuple[bool, str]:
     """
     Run a shell command and return success status and output
-    
+
     Args:
         command: Command to run as list of strings
         description: Human-readable description for logging
-        
+
     Returns:
         Tuple of (success: bool, output: str)
     """
@@ -57,9 +57,7 @@ def run_command(command: list[str], description: str) -> tuple[bool, str]:
         print(
             f"{Colors.RED}✗ {description} - Command not found: {command[0]}{Colors.RESET}"
         )
-        print(
-            f"  Install with: uv pip install {command[0]} or add to pyproject.toml"
-        )
+        print(f"  Install with: uv pip install {command[0]} or add to pyproject.toml")
         return False, f"Command not found: {command[0]}"
 
 
@@ -67,7 +65,9 @@ def check_python_files() -> bool:
     """Check if there are Python files to analyze"""
     python_files = list(Path.cwd().rglob("*.py"))
     if not python_files:
-        print(f"{Colors.YELLOW}No Python files found in current directory{Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}No Python files found in current directory{Colors.RESET}"
+        )
         return False
     return True
 
@@ -110,7 +110,7 @@ def main() -> int:
 
     # 4. Pytest - Tests with coverage
     print_section("4. Pytest - Tests with Coverage")
-    
+
     # Check if tests directory exists
     tests_exist = (
         Path("tests").exists()
@@ -137,7 +137,9 @@ def main() -> int:
                 f"\n{Colors.GREEN}Coverage report generated in htmlcov/index.html{Colors.RESET}"
             )
     else:
-        print(f"{Colors.YELLOW}No tests found (tests/ dir or test_*.py files){Colors.RESET}")
+        print(
+            f"{Colors.YELLOW}No tests found (tests/ dir or test_*.py files){Colors.RESET}"
+        )
         results.append(("Pytest", None))
 
     # Summary

@@ -46,7 +46,11 @@ from crewai.hooks import (
 )
 
 from dialectic.metrics import emit as emit_metric
-from dialectic.token_tracker import TokenBudgetTracker, count_messages_tokens, count_tokens
+from dialectic.token_tracker import (
+    TokenBudgetTracker,
+    count_messages_tokens,
+    count_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +233,8 @@ def _before_tool_call_hook(context: ToolCallHookContext) -> bool | None:
                 resolved_target = resolved_target.resolve()
 
             if not any(
-                resolved_target == allowed_root or allowed_root in resolved_target.parents
+                resolved_target == allowed_root
+                or allowed_root in resolved_target.parents
                 for allowed_root in scope.allowed_write_roots
             ):
                 logger.warning(
@@ -345,7 +350,8 @@ class HookScope:
         )
         self.protected_paths = protected_paths or frozenset()
         self.allowed_write_roots = frozenset(
-            Path(root).expanduser().resolve() for root in (allowed_write_roots or frozenset())
+            Path(root).expanduser().resolve()
+            for root in (allowed_write_roots or frozenset())
         )
         self.label = label
         self._previous_scope: HookScope | None = None

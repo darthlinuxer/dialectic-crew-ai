@@ -9,7 +9,13 @@ from dialectic.yaml_config import (
 
 
 def test_load_yaml_config_reads_agent_templates():
-    config_path = Path(__file__).resolve().parents[1] / "src" / "dialectic" / "config" / "agents.yaml"
+    config_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "dialectic"
+        / "config"
+        / "agents.yaml"
+    )
 
     config = load_yaml_config(config_path)
 

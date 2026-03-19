@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections import deque
 
-from dialectic.dependency_graph import format_dependency_errors, validate_task_dependencies
+from dialectic.dependency_graph import (
+    format_dependency_errors,
+    validate_task_dependencies,
+)
 from schemas import ImplementationTask
 
 

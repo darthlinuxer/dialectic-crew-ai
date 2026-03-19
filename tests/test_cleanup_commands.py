@@ -65,7 +65,9 @@ def test_cmd_clear_runtime_dry_run_preserves_files(tmp_path, monkeypatch, capsys
     assert "Would remove" in capsys.readouterr().out
 
 
-def test_cmd_clear_self_improve_removes_snapshot_and_linked_execution(tmp_path, monkeypatch):
+def test_cmd_clear_self_improve_removes_snapshot_and_linked_execution(
+    tmp_path, monkeypatch
+):
     app_root = tmp_path / "app"
     snapshot = app_root / ".dialectic" / "self_improve" / "cycle-1.json"
     exec_dir = app_root / "exec_output" / "self" / "run-123"
@@ -95,7 +97,9 @@ def test_cmd_clear_self_improve_removes_snapshot_and_linked_execution(tmp_path, 
     assert not exec_dir.exists()
 
 
-def test_cmd_clear_self_improve_without_linked_exec_keeps_execution_artifacts(tmp_path, monkeypatch):
+def test_cmd_clear_self_improve_without_linked_exec_keeps_execution_artifacts(
+    tmp_path, monkeypatch
+):
     app_root = tmp_path / "app"
     snapshot = app_root / ".dialectic" / "self_improve" / "cycle-1.json"
     exec_dir = app_root / "exec_output" / "self" / "run-123"
@@ -143,7 +147,9 @@ def test_cmd_clear_self_improve_all_removes_all_snapshots_only(tmp_path, monkeyp
     assert not state_dir.exists()
 
 
-def test_cmd_clear_self_improve_dry_run_preserves_snapshot(tmp_path, monkeypatch, capsys):
+def test_cmd_clear_self_improve_dry_run_preserves_snapshot(
+    tmp_path, monkeypatch, capsys
+):
     app_root = tmp_path / "app"
     snapshot = app_root / ".dialectic" / "self_improve" / "cycle-1.json"
     snapshot.parent.mkdir(parents=True, exist_ok=True)

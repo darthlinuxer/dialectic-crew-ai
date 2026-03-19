@@ -62,7 +62,9 @@ class TestInputsValidator(unittest.TestCase):
             template_path = Path(tmp) / "TEMPLATE.md"
             inputs_path = Path(tmp) / "INPUTS.md"
             template_path.write_text("Hello {{a}} {{b}}", encoding="utf-8")
-            inputs_path.write_text("| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8")
+            inputs_path.write_text(
+                "| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8"
+            )
             stdout = io.StringIO()
             argv = [
                 "inputs_validator.py",
@@ -71,7 +73,10 @@ class TestInputsValidator(unittest.TestCase):
                 "--inputs",
                 str(inputs_path),
             ]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 2)
             self.assertIn("missing_inputs", stdout.getvalue())
@@ -81,7 +86,9 @@ class TestInputsValidator(unittest.TestCase):
             template_path = Path(tmp) / "TEMPLATE.md"
             inputs_path = Path(tmp) / "INPUTS.md"
             template_path.write_text("Hello {{a}}", encoding="utf-8")
-            inputs_path.write_text("| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8")
+            inputs_path.write_text(
+                "| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8"
+            )
             stdout = io.StringIO()
             argv = [
                 "inputs_validator.py",
@@ -91,7 +98,10 @@ class TestInputsValidator(unittest.TestCase):
                 str(inputs_path),
                 "--pretty",
             ]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
 
@@ -101,7 +111,9 @@ class TestInputsValidator(unittest.TestCase):
             inputs_path = Path(tmp) / "INPUTS.md"
             output_path = Path(tmp) / "report.md"
             template_path.write_text("Hello {{a}}", encoding="utf-8")
-            inputs_path.write_text("| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8")
+            inputs_path.write_text(
+                "| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8"
+            )
             argv = [
                 "inputs_validator.py",
                 "--template",

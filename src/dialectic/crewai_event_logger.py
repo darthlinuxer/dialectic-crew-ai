@@ -62,6 +62,7 @@ try:
         ToolUsageStartedEvent,
         crewai_event_bus as _IMPORTED_CREWAI_EVENT_BUS,
     )
+
     _CrewAIBaseEventListener = _ImportedCrewAIBaseEventListener
     _CREWAI_EVENT_BUS = _IMPORTED_CREWAI_EVENT_BUS
     _HAS_CREWAI_EVENTS = True
@@ -168,9 +169,7 @@ class CrewAIRuntimeEventLogger(  # pylint: disable=too-few-public-methods,useles
 
     def __init__(self, event_types: Sequence[type[Any]] | None = None) -> None:
         self._event_types = (
-            tuple(event_types)
-            if event_types is not None
-            else _default_event_types()
+            tuple(event_types) if event_types is not None else _default_event_types()
         )
         self._last_signature: tuple[Any, ...] | None = None
         self._last_logged_at: float = 0.0

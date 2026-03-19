@@ -72,6 +72,7 @@ def _build_agent(
 # to avoid cross-flow contamination when memory=True.
 # ---------------------------------------------------------------------------
 
+
 def create_visionario(
     vision_context: VisionContext = VisionContext.PROJECT,
 ) -> Agent:

@@ -29,7 +29,9 @@ def _opp(
     id: str = "opp-1",
     title: str = "Test opportunity",
     impact: Literal["low", "medium", "high"] = "medium",
-    category: Literal["vision_gap", "metric_regression", "code_health", "failure_pattern"] = "vision_gap",
+    category: Literal[
+        "vision_gap", "metric_regression", "code_health", "failure_pattern"
+    ] = "vision_gap",
 ) -> ImprovementOpportunity:
     return ImprovementOpportunity(
         id=id,
@@ -132,10 +134,12 @@ class TestBuildOpportunitiesText:
         assert "evidence-1" in text
 
     def test_multiple_opportunities(self):
-        text = _build_opportunities_text([
-            _opp(id="a", title="First"),
-            _opp(id="b", title="Second"),
-        ])
+        text = _build_opportunities_text(
+            [
+                _opp(id="a", title="First"),
+                _opp(id="b", title="Second"),
+            ]
+        )
         assert "1. [a]" in text
         assert "2. [b]" in text
 
@@ -356,7 +360,10 @@ class TestDialecticPrioritize:
 
         mock_result = MagicMock()
         mock_result.pydantic = PrioritizationResult(
-            ranked=[_ranked(opportunity_id=f"opp-{i}", rank=i + 1, score=float(10 - i)) for i in range(3)],
+            ranked=[
+                _ranked(opportunity_id=f"opp-{i}", rank=i + 1, score=float(10 - i))
+                for i in range(3)
+            ],
             debate_summary="top 3",
         )
         mock_result.tasks_output = []
@@ -365,7 +372,9 @@ class TestDialecticPrioritize:
         result = dialectic_prioritize(opps, max_to_debate=3)
         assert len(result) == 10
         debated_ids = {result[i].id for i in range(3)}
-        assert "opp-0" in debated_ids or "opp-1" in debated_ids or "opp-2" in debated_ids
+        assert (
+            "opp-0" in debated_ids or "opp-1" in debated_ids or "opp-2" in debated_ids
+        )
         build_kwargs = mock_build_crew.call_args.kwargs
         assert "opp-0" in build_kwargs["opp_text"]
         assert "opp-1" in build_kwargs["opp_text"]

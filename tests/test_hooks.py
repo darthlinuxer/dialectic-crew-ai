@@ -405,6 +405,7 @@ class TestHookScope:
 
     def test_emits_summary_metric_on_exit(self, monkeypatch, tmp_path):
         from dialectic.metrics import MetricsStore
+
         store = MetricsStore(db_path=tmp_path / "scope_test.db")
         monkeypatch.setattr("dialectic.metrics._store", store)
 

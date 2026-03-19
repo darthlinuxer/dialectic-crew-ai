@@ -32,7 +32,9 @@ def _run_tool_test(model_name: str) -> dict:
 
     llm = LLM(model=model_name, timeout=LLM_TIMEOUT)
     read_tool = FileReadTool(name="read_file", description="Read content from a file")
-    write_tool = FileWriterTool(name="write_file", description="Write content to a file")
+    write_tool = FileWriterTool(
+        name="write_file", description="Write content to a file"
+    )
 
     agent = Agent(
         role="File Worker",
@@ -76,7 +78,9 @@ def test_llm_simple_tool_calling():
     model = os.getenv("LLM_MODEL_SIMPLE", "gpt-4o-mini")
     result = _run_tool_test(model)
     assert result["tool_invoked"], f"Model {model} did not invoke tools"
-    assert result["correct"], f"Model {model} wrote wrong content: {result['output_content']}"
+    assert result["correct"], (
+        f"Model {model} wrote wrong content: {result['output_content']}"
+    )
 
 
 @pytest.mark.llm
@@ -85,7 +89,9 @@ def test_llm_complex_tool_calling():
     model = os.getenv("LLM_MODEL_COMPLEX", "gpt-4o")
     result = _run_tool_test(model)
     assert result["tool_invoked"], f"Model {model} did not invoke tools"
-    assert result["correct"], f"Model {model} wrote wrong content: {result['output_content']}"
+    assert result["correct"], (
+        f"Model {model} wrote wrong content: {result['output_content']}"
+    )
 
 
 @pytest.mark.llm
@@ -94,4 +100,6 @@ def test_llm_reasoning_tool_calling():
     model = os.getenv("LLM_MODEL_REASONING", "o3-mini")
     result = _run_tool_test(model)
     assert result["tool_invoked"], f"Model {model} did not invoke tools"
-    assert result["correct"], f"Model {model} wrote wrong content: {result['output_content']}"
+    assert result["correct"], (
+        f"Model {model} wrote wrong content: {result['output_content']}"
+    )

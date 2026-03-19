@@ -51,7 +51,9 @@ def test_output_dir_conversion_and_fallback(monkeypatch, tmp_path):
 
 
 @pytest.mark.skipif(not _HAS_PYDANTIC_SETTINGS, reason="requires pydantic-settings")
-def test_dotenv_with_unrelated_keys_does_not_trigger_fallback(monkeypatch, tmp_path, caplog):
+def test_dotenv_with_unrelated_keys_does_not_trigger_fallback(
+    monkeypatch, tmp_path, caplog
+):
     monkeypatch.delenv("PRD_OUTPUT_FORMAT", raising=False)
     monkeypatch.delenv("PRD_OUTPUT_DIR", raising=False)
     env_file = tmp_path / ".env"

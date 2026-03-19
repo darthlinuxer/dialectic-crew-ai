@@ -28,7 +28,9 @@ class MarkdownExporter:
     """Export data to Markdown format"""
 
     @staticmethod
-    def table(headers: List[str], rows: List[List[Any]], alignment: Optional[List[str]] = None) -> str:
+    def table(
+        headers: List[str], rows: List[List[Any]], alignment: Optional[List[str]] = None
+    ) -> str:
         """
         Create a markdown table
 
@@ -45,30 +47,26 @@ class MarkdownExporter:
 
         # Default alignment is left
         if alignment is None:
-            alignment = ['left'] * len(headers)
+            alignment = ["left"] * len(headers)
 
         # Create alignment row
-        align_map = {
-            'left': ':---',
-            'center': ':---:',
-            'right': '---:'
-        }
-        align_row = [align_map.get(a, ':---') for a in alignment]
+        align_map = {"left": ":---", "center": ":---:", "right": "---:"}
+        align_row = [align_map.get(a, ":---") for a in alignment]
 
         # Build table
         lines = []
-        lines.append('| ' + ' | '.join(str(h) for h in headers) + ' |')
-        lines.append('| ' + ' | '.join(align_row) + ' |')
+        lines.append("| " + " | ".join(str(h) for h in headers) + " |")
+        lines.append("| " + " | ".join(align_row) + " |")
 
         for row in rows:
-            lines.append('| ' + ' | '.join(str(cell) for cell in row) + ' |')
+            lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def heading(text: str, level: int = 1) -> str:
         """Create markdown heading"""
-        return '#' * level + ' ' + text
+        return "#" * level + " " + text
 
     @staticmethod
     def bullet_list(items: List[str], ordered: bool = False) -> str:
@@ -77,7 +75,7 @@ class MarkdownExporter:
         for i, item in enumerate(items, 1):
             prefix = f"{i}." if ordered else "-"
             lines.append(f"{prefix} {item}")
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def code_block(code: str, language: str = "") -> str:
@@ -109,7 +107,7 @@ class MermaidExporter:
         normal_color: str = "#4ECDC4",
         normal_stroke: str = "#45B7AF",
         normal_stroke_width: str = "2px",
-        show_duration: bool = False
+        show_duration: bool = False,
     ) -> str:
         """
         Create a Mermaid flowchart with configurable styling
@@ -133,39 +131,39 @@ class MermaidExporter:
 
         # Add nodes
         for node in nodes:
-            node_id = node['id']
-            label = node.get('label', node_id)
-            shape = node.get('shape', 'rounded')
+            node_id = node["id"]
+            label = node.get("label", node_id)
+            shape = node.get("shape", "rounded")
 
             # Shape mapping
-            if shape == 'box':
+            if shape == "box":
                 lines.append(f"    {node_id}[{label}]")
-            elif shape == 'rounded':
+            elif shape == "rounded":
                 lines.append(f"    {node_id}({label})")
-            elif shape == 'circle':
+            elif shape == "circle":
                 lines.append(f"    {node_id}(({label}))")
-            elif shape == 'diamond':
+            elif shape == "diamond":
                 lines.append(f"    {node_id}{{{{{label}}}}}")
-            elif shape == 'hexagon':
+            elif shape == "hexagon":
                 lines.append(f"    {node_id}{{{{{label}}}}}")
-            elif shape == 'stadium':
+            elif shape == "stadium":
                 lines.append(f"    {node_id}([{label}])")
             else:
                 lines.append(f"    {node_id}({label})")
 
         # Add edges
         for edge in edges:
-            from_node = edge['from']
-            to_node = edge['to']
-            label = edge.get('label', '')
+            from_node = edge["from"]
+            to_node = edge["to"]
+            label = edge.get("label", "")
 
             # Optionally append duration
-            if show_duration and 'duration' in edge:
+            if show_duration and "duration" in edge:
                 duration_label = f"{edge['duration']}d"
                 label = f"{label} {duration_label}" if label else duration_label
 
             # Determine edge style (thick for critical path)
-            edge_style = "==>" if edge.get('critical', False) else "-->"
+            edge_style = "==>" if edge.get("critical", False) else "-->"
 
             if label:
                 lines.append(f"    {from_node} {edge_style}|{label}| {to_node}")
@@ -173,18 +171,22 @@ class MermaidExporter:
                 lines.append(f"    {from_node} {edge_style} {to_node}")
 
         # Add styling for critical and normal nodes
-        critical_nodes = [n['id'] for n in nodes if n.get('critical', False)]
-        normal_nodes = [n['id'] for n in nodes if not n.get('critical', False)]
+        critical_nodes = [n["id"] for n in nodes if n.get("critical", False)]
+        normal_nodes = [n["id"] for n in nodes if not n.get("critical", False)]
 
         if critical_nodes:
-            lines.append(f"    classDef critical fill:{critical_color},stroke:{critical_stroke},stroke-width:{critical_stroke_width}")
+            lines.append(
+                f"    classDef critical fill:{critical_color},stroke:{critical_stroke},stroke-width:{critical_stroke_width}"
+            )
             lines.append(f"    class {','.join(critical_nodes)} critical")
 
         if normal_nodes:
-            lines.append(f"    classDef normal fill:{normal_color},stroke:{normal_stroke},stroke-width:{normal_stroke_width}")
+            lines.append(
+                f"    classDef normal fill:{normal_color},stroke:{normal_stroke},stroke-width:{normal_stroke_width}"
+            )
             lines.append(f"    class {','.join(normal_nodes)} normal")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def gantt(title: str, sections: List[Dict]) -> str:
@@ -205,17 +207,17 @@ class MermaidExporter:
         for section in sections:
             lines.append(f"    section {section['name']}")
 
-            for task in section.get('tasks', []):
-                task_name = task['name']
-                task_id = task.get('id', task_name.replace(' ', '_'))
-                start = task['start']
-                end = task['end']
-                status = task.get('status', 'active')
+            for task in section.get("tasks", []):
+                task_name = task["name"]
+                task_id = task.get("id", task_name.replace(" ", "_"))
+                start = task["start"]
+                end = task["end"]
+                status = task.get("status", "active")
 
                 # Status mapping: active, done, crit
                 lines.append(f"    {task_name} :{status}, {task_id}, {start}, {end}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def pie_chart(title: str, data: Dict[str, float]) -> str:
@@ -230,12 +232,12 @@ class MermaidExporter:
             Mermaid pie chart string
         """
         lines = ["pie"]
-        lines.append(f'    title {title}')
+        lines.append(f"    title {title}")
 
         for label, value in data.items():
             lines.append(f'    "{label}" : {value}')
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def line_chart(title: str, x_labels: List[str], datasets: List[Dict]) -> str:
@@ -254,20 +256,22 @@ class MermaidExporter:
         lines.append("xychart-beta")
         lines.append(f'    title "{title}"')
         x_axis_labels = ", ".join(f'"{x}"' for x in x_labels)
-        lines.append(f'    x-axis [{x_axis_labels}]')
+        lines.append(f"    x-axis [{x_axis_labels}]")
 
         for dataset in datasets:
-            data = dataset['data']
-            lines.append(f'    line [{", ".join(str(v) for v in data)}]')
+            data = dataset["data"]
+            lines.append(f"    line [{', '.join(str(v) for v in data)}]")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
 
 class PlantUMLExporter:
     """Export data to PlantUML diagram format"""
 
     @staticmethod
-    def activity_diagram(activities: List[Dict], title: str = "Activity Diagram") -> str:
+    def activity_diagram(
+        activities: List[Dict], title: str = "Activity Diagram"
+    ) -> str:
         """
         Create a PlantUML activity diagram
 
@@ -284,15 +288,15 @@ class PlantUMLExporter:
 
         # Define activities
         for activity in activities:
-            act_id = activity['id']
-            name = activity['name']
+            act_id = activity["id"]
+            name = activity["name"]
             lines.append(f":{name};")
             lines.append(f"note right: {act_id}")
 
         lines.append("")
         lines.append("@enduml")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def gantt_diagram(
@@ -300,7 +304,7 @@ class PlantUMLExporter:
         title: str = "Project Timeline",
         critical_color: str = "Red",
         normal_color: str = "LightBlue",
-        print_scale: str = "weekly"
+        print_scale: str = "weekly",
     ) -> str:
         """
         Create a PlantUML Gantt diagram with configurable styling
@@ -322,29 +326,35 @@ class PlantUMLExporter:
         lines.append("")
 
         for task in tasks:
-            task_id = task['id']
-            name = task['name']
-            start = task.get('start', '')
-            duration = int(task.get('duration', 1))  # Convert to int for PlantUML
-            deps = task.get('dependencies', [])
-            is_critical = task.get('critical', False)
+            task_id = task["id"]
+            name = task["name"]
+            start = task.get("start", "")
+            duration = int(task.get("duration", 1))  # Convert to int for PlantUML
+            deps = task.get("dependencies", [])
+            is_critical = task.get("critical", False)
 
             color = critical_color if is_critical else normal_color
 
             # PlantUML requires duration and dependencies in SAME statement
             if start:
                 # Explicit start date
-                lines.append(f"[{name}] as [{task_id}] starts {start} and lasts {duration} days")
+                lines.append(
+                    f"[{name}] as [{task_id}] starts {start} and lasts {duration} days"
+                )
             elif len(deps) == 0:
                 # No dependencies - just duration
                 lines.append(f"[{name}] as [{task_id}] lasts {duration} days")
             elif len(deps) == 1:
                 # Single dependency - combine with duration
-                lines.append(f"[{name}] as [{task_id}] starts at [{deps[0]}]'s end and lasts {duration} days")
+                lines.append(
+                    f"[{name}] as [{task_id}] starts at [{deps[0]}]'s end and lasts {duration} days"
+                )
             else:
                 # Multiple dependencies - document all but use last one
                 lines.append(f"' Note: [{task_id}] depends on: {', '.join(deps)}")
-                lines.append(f"[{name}] as [{task_id}] starts at [{deps[-1]}]'s end and lasts {duration} days")
+                lines.append(
+                    f"[{name}] as [{task_id}] starts at [{deps[-1]}]'s end and lasts {duration} days"
+                )
 
             # Apply color
             lines.append(f"[{task_id}] is colored in {color}")
@@ -352,7 +362,7 @@ class PlantUMLExporter:
         lines.append("")
         lines.append("@endgantt")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     @staticmethod
     def class_diagram(classes: List[Dict], title: str = "Class Diagram") -> str:
@@ -373,12 +383,12 @@ class PlantUMLExporter:
         for cls in classes:
             lines.append(f"class {cls['name']} {{")
 
-            for attr in cls.get('attributes', []):
+            for attr in cls.get("attributes", []):
                 lines.append(f"  {attr}")
 
             lines.append("  --")
 
-            for method in cls.get('methods', []):
+            for method in cls.get("methods", []):
                 lines.append(f"  {method}")
 
             lines.append("}")
@@ -386,7 +396,7 @@ class PlantUMLExporter:
 
         lines.append("@enduml")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
 
 class HTMLExporter:
@@ -475,8 +485,8 @@ class HTMLExporter:
 """
 
         for section in sections:
-            heading = section.get('heading', '')
-            content = section.get('content', '')
+            heading = section.get("heading", "")
+            content = section.get("content", "")
 
             if heading:
                 html += f"    <h2>{escape(heading)}</h2>\n"
@@ -486,7 +496,7 @@ class HTMLExporter:
         # Add metadata
         html += f"""
     <div class="metadata">
-        Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br>
+        Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}<br>
         Tool: Senior Agile PM Budget Analyst
     </div>
 </body>
@@ -499,20 +509,20 @@ class HTMLExporter:
     def table(headers: List[str], rows: List[List[Any]], css_class: str = "") -> str:
         """Create HTML table"""
         html = f'<table class="{css_class}">\n'
-        html += '  <tr>\n'
+        html += "  <tr>\n"
 
         for header in headers:
-            html += f'    <th>{escape(str(header))}</th>\n'
+            html += f"    <th>{escape(str(header))}</th>\n"
 
-        html += '  </tr>\n'
+        html += "  </tr>\n"
 
         for row in rows:
-            html += '  <tr>\n'
+            html += "  <tr>\n"
             for cell in row:
-                html += f'    <td>{escape(str(cell))}</td>\n'
-            html += '  </tr>\n'
+                html += f"    <td>{escape(str(cell))}</td>\n"
+            html += "  </tr>\n"
 
-        html += '</table>\n'
+        html += "</table>\n"
 
         return html
 
@@ -590,7 +600,7 @@ def save_to_file(content: str, filepath: str) -> None:
         content: String content to save
         filepath: Output file path
     """
-    with open(filepath, 'w', encoding='utf-8') as f:
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(content)
 
 
@@ -610,10 +620,12 @@ def main():
     rows = [
         ["Epic 1", "14 days", "✅ Complete", "Team A"],
         ["Epic 2", "21 days", "🔄 In Progress", "Team B"],
-        ["Epic 3", "7 days", "⏳ Not Started", "Team A"]
+        ["Epic 3", "7 days", "⏳ Not Started", "Team A"],
     ]
 
-    md_table = MarkdownExporter.table(headers, rows, alignment=['left', 'right', 'center', 'left'])
+    md_table = MarkdownExporter.table(
+        headers, rows, alignment=["left", "right", "center", "left"]
+    )
     print("\n" + md_table)
 
     # Example 2: Mermaid Flowchart
@@ -625,14 +637,14 @@ def main():
         {"id": "A", "label": "Epic 1", "shape": "box", "critical": True},
         {"id": "B", "label": "Epic 2", "shape": "box", "critical": True},
         {"id": "C", "label": "Epic 3", "shape": "box", "critical": False},
-        {"id": "D", "label": "Epic 4", "shape": "box", "critical": True}
+        {"id": "D", "label": "Epic 4", "shape": "box", "critical": True},
     ]
 
     edges = [
         {"from": "A", "to": "B", "label": "14d"},
         {"from": "A", "to": "C", "label": "7d"},
         {"from": "B", "to": "D", "label": "21d"},
-        {"from": "C", "to": "D", "label": ""}
+        {"from": "C", "to": "D", "label": ""},
     ]
 
     mermaid_flow = MermaidExporter.flowchart(nodes, edges, direction="LR")
@@ -649,17 +661,41 @@ def main():
         {
             "name": "Sprint 1",
             "tasks": [
-                {"id": "epic1", "name": "User Authentication", "start": "2024-03-01", "end": "2024-03-14", "status": "done"},
-                {"id": "epic2", "name": "Product Catalog", "start": "2024-03-01", "end": "2024-03-14", "status": "done"}
-            ]
+                {
+                    "id": "epic1",
+                    "name": "User Authentication",
+                    "start": "2024-03-01",
+                    "end": "2024-03-14",
+                    "status": "done",
+                },
+                {
+                    "id": "epic2",
+                    "name": "Product Catalog",
+                    "start": "2024-03-01",
+                    "end": "2024-03-14",
+                    "status": "done",
+                },
+            ],
         },
         {
             "name": "Sprint 2",
             "tasks": [
-                {"id": "epic3", "name": "Shopping Cart", "start": "2024-03-15", "end": "2024-03-28", "status": "active"},
-                {"id": "epic4", "name": "Checkout Process", "start": "2024-03-15", "end": "2024-03-28", "status": "active"}
-            ]
-        }
+                {
+                    "id": "epic3",
+                    "name": "Shopping Cart",
+                    "start": "2024-03-15",
+                    "end": "2024-03-28",
+                    "status": "active",
+                },
+                {
+                    "id": "epic4",
+                    "name": "Checkout Process",
+                    "start": "2024-03-15",
+                    "end": "2024-03-28",
+                    "status": "active",
+                },
+            ],
+        },
     ]
 
     mermaid_gantt = MermaidExporter.gantt("E-commerce Project", sections)
@@ -673,9 +709,29 @@ def main():
     print("=" * 80)
 
     tasks = [
-        {"id": "E1", "name": "Epic 1", "start": "2024-03-01", "duration": 14, "critical": True},
-        {"id": "E2", "name": "Epic 2", "start": "2024-03-15", "duration": 21, "dependencies": ["E1"], "critical": True},
-        {"id": "E3", "name": "Epic 3", "start": "2024-03-15", "duration": 14, "dependencies": ["E1"], "critical": False}
+        {
+            "id": "E1",
+            "name": "Epic 1",
+            "start": "2024-03-01",
+            "duration": 14,
+            "critical": True,
+        },
+        {
+            "id": "E2",
+            "name": "Epic 2",
+            "start": "2024-03-15",
+            "duration": 21,
+            "dependencies": ["E1"],
+            "critical": True,
+        },
+        {
+            "id": "E3",
+            "name": "Epic 3",
+            "start": "2024-03-15",
+            "duration": 14,
+            "dependencies": ["E1"],
+            "critical": False,
+        },
     ]
 
     plantuml_gantt = PlantUMLExporter.gantt_diagram(tasks, "Project Timeline")
@@ -699,12 +755,9 @@ def main():
     html_sections = [
         {
             "heading": "Project Summary",
-            "content": "<p>Total Duration: <strong>42 days</strong></p><p>Budget: <strong>$150,000</strong></p>"
+            "content": "<p>Total Duration: <strong>42 days</strong></p><p>Budget: <strong>$150,000</strong></p>",
         },
-        {
-            "heading": "Task Overview",
-            "content": HTMLExporter.table(headers, rows)
-        }
+        {"heading": "Task Overview", "content": HTMLExporter.table(headers, rows)},
     ]
 
     html_report = HTMLExporter.simple_report("Project Report", html_sections)

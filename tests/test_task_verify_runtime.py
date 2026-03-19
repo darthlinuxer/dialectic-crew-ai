@@ -30,7 +30,6 @@ def test_build_task_flow_verification_crew_uses_yaml_templates(monkeypatch):
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
     monkeypatch.setattr(runtime, "_build_agent", lambda: "verifier")
-    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: f"memory:{ctx.value}:{namespace}")
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
     monkeypatch.setattr(
         runtime,
@@ -52,17 +51,23 @@ def test_build_task_flow_verification_crew_uses_yaml_templates(monkeypatch):
     assert "- file exists" in captured_tasks[0]["description"]
     assert "imports and references still resolve" in captured_tasks[0]["description"]
     assert "related tests or package exports" in captured_tasks[0]["description"]
+    assert (
+        "Return ONLY valid JSON matching VerificationResult"
+        in captured_tasks[0]["description"]
+    )
     assert captured_tasks[0]["output_pydantic"].__name__ == "VerificationResult"
     assert captured_tasks[0]["guardrail"].__name__ == "_verification_guardrail"
     assert captured_crew["agents"] == ["verifier"]
-    assert captured_crew["memory"] == "memory:self:task_verify"
+    assert captured_crew.get("memory") is None
     assert captured_crew["knowledge_sources"] == ["vision:self"]
     assert captured_helper["kwargs"]["tasks"] == captured_crew["tasks"]
-    assert captured_helper["kwargs"]["memory"] == "memory:self:task_verify"
+    assert captured_helper["kwargs"].get("memory") is None
     assert captured_helper["kwargs"]["knowledge_sources"] == ["vision:self"]
 
 
-def test_build_task_flow_verification_crew_omits_acceptance_block_when_empty(monkeypatch):
+def test_build_task_flow_verification_crew_omits_acceptance_block_when_empty(
+    monkeypatch,
+):
     from execution import task_verify_runtime as runtime
 
     captured_tasks = []
@@ -79,7 +84,6 @@ def test_build_task_flow_verification_crew_omits_acceptance_block_when_empty(mon
     monkeypatch.setattr(runtime, "Task", FakeTask)
     monkeypatch.setattr(runtime, "Crew", FakeCrew)
     monkeypatch.setattr(runtime, "_build_agent", lambda: "verifier")
-    monkeypatch.setattr(runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(runtime, "vision_knowledge", lambda ctx: "vision")
 
     runtime.build_task_flow_verification_crew(
@@ -94,7 +98,7 @@ def test_build_task_flow_verification_crew_omits_acceptance_block_when_empty(mon
     assert "obvious static-analysis breakage" in captured_tasks[0]["description"]
 
 
-def test_build_task_flow_verification_agent_exposes_stack_validation_tool():
+def test_build_task_flow_verification_agent_uses_structured_mode():
     from execution import task_verify_runtime as runtime
 
     build_agent = cast(Any, getattr(runtime, "_build_agent"))
@@ -103,6 +107,9 @@ def test_build_task_flow_verification_agent_exposes_stack_validation_tool():
     tool_names = {getattr(tool, "name", "") for tool in agent.tools}
 
     assert "stack_aware_validation" in tool_names
+    assert "list_directory" not in tool_names
+    assert agent.reasoning is False
+    assert "structured verification mode" in agent.backstory
 
 
 def test_run_independent_verifier_uses_runtime_builder(monkeypatch):

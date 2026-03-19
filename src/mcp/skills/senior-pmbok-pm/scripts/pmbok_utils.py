@@ -91,7 +91,9 @@ def _sanitize_id(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", value)
 
 
-def _build_graph_edges(data: Any, parent_id: str, edges: List[Tuple[str, str]], nodes: Dict[str, str]) -> None:
+def _build_graph_edges(
+    data: Any, parent_id: str, edges: List[Tuple[str, str]], nodes: Dict[str, str]
+) -> None:
     if isinstance(data, dict):
         for key, value in data.items():
             node_id = _sanitize_id(f"{parent_id}_{key}")
@@ -114,10 +116,11 @@ def to_mermaid(data: Any) -> str:
     # Try enhanced PM-specific exporters first
     try:
         from pmbok_exporters import enhance_workflow_output, enhance_audit_output
-        enhanced = enhance_workflow_output(data, 'mermaid')
+
+        enhanced = enhance_workflow_output(data, "mermaid")
         if enhanced:
             return enhanced
-        enhanced = enhance_audit_output(data, 'mermaid')
+        enhanced = enhance_audit_output(data, "mermaid")
         if enhanced:
             return enhanced
     except ImportError:
@@ -129,8 +132,8 @@ def to_mermaid(data: Any) -> str:
     _build_graph_edges(data, "root", edges, nodes)
     lines = ["graph TD"]
     for node_id, label in nodes.items():
-        safe_label = str(label).replace("\"", "'")
-        lines.append(f"  {node_id}[\"{safe_label}\"]")
+        safe_label = str(label).replace('"', "'")
+        lines.append(f'  {node_id}["{safe_label}"]')
     for source, target in edges:
         lines.append(f"  {source} --> {target}")
     return "\n".join(lines).strip() + "\n"
@@ -140,10 +143,11 @@ def to_plantuml(data: Any) -> str:
     # Try enhanced PM-specific exporters first
     try:
         from pmbok_exporters import enhance_workflow_output, enhance_audit_output
-        enhanced = enhance_workflow_output(data, 'plantuml')
+
+        enhanced = enhance_workflow_output(data, "plantuml")
         if enhanced:
             return enhanced
-        enhanced = enhance_audit_output(data, 'plantuml')
+        enhanced = enhance_audit_output(data, "plantuml")
         if enhanced:
             return enhanced
     except ImportError:
@@ -156,13 +160,15 @@ def to_plantuml(data: Any) -> str:
 
 def to_html(data: Any) -> str:
     markdown = to_markdown(data)
-    return "\n".join([
-        "<!doctype html>",
-        "<html><head><meta charset=\"utf-8\"><title>Report</title></head><body>",
-        "<pre>",
-        markdown.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
-        "</pre></body></html>",
-    ])
+    return "\n".join(
+        [
+            "<!doctype html>",
+            '<html><head><meta charset="utf-8"><title>Report</title></head><body>',
+            "<pre>",
+            markdown.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
+            "</pre></body></html>",
+        ]
+    )
 
 
 def to_pdf_bytes(text: str) -> bytes:
@@ -208,7 +214,9 @@ def render_output(data: Any, fmt: str, pretty: bool = True) -> Tuple[str, bytes,
     raise ValueError(f"Unsupported format: {fmt}")
 
 
-def write_output(data: Any, fmt: str, output_path: Path | None, pretty: bool = True) -> None:
+def write_output(
+    data: Any, fmt: str, output_path: Path | None, pretty: bool = True
+) -> None:
     text_output, binary_output, is_binary = render_output(data, fmt, pretty=pretty)
     if output_path:
         if is_binary:

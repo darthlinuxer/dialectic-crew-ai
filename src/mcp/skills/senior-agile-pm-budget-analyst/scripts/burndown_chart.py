@@ -20,23 +20,26 @@ from enum import Enum
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
     """Raised when validation fails"""
+
     pass
 
 
 class ChartType(Enum):
     """Chart type enumeration"""
+
     BURNDOWN = "burndown"
     BURNUP = "burnup"
 
 
 class TimeUnit(Enum):
     """Time unit for chart"""
+
     DAYS = "days"
     SPRINTS = "sprints"
 
@@ -44,6 +47,7 @@ class TimeUnit(Enum):
 @dataclass
 class DataPoint:
     """Represents a single data point in the chart"""
+
     date: datetime
     remaining_points: float
     completed_points: float
@@ -61,6 +65,7 @@ class DataPoint:
 @dataclass
 class SprintData:
     """Sprint-specific data"""
+
     sprint_number: int
     start_date: datetime
     end_date: datetime
@@ -90,6 +95,7 @@ class SprintData:
 @dataclass
 class BurndownConfig:
     """Configuration for burndown chart"""
+
     chart_type: ChartType = ChartType.BURNDOWN
     time_unit: TimeUnit = TimeUnit.DAYS
     sprint_duration_days: int = 14
@@ -146,7 +152,7 @@ class BurndownCalculator:
         config: BurndownConfig,
         start_date: datetime,
         initial_scope: float,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
     ):
         """
         Initialize calculator
@@ -172,7 +178,9 @@ class BurndownCalculator:
             self.end_date = end_date
 
         self.data_points: List[DataPoint] = []
-        self.scope_changes: List[Tuple[datetime, float, str]] = []  # (date, change, reason)
+        self.scope_changes: List[
+            Tuple[datetime, float, str]
+        ] = []  # (date, change, reason)
 
         # Add initial data point
         initial_point = DataPoint(
@@ -180,12 +188,14 @@ class BurndownCalculator:
             remaining_points=initial_scope,
             completed_points=0,
             total_scope=initial_scope,
-            ideal_remaining=initial_scope
+            ideal_remaining=initial_scope,
         )
         self.data_points.append(initial_point)
 
-        logger.info(f"BurndownCalculator initialized: {initial_scope} points, "
-                   f"{start_date.date()} to {self.end_date.date()}")
+        logger.info(
+            f"BurndownCalculator initialized: {initial_scope} points, "
+            f"{start_date.date()} to {self.end_date.date()}"
+        )
 
     def _is_work_day(self, date: datetime) -> bool:
         """Check if date is a working day"""
@@ -208,7 +218,7 @@ class BurndownCalculator:
         date: datetime,
         completed_points: float,
         scope_change: float = 0.0,
-        scope_change_reason: str = ""
+        scope_change_reason: str = "",
     ) -> None:
         """
         Add a progress data point
@@ -226,7 +236,9 @@ class BurndownCalculator:
         if scope_change != 0:
             self.current_scope += scope_change
             self.scope_changes.append((date, scope_change, scope_change_reason))
-            logger.info(f"Scope change on {date.date()}: {scope_change:+.1f} points - {scope_change_reason}")
+            logger.info(
+                f"Scope change on {date.date()}: {scope_change:+.1f} points - {scope_change_reason}"
+            )
 
         # Calculate remaining points
         remaining = self.current_scope - completed_points
@@ -236,7 +248,9 @@ class BurndownCalculator:
         elapsed_work_days = self._calculate_work_days(self.start_date, date)
 
         if total_work_days > 0:
-            ideal_remaining = self.current_scope * (1 - elapsed_work_days / total_work_days)
+            ideal_remaining = self.current_scope * (
+                1 - elapsed_work_days / total_work_days
+            )
         else:
             ideal_remaining = 0
 
@@ -245,12 +259,14 @@ class BurndownCalculator:
             remaining_points=max(0, remaining),
             completed_points=completed_points,
             total_scope=self.current_scope,
-            ideal_remaining=ideal_remaining
+            ideal_remaining=ideal_remaining,
         )
 
         self.data_points.append(data_point)
-        logger.debug(f"Added data point: {date.date()} - Completed: {completed_points}, "
-                    f"Remaining: {remaining:.1f}")
+        logger.debug(
+            f"Added data point: {date.date()} - Completed: {completed_points}, "
+            f"Remaining: {remaining:.1f}"
+        )
 
     def get_latest_point(self) -> Optional[DataPoint]:
         """Get the most recent data point"""
@@ -267,7 +283,7 @@ class BurndownCalculator:
             return 0.0
 
         # Use last few days for velocity calculation
-        recent_points = self.data_points[-min(5, len(self.data_points)):]
+        recent_points = self.data_points[-min(5, len(self.data_points)) :]
 
         first_point = recent_points[0]
         last_point = recent_points[-1]
@@ -298,7 +314,7 @@ class BurndownCalculator:
         if velocity <= 0:
             return {
                 "error": "Cannot forecast: velocity is zero or negative",
-                "velocity": velocity
+                "velocity": velocity,
             }
 
         remaining = latest.remaining_points
@@ -316,9 +332,14 @@ class BurndownCalculator:
             "forecast_completion_date": forecast_date.strftime("%Y-%m-%d"),
             "scheduled_end_date": scheduled_end.strftime("%Y-%m-%d"),
             "days_delta": days_delta,
-            "status": "On Track" if abs(days_delta) <= 2 else
-                     ("Ahead of Schedule" if days_delta < 0 else "Behind Schedule"),
-            "confidence": "Low" if len(self.data_points) < 5 else "Medium" if len(self.data_points) < 10 else "High"
+            "status": "On Track"
+            if abs(days_delta) <= 2
+            else ("Ahead of Schedule" if days_delta < 0 else "Behind Schedule"),
+            "confidence": "Low"
+            if len(self.data_points) < 5
+            else "Medium"
+            if len(self.data_points) < 10
+            else "High",
         }
 
         return forecast
@@ -331,20 +352,26 @@ class BurndownCalculator:
             Dictionary with trend metrics
         """
         if len(self.data_points) < 3:
-            return {"error": "Insufficient data for trend analysis (need at least 3 points)"}
+            return {
+                "error": "Insufficient data for trend analysis (need at least 3 points)"
+            }
 
         # Compare actual vs ideal progress
         actual_rates = []
         ideal_rates = []
 
         for i in range(1, len(self.data_points)):
-            prev = self.data_points[i-1]
+            prev = self.data_points[i - 1]
             curr = self.data_points[i]
 
             days = self._calculate_work_days(prev.date, curr.date)
             if days > 0:
                 actual_rate = (prev.remaining_points - curr.remaining_points) / days
-                ideal_rate = (prev.ideal_remaining - curr.ideal_remaining) / days if prev.ideal_remaining and curr.ideal_remaining else 0
+                ideal_rate = (
+                    (prev.ideal_remaining - curr.ideal_remaining) / days
+                    if prev.ideal_remaining and curr.ideal_remaining
+                    else 0
+                )
 
                 actual_rates.append(actual_rate)
                 ideal_rates.append(ideal_rate)
@@ -357,16 +384,19 @@ class BurndownCalculator:
 
         # Calculate variance
         variance = avg_actual_rate - avg_ideal_rate if avg_ideal_rate > 0 else 0
-        variance_percent = (variance / avg_ideal_rate * 100) if avg_ideal_rate > 0 else 0
+        variance_percent = (
+            (variance / avg_ideal_rate * 100) if avg_ideal_rate > 0 else 0
+        )
 
         trend = {
             "average_actual_burndown_rate": round(avg_actual_rate, 2),
             "average_ideal_burndown_rate": round(avg_ideal_rate, 2),
             "variance": round(variance, 2),
             "variance_percent": round(variance_percent, 1),
-            "trend": "Faster than planned" if variance > 0 else
-                    ("Slower than planned" if variance < 0 else "On pace"),
-            "data_points_analyzed": len(actual_rates)
+            "trend": "Faster than planned"
+            if variance > 0
+            else ("Slower than planned" if variance < 0 else "On pace"),
+            "data_points_analyzed": len(actual_rates),
         }
 
         return trend
@@ -388,7 +418,9 @@ class BurndownCalculator:
         # Calculate progress metrics
         elapsed_time = (latest.date - self.start_date).days
         total_time = (self.end_date - self.start_date).days
-        time_elapsed_percent = (elapsed_time / total_time * 100) if total_time > 0 else 0
+        time_elapsed_percent = (
+            (elapsed_time / total_time * 100) if total_time > 0 else 0
+        )
 
         work_completed_percent = latest.completion_percentage
 
@@ -412,11 +444,12 @@ class BurndownCalculator:
             "time_elapsed_percent": round(time_elapsed_percent, 1),
             "work_completed_percent": round(work_completed_percent, 1),
             "performance_index": round(work_completed_percent / time_elapsed_percent, 2)
-                                if time_elapsed_percent > 0 else 0,
+            if time_elapsed_percent > 0
+            else 0,
             "scope_changes": len(self.scope_changes),
             "total_scope_change": sum(change for _, change, _ in self.scope_changes),
             "forecast": forecast if "error" not in forecast else None,
-            "trend": trend if "error" not in trend else None
+            "trend": trend if "error" not in trend else None,
         }
 
         return health
@@ -439,21 +472,21 @@ class BurndownCalculator:
         total_days = (self.end_date - self.start_date).days
 
         # Initialize chart grid
-        grid = [[' ' for _ in range(width)] for _ in range(height)]
+        grid = [[" " for _ in range(width)] for _ in range(height)]
 
         # Draw axes
         for y in range(height):
-            grid[y][0] = '│'
+            grid[y][0] = "│"
         for x in range(width):
-            grid[height-1][x] = '─'
-        grid[height-1][0] = '└'
+            grid[height - 1][x] = "─"
+        grid[height - 1][0] = "└"
 
         # Plot ideal line
         for x in range(1, width):
             progress = x / width
             ideal_y = height - 2 - int((1 - progress) * (height - 2))
             if 0 <= ideal_y < height - 1:
-                grid[ideal_y][x] = '·'
+                grid[ideal_y][x] = "·"
 
         # Plot actual line
         for dp in self.data_points:
@@ -468,20 +501,22 @@ class BurndownCalculator:
             y = height - 2 - int((value / max_points) * (height - 2))
 
             if 0 <= y < height - 1 and 1 <= x < width:
-                grid[y][x] = '●'
+                grid[y][x] = "●"
 
         # Convert grid to string
-        lines = [''.join(row) for row in grid]
+        lines = ["".join(row) for row in grid]
 
         # Add labels
-        chart_type_label = "BURNDOWN" if self.config.chart_type == ChartType.BURNDOWN else "BURNUP"
+        chart_type_label = (
+            "BURNDOWN" if self.config.chart_type == ChartType.BURNDOWN else "BURNUP"
+        )
         title = f"{chart_type_label} CHART"
         lines.insert(0, title.center(width))
         lines.insert(1, "=" * width)
 
         # Y-axis labels
         lines[2] = f"{int(max_points):>3}" + lines[2][3:]
-        lines[height//2] = f"{int(max_points/2):>3}" + lines[height//2][3:]
+        lines[height // 2] = f"{int(max_points / 2):>3}" + lines[height // 2][3:]
         lines[height] = "  0" + lines[height][3:]
 
         # X-axis label
@@ -491,7 +526,7 @@ class BurndownCalculator:
         lines.append("")
         lines.append("Legend: ● = Actual   · = Ideal")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def generate(self) -> Dict:
         """
@@ -517,18 +552,14 @@ class BurndownCalculator:
                 "completed_points": dp.completed_points,
                 "total_scope": dp.total_scope,
                 "ideal_remaining": dp.ideal_remaining,
-                "completion_percent": round(dp.completion_percentage, 1)
+                "completion_percent": round(dp.completion_percentage, 1),
             }
             for dp in self.data_points
         ]
 
         # Scope changes
         scope_changes_export = [
-            {
-                "date": date.strftime("%Y-%m-%d"),
-                "change": change,
-                "reason": reason
-            }
+            {"date": date.strftime("%Y-%m-%d"), "change": change, "reason": reason}
             for date, change, reason in self.scope_changes
         ]
 
@@ -543,7 +574,7 @@ class BurndownCalculator:
             "forecast": forecast,
             "trend": trend,
             "health": health,
-            "ascii_chart": ascii_chart
+            "ascii_chart": ascii_chart,
         }
 
         return chart_data
@@ -564,27 +595,25 @@ def main():
     config = BurndownConfig(
         chart_type=ChartType.BURNDOWN,
         sprint_duration_days=10,  # 2-week sprint (10 work days)
-        work_days_per_week=5
+        work_days_per_week=5,
     )
 
     sprint_start = datetime(2024, 3, 1)
     calculator = BurndownCalculator(
-        config=config,
-        start_date=sprint_start,
-        initial_scope=50
+        config=config, start_date=sprint_start, initial_scope=50
     )
 
     # Simulate daily progress
     daily_progress = [
-        (1, 5),    # Day 1: 5 points completed
-        (2, 10),   # Day 2: 10 points total
-        (3, 14),   # Day 3: 14 points total
-        (4, 19),   # Day 4: 19 points
-        (5, 24),   # Day 5: 24 points
-        (6, 28),   # Day 6: 28 points
-        (7, 33),   # Day 7: 33 points (scope change)
-        (8, 38),   # Day 8: 38 points
-        (9, 43),   # Day 9: 43 points
+        (1, 5),  # Day 1: 5 points completed
+        (2, 10),  # Day 2: 10 points total
+        (3, 14),  # Day 3: 14 points total
+        (4, 19),  # Day 4: 19 points
+        (5, 24),  # Day 5: 24 points
+        (6, 28),  # Day 6: 28 points
+        (7, 33),  # Day 7: 33 points (scope change)
+        (8, 38),  # Day 8: 38 points
+        (9, 43),  # Day 9: 43 points
     ]
 
     for day, completed in daily_progress:
@@ -597,7 +626,7 @@ def main():
                 date=date,
                 completed_points=completed,
                 scope_change=scope_change,
-                scope_change_reason=reason
+                scope_change_reason=reason,
             )
 
     # Generate chart
@@ -611,15 +640,17 @@ def main():
     print(f"  Data Points: {len(chart_data['data_points'])}")
 
     # Scope Changes
-    if chart_data['scope_changes']:
+    if chart_data["scope_changes"]:
         print("\nScope Changes:")
-        for change in chart_data['scope_changes']:
-            print(f"  {change['date']}: {change['change']:+.0f} points - {change['reason']}")
+        for change in chart_data["scope_changes"]:
+            print(
+                f"  {change['date']}: {change['change']:+.0f} points - {change['reason']}"
+            )
 
     # Forecast
     print("\nForecast:")
-    forecast = chart_data['forecast']
-    if 'error' not in forecast:
+    forecast = chart_data["forecast"]
+    if "error" not in forecast:
         print(f"  Current Velocity: {forecast['current_velocity']} points/day")
         print(f"  Remaining Points: {forecast['remaining_points']}")
         print(f"  Forecast Completion: {forecast['forecast_completion_date']}")
@@ -632,18 +663,24 @@ def main():
 
     # Trend
     print("\nTrend Analysis:")
-    trend = chart_data['trend']
-    if 'error' not in trend:
-        print(f"  Actual Burndown Rate: {trend['average_actual_burndown_rate']} points/day")
-        print(f"  Ideal Burndown Rate: {trend['average_ideal_burndown_rate']} points/day")
-        print(f"  Variance: {trend['variance']:+.2f} points/day ({trend['variance_percent']:+.1f}%)")
+    trend = chart_data["trend"]
+    if "error" not in trend:
+        print(
+            f"  Actual Burndown Rate: {trend['average_actual_burndown_rate']} points/day"
+        )
+        print(
+            f"  Ideal Burndown Rate: {trend['average_ideal_burndown_rate']} points/day"
+        )
+        print(
+            f"  Variance: {trend['variance']:+.2f} points/day ({trend['variance_percent']:+.1f}%)"
+        )
         print(f"  Trend: {trend['trend']}")
     else:
         print(f"  {trend['error']}")
 
     # Health
     print("\nSprint Health:")
-    health = chart_data['health']
+    health = chart_data["health"]
     print(f"  Status: {health['color']} {health['status']}")
     print(f"  Time Elapsed: {health['time_elapsed_percent']:.1f}%")
     print(f"  Work Completed: {health['work_completed_percent']:.1f}%")
@@ -659,9 +696,7 @@ def main():
     print("=" * 80)
 
     config_burnup = BurndownConfig(
-        chart_type=ChartType.BURNUP,
-        time_unit=TimeUnit.SPRINTS,
-        sprint_duration_days=14
+        chart_type=ChartType.BURNUP, time_unit=TimeUnit.SPRINTS, sprint_duration_days=14
     )
 
     release_start = datetime(2024, 1, 1)
@@ -669,16 +704,16 @@ def main():
         config=config_burnup,
         start_date=release_start,
         initial_scope=200,
-        end_date=release_start + timedelta(days=84)  # 6 sprints
+        end_date=release_start + timedelta(days=84),  # 6 sprints
     )
 
     # Simulate sprint-by-sprint progress
     sprint_progress = [
-        (14, 28, 0),      # Sprint 1: 28 points
-        (28, 54, 10),     # Sprint 2: 26 points + 10 scope change
-        (42, 82, 0),      # Sprint 3: 28 points
-        (56, 108, -5),    # Sprint 4: 26 points, 5 removed
-        (70, 136, 15),    # Sprint 5: 28 points + 15 scope change
+        (14, 28, 0),  # Sprint 1: 28 points
+        (28, 54, 10),  # Sprint 2: 26 points + 10 scope change
+        (42, 82, 0),  # Sprint 3: 28 points
+        (56, 108, -5),  # Sprint 4: 26 points, 5 removed
+        (70, 136, 15),  # Sprint 5: 28 points + 15 scope change
     ]
 
     for days, completed, scope_change in sprint_progress:
@@ -693,23 +728,31 @@ def main():
             date=date,
             completed_points=completed,
             scope_change=scope_change,
-            scope_change_reason=reason
+            scope_change_reason=reason,
         )
 
     chart_data_burnup = calculator_burnup.generate()
 
     print("\nRelease Information:")
-    print(f"  Duration: {chart_data_burnup['start_date']} to {chart_data_burnup['end_date']}")
+    print(
+        f"  Duration: {chart_data_burnup['start_date']} to {chart_data_burnup['end_date']}"
+    )
     print(f"  Initial Scope: {chart_data_burnup['initial_scope']} points")
     print(f"  Current Scope: {chart_data_burnup['current_scope']} points")
-    print(f"  Scope Delta: {chart_data_burnup['current_scope'] - chart_data_burnup['initial_scope']:+.0f} points")
+    print(
+        f"  Scope Delta: {chart_data_burnup['current_scope'] - chart_data_burnup['initial_scope']:+.0f} points"
+    )
 
     print("\nProgress:")
-    latest = chart_data_burnup['data_points'][-1]
-    print(f"  Completed: {latest['completed_points']} points ({latest['completion_percent']:.1f}%)")
+    latest = chart_data_burnup["data_points"][-1]
+    print(
+        f"  Completed: {latest['completed_points']} points ({latest['completion_percent']:.1f}%)"
+    )
     print(f"  Remaining: {latest['remaining_points']} points")
 
-    print(f"\nRelease Health: {chart_data_burnup['health']['color']} {chart_data_burnup['health']['status']}")
+    print(
+        f"\nRelease Health: {chart_data_burnup['health']['color']} {chart_data_burnup['health']['status']}"
+    )
 
     print(f"\n{chart_data_burnup['ascii_chart']}")
 

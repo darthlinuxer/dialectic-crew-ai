@@ -69,8 +69,10 @@ def resolve_app_root() -> Path:
     for candidates in (cwd_candidates, module_candidates):
         exact = _find_first_matching(
             candidates,
-            lambda candidate: (candidate / "pyproject.toml").exists()
-            and (candidate / _PROJECT_VISION_PATH).exists(),
+            lambda candidate: (
+                (candidate / "pyproject.toml").exists()
+                and (candidate / _PROJECT_VISION_PATH).exists()
+            ),
         )
         if exact is not None:
             return exact
@@ -131,9 +133,7 @@ def ensure_vision_path(
                     "or `dialectic-crew clear-target` to return to the default project vision."
                 )
         label = _VISION_PATHS[normalized_context]
-        raise FileNotFoundError(
-            f"{label} not found. Expected at: {vision_path}"
-        )
+        raise FileNotFoundError(f"{label} not found. Expected at: {vision_path}")
     return vision_path
 
 

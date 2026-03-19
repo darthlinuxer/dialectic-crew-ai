@@ -12,7 +12,12 @@ from dialectic.crew_builder import (
     build_named_sequential_crew,
     build_task_from_agent_mapping,
 )
-from dialectic.knowledge import _vision_label, _vision_path, crew_memory, vision_knowledge
+from dialectic.knowledge import (
+    _vision_label,
+    _vision_path,
+    crew_memory,
+    vision_knowledge,
+)
 from dialectic.llm import llm_planning
 from dialectic.yaml_config import load_yaml_config, render_yaml_config
 from dialectic.vision import VisionContext
@@ -67,7 +72,10 @@ def build_planning_crew(
             "planning_validator",
         ),
         tasks=tasks,
-        knowledge_sources=[vision_knowledge(vision_context), *(retry_feedback_sources or [])],
+        knowledge_sources=[
+            vision_knowledge(vision_context),
+            *(retry_feedback_sources or []),
+        ],
         memory=crew_memory(vision_context, "planning"),
         planning=True,
         planning_llm=llm_planning,

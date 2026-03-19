@@ -43,7 +43,9 @@ def _make_prd() -> PRDSchema:
 def test_export_both_creates_json_and_md(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "knowledge").mkdir(exist_ok=True)
-    (tmp_path / "knowledge" / "VISION.md").write_text("Vision content", encoding="utf-8")
+    (tmp_path / "knowledge" / "VISION.md").write_text(
+        "Vision content", encoding="utf-8"
+    )
 
     prd = _make_prd()
     config = ExportConfig(output_format="both", output_dir=tmp_path)
@@ -61,7 +63,9 @@ def test_export_both_creates_json_and_md(tmp_path, monkeypatch):
 def test_export_json_only(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "knowledge").mkdir(exist_ok=True)
-    (tmp_path / "knowledge" / "VISION.md").write_text("Vision content", encoding="utf-8")
+    (tmp_path / "knowledge" / "VISION.md").write_text(
+        "Vision content", encoding="utf-8"
+    )
 
     prd = _make_prd()
     config = ExportConfig(output_format="json", output_dir=tmp_path)
@@ -77,7 +81,9 @@ def test_export_json_only(tmp_path, monkeypatch):
 def test_export_md_only(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "knowledge").mkdir(exist_ok=True)
-    (tmp_path / "knowledge" / "VISION.md").write_text("Vision content", encoding="utf-8")
+    (tmp_path / "knowledge" / "VISION.md").write_text(
+        "Vision content", encoding="utf-8"
+    )
 
     prd = _make_prd()
     config = ExportConfig(output_format="md", output_dir=tmp_path)
@@ -93,7 +99,9 @@ def test_export_md_only(tmp_path, monkeypatch):
 def test_md_failure_triggers_json_rollback(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "knowledge").mkdir(exist_ok=True)
-    (tmp_path / "knowledge" / "VISION.md").write_text("Vision content", encoding="utf-8")
+    (tmp_path / "knowledge" / "VISION.md").write_text(
+        "Vision content", encoding="utf-8"
+    )
 
     prd = _make_prd()
     config = ExportConfig(output_format="both", output_dir=tmp_path)
@@ -117,7 +125,9 @@ def test_md_failure_triggers_json_rollback(tmp_path, monkeypatch):
 def test_export_encoding_utf8(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "knowledge").mkdir(exist_ok=True)
-    (tmp_path / "knowledge" / "VISION.md").write_text("Vision content", encoding="utf-8")
+    (tmp_path / "knowledge" / "VISION.md").write_text(
+        "Vision content", encoding="utf-8"
+    )
 
     prd = _make_prd()
     prd.objective = "Test with accented chars: é, ã, ç"
@@ -133,7 +143,9 @@ def test_export_encoding_utf8(tmp_path, monkeypatch):
 def test_export_md_has_frontmatter(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "knowledge").mkdir(exist_ok=True)
-    (tmp_path / "knowledge" / "VISION.md").write_text("Vision content", encoding="utf-8")
+    (tmp_path / "knowledge" / "VISION.md").write_text(
+        "Vision content", encoding="utf-8"
+    )
 
     prd = _make_prd()
     config = ExportConfig(output_format="md", output_dir=tmp_path)

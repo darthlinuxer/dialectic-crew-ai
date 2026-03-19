@@ -37,7 +37,9 @@ def test_build_retry_feedback_context_uses_knowledge_for_large_feedback(monkeypa
         def __init__(self, **kwargs):
             captured.append(kwargs)
 
-    monkeypatch.setattr(prd_guardrails, "StringKnowledgeSource", FakeStringKnowledgeSource)
+    monkeypatch.setattr(
+        prd_guardrails, "StringKnowledgeSource", FakeStringKnowledgeSource
+    )
     feedback = "A" * (prd_guardrails.RETRY_FEEDBACK_INLINE_CHAR_THRESHOLD + 1)
 
     prompt_block, knowledge_sources = prd_guardrails._build_retry_feedback_context(
@@ -163,7 +165,7 @@ def test_prd_guardrail_accepts_raw_json():
 
     assert ok is True
     assert isinstance(payload, str)
-    assert 'feature_name' in payload
+    assert "feature_name" in payload
 
 
 def test_prd_guardrail_accepts_pydantic_result():
@@ -177,7 +179,7 @@ def test_prd_guardrail_accepts_pydantic_result():
 
     assert ok is True
     assert isinstance(payload, str)
-    assert 'feature_name' in payload
+    assert "feature_name" in payload
 
 
 def test_prd_guardrail_serializes_pydantic_without_raw():
@@ -190,7 +192,7 @@ def test_prd_guardrail_serializes_pydantic_without_raw():
 
     assert ok is True
     assert isinstance(payload, str)
-    assert 'feature_name' in payload
+    assert "feature_name" in payload
 
 
 def test_prd_guardrail_ignores_unrelated_raw_json_fragments():
@@ -204,8 +206,8 @@ def test_prd_guardrail_ignores_unrelated_raw_json_fragments():
 
     assert ok is True
     assert isinstance(payload, str)
-    assert 'internal/SELF_VISION.md' not in payload
-    assert 'feature_name' in payload
+    assert "internal/SELF_VISION.md" not in payload
+    assert "feature_name" in payload
 
 
 def test_prd_guardrail_rejects_placeholder_acceptance_criterion():
@@ -285,7 +287,7 @@ def test_prd_guardrail_rejects_unknown_story_dependencies():
 def test_dialectic_flow_uses_explicit_retry_label_listener_wiring():
     source = inspect.getsource(prd_flow.DialecticFlow)
 
-    assert '@router(iniciar_dialetica)' in source
+    assert "@router(iniciar_dialetica)" in source
     assert '@listen("rodar_rodada")' in source
     assert '@listen("retry")' not in source
 
@@ -295,25 +297,35 @@ def test_dialectic_flow_validator_uses_full_dialectic_context():
 
     source = inspect.getsource(prd_runtime._build_prd_tasks)
 
-    assert 'context=[task_vision, task_critica, task_sintese]' in source
+    assert "context=[task_vision, task_critica, task_sintese]" in source
 
 
 def test_dialectic_flow_synthesizer_requests_candidate_prd_json():
     runtime_source = inspect.getsource(prd_flow.build_prd_crew)
-    template_source = inspect.getsource(__import__("dialectic.prd_runtime", fromlist=["build_prd_crew"]).build_prd_crew)
+    template_source = inspect.getsource(
+        __import__("dialectic.prd_runtime", fromlist=["build_prd_crew"]).build_prd_crew
+    )
 
-    source = runtime_source + template_source + open("/home/darthlinuxer/dialectic-crew-ai/src/dialectic/config/tasks_prd.yaml", "r", encoding="utf-8").read()
+    source = (
+        runtime_source
+        + template_source
+        + open(
+            "/home/darthlinuxer/dialectic-crew-ai/src/dialectic/config/tasks_prd.yaml",
+            "r",
+            encoding="utf-8",
+        ).read()
+    )
 
-    assert 'Output a CANDIDATE PRD as raw JSON with these fields only:' in source
-    assert 'Candidate PRD as raw JSON for validator review' in source
-    assert 'output_schema: PRDSchema' in source
+    assert "Output a CANDIDATE PRD as raw JSON with these fields only:" in source
+    assert "Candidate PRD as raw JSON for validator review" in source
+    assert "output_schema: PRDSchema" in source
 
 
 def test_dialectic_flow_uses_shared_prd_extractor_after_kickoff():
     source = inspect.getsource(prd_flow.DialecticFlow)
 
-    assert 'prd: PRDSchema | None = _extract_prd_from_result(resultado)' in source
-    assert 'for task_output in reversed(tasks_out):' in source
+    assert "prd: PRDSchema | None = _extract_prd_from_result(resultado)" in source
+    assert "for task_output in reversed(tasks_out):" in source
 
 
 def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
@@ -349,7 +361,9 @@ def test_rodar_rodada_dialetica_persists_pydantic_prd_result(monkeypatch):
     flow.state.final_validation_notes = ""
     flow.state.file_paths = []
 
-    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "rodar_rodada_dialetica"))(flow)
+    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "rodar_rodada_dialetica"))(
+        flow
+    )
 
     assert next_step == "avaliar"
     assert flow.state.prd_data["feature_name"] == prd.feature_name
@@ -391,15 +405,15 @@ def test_rodar_rodada_dialetica_allows_literal_braces_in_feature_objective(monke
     )
 
     flow = prd_flow.DialecticFlow()
-    flow.state.feature_objective = (
-        "Ship trace API support for /runs/{run_id}/trace without breaking PRD generation"
-    )
+    flow.state.feature_objective = "Ship trace API support for /runs/{run_id}/trace without breaking PRD generation"
     flow.state.vision_context = prd_flow.VisionContext.SELF.value
     flow.state.retry_count = 0
     flow.state.final_validation_notes = ""
     flow.state.file_paths = []
 
-    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "rodar_rodada_dialetica"))(flow)
+    next_step = cast(Any, getattr(prd_flow.DialecticFlow, "rodar_rodada_dialetica"))(
+        flow
+    )
 
     assert next_step == "avaliar"
     assert kickoff_kwargs == [{}]
@@ -435,7 +449,59 @@ def test_avaliar_retries_when_consensus_floor_is_not_met(capsys):
     assert next_step == "rodar_rodada"
     assert flow.state.current_phase == "dialectic"
     assert flow.state.retry_count == 2
-    assert "Consensus reached, but score 8.4 is below consensus floor 8.5" in captured.out
+    assert (
+        "Consensus reached, but score 8.4 is below consensus floor 8.5" in captured.out
+    )
+
+
+def test_salvar_prd_final_copies_roadmap_provenance_from_flow_state(
+    monkeypatch, tmp_path
+):
+    prd = _make_prd()
+    captured: dict[str, PRDSchema] = {}
+
+    class FakeExporter:
+        def export(self, prd_model, config):
+            del config
+            captured["prd"] = prd_model
+            return [tmp_path / "prd.json", tmp_path / "prd.md"]
+
+    flow = prd_flow.DialecticFlow()
+    flow.state.prd_data = prd.model_dump()
+    flow.state.quality_score = 9.2
+    flow.state.consensus_reached = True
+    flow.state.final_validation_notes = "Approved"
+    flow.state.vision_context = prd_flow.VisionContext.SELF.value
+    flow.state.source_roadmap_path = "internal/ROADMAP.md"
+    flow.state.source_roadmap_label = (
+        "Expose output-format selection through the CLI/runtime UX"
+    )
+    flow.state.source_roadmap_key = (
+        "expose output-format selection through the cli/runtime ux"
+    )
+
+    monkeypatch.setattr(prd_flow, "PRDExporter", lambda: FakeExporter())
+    monkeypatch.setattr(
+        prd_flow,
+        "get_export_config",
+        lambda: SimpleNamespace(output_dir=tmp_path),
+    )
+    monkeypatch.setattr(
+        prd_flow, "_resolved_output_dir", lambda vision_context: tmp_path
+    )
+
+    saved_prd = cast(Any, getattr(prd_flow.DialecticFlow, "salvar_prd_final"))(flow)
+
+    assert saved_prd is not None
+    assert captured["prd"].source_roadmap_path == "internal/ROADMAP.md"
+    assert (
+        captured["prd"].source_roadmap_label
+        == "Expose output-format selection through the CLI/runtime UX"
+    )
+    assert (
+        captured["prd"].source_roadmap_key
+        == "expose output-format selection through the cli/runtime ux"
+    )
 
 
 def test_run_dialectic_flow_returns_flow_id(monkeypatch):

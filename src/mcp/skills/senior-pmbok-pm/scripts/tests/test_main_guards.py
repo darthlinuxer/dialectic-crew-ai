@@ -31,7 +31,9 @@ class TestMainGuards(unittest.TestCase):
             template_path = Path(tmp) / "TEMPLATE.md"
             inputs_path = Path(tmp) / "INPUTS.md"
             template_path.write_text("Hello {{a}}", encoding="utf-8")
-            inputs_path.write_text("| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8")
+            inputs_path.write_text(
+                "| Chave | Desc |\n|---|---|\n| a | x |", encoding="utf-8"
+            )
             argv = [
                 "inputs_validator.py",
                 "--template",
@@ -68,7 +70,9 @@ class TestMainGuards(unittest.TestCase):
             argv = ["terminology_consistency_checker.py", str(file_path)]
             with unittest.mock.patch("sys.argv", argv):
                 with self.assertRaises(SystemExit):
-                    runpy.run_module("terminology_consistency_checker", run_name="__main__")
+                    runpy.run_module(
+                        "terminology_consistency_checker", run_name="__main__"
+                    )
 
     def test_workflow_checklist_main_guard(self):
         argv = ["workflow_checklist_generator.py", "create"]

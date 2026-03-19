@@ -34,7 +34,9 @@ def test_build_prd_crew_uses_yaml_templates(monkeypatch):
         "crew_memory",
         lambda ctx, namespace: f"memory:{ctx.value}:{namespace}",
     )
-    monkeypatch.setattr(prd_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+    monkeypatch.setattr(
+        prd_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}"
+    )
 
     crew = prd_runtime.build_prd_crew(
         feature_objective="Ship resilient PRD validation",
@@ -51,7 +53,10 @@ def test_build_prd_crew_uses_yaml_templates(monkeypatch):
     assert captured_tasks[1]["guardrail"].__name__ == "_text_result_guardrail"
     assert captured_tasks[2]["guardrail"].__name__ == "_text_result_guardrail"
     assert captured_tasks[1]["context"] == [captured_crew["tasks"][0]]
-    assert captured_tasks[2]["context"] == [captured_crew["tasks"][0], captured_crew["tasks"][1]]
+    assert captured_tasks[2]["context"] == [
+        captured_crew["tasks"][0],
+        captured_crew["tasks"][1],
+    ]
     assert captured_tasks[3]["context"] == [
         captured_crew["tasks"][0],
         captured_crew["tasks"][1],
@@ -86,10 +91,18 @@ def test_build_prd_crew_strips_interactive_tools_from_agents(monkeypatch):
 
     monkeypatch.setattr(prd_runtime, "Task", FakeTask)
     monkeypatch.setattr(prd_runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(prd_runtime, "create_visionario", lambda ctx: FakeAgent("visionario"))
-    monkeypatch.setattr(prd_runtime, "create_critico_socratico", lambda ctx: FakeAgent("critico"))
-    monkeypatch.setattr(prd_runtime, "create_sintetizador", lambda ctx: FakeAgent("sint"))
-    monkeypatch.setattr(prd_runtime, "create_validador_macro", lambda ctx: FakeAgent("val"))
+    monkeypatch.setattr(
+        prd_runtime, "create_visionario", lambda ctx: FakeAgent("visionario")
+    )
+    monkeypatch.setattr(
+        prd_runtime, "create_critico_socratico", lambda ctx: FakeAgent("critico")
+    )
+    monkeypatch.setattr(
+        prd_runtime, "create_sintetizador", lambda ctx: FakeAgent("sint")
+    )
+    monkeypatch.setattr(
+        prd_runtime, "create_validador_macro", lambda ctx: FakeAgent("val")
+    )
     monkeypatch.setattr(prd_runtime, "crew_memory", lambda ctx, namespace: None)
     monkeypatch.setattr(prd_runtime, "vision_knowledge", lambda ctx: "vision")
 
@@ -188,7 +201,10 @@ def test_build_prd_crew_includes_exact_vision_path_in_prompts(monkeypatch):
     for task in captured_tasks:
         assert "internal/SELF_VISION.md" in task["description"]
         assert "Treat the knowledge-source content" in task["description"]
-        assert "Rely on the provided knowledge sources and task context" in task["description"]
+        assert (
+            "Rely on the provided knowledge sources and task context"
+            in task["description"]
+        )
         assert "If direct file tools are available" not in task["description"]
 
 
@@ -214,12 +230,22 @@ def test_build_prd_crew_prefers_knowledge_sources_over_direct_file_reads(monkeyp
 
     monkeypatch.setattr(prd_runtime, "Task", FakeTask)
     monkeypatch.setattr(prd_runtime, "Crew", FakeCrew)
-    monkeypatch.setattr(prd_runtime, "create_visionario", lambda ctx: FakeAgent("visionario"))
-    monkeypatch.setattr(prd_runtime, "create_critico_socratico", lambda ctx: FakeAgent("critico"))
-    monkeypatch.setattr(prd_runtime, "create_sintetizador", lambda ctx: FakeAgent("sint"))
-    monkeypatch.setattr(prd_runtime, "create_validador_macro", lambda ctx: FakeAgent("val"))
+    monkeypatch.setattr(
+        prd_runtime, "create_visionario", lambda ctx: FakeAgent("visionario")
+    )
+    monkeypatch.setattr(
+        prd_runtime, "create_critico_socratico", lambda ctx: FakeAgent("critico")
+    )
+    monkeypatch.setattr(
+        prd_runtime, "create_sintetizador", lambda ctx: FakeAgent("sint")
+    )
+    monkeypatch.setattr(
+        prd_runtime, "create_validador_macro", lambda ctx: FakeAgent("val")
+    )
     monkeypatch.setattr(prd_runtime, "crew_memory", lambda ctx, namespace: None)
-    monkeypatch.setattr(prd_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}")
+    monkeypatch.setattr(
+        prd_runtime, "vision_knowledge", lambda ctx: f"vision:{ctx.value}"
+    )
 
     prd_runtime.build_prd_crew(
         feature_objective="Keep SELF vision knowledge authoritative",
@@ -270,10 +296,15 @@ def test_build_prd_crew_prompts_require_using_upstream_task_context(monkeypatch)
 
     assert "Do NOT ask the user for the PRD" in captured_tasks[1]["description"]
     assert "Do NOT ask the user to resend them" in captured_tasks[2]["description"]
-    assert "Do NOT ask the user to resend Task 3 output" in captured_tasks[3]["description"]
+    assert (
+        "Do NOT ask the user to resend Task 3 output"
+        in captured_tasks[3]["description"]
+    )
 
 
-def test_build_prd_crew_validation_prompt_avoids_impossible_schema_requirements(monkeypatch):
+def test_build_prd_crew_validation_prompt_avoids_impossible_schema_requirements(
+    monkeypatch,
+):
     """Avoid instructing the validator to require fields absent from PRDSchema."""
 
     captured_tasks = []

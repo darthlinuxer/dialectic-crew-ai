@@ -105,7 +105,9 @@ def test_configure_application_logging_is_idempotent(tmp_path, monkeypatch):
     assert second_handlers == first_handlers
 
 
-def test_configure_application_logging_writes_text_json_and_error_logs(tmp_path, monkeypatch):
+def test_configure_application_logging_writes_text_json_and_error_logs(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("DIALECTIC_LOG_DIR", str(tmp_path))
     monkeypatch.setenv("DIALECTIC_LOG_TO_STDERR", "false")
     monkeypatch.setenv("DIALECTIC_LOG_LEVEL", "DEBUG")
@@ -134,7 +136,9 @@ def test_configure_application_logging_writes_text_json_and_error_logs(tmp_path,
 
     json_lines = _read_json_lines(config.json_log_path)
     assert any(line["message"] == "Hello structured world" for line in json_lines)
-    info_line = next(line for line in json_lines if line["message"] == "Hello structured world")
+    info_line = next(
+        line for line in json_lines if line["message"] == "Hello structured world"
+    )
     assert info_line["command"] == "test"
     assert info_line["phase"] == "unit"
     assert info_line["correlation_id"] == "corr-123"
@@ -177,7 +181,9 @@ def test_json_logging_preserves_optional_event_metadata(tmp_path, monkeypatch):
     assert json_line["tool_name"] == "read_file"
 
 
-def test_text_result_guardrail_json_log_includes_guardrail_reason(tmp_path, monkeypatch):
+def test_text_result_guardrail_json_log_includes_guardrail_reason(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("DIALECTIC_LOG_DIR", str(tmp_path))
     monkeypatch.setenv("DIALECTIC_LOG_TO_STDERR", "false")
     shutdown_application_logging()
@@ -209,7 +215,9 @@ def test_text_result_guardrail_json_log_includes_guardrail_reason(tmp_path, monk
     assert "ChatCompletionMessageFunctionToolCall" in cast(str, json_line["preview"])
 
 
-def test_shutdown_noise_suppression_filters_known_interrupt_errors(tmp_path, monkeypatch):
+def test_shutdown_noise_suppression_filters_known_interrupt_errors(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("DIALECTIC_LOG_DIR", str(tmp_path))
     monkeypatch.setenv("DIALECTIC_LOG_TO_STDERR", "false")
     shutdown_application_logging()
@@ -219,7 +227,9 @@ def test_shutdown_noise_suppression_filters_known_interrupt_errors(tmp_path, mon
 
     try:
         enable_shutdown_noise_suppression()
-        logger.error("OpenAI API call failed: cannot schedule new futures after shutdown")
+        logger.error(
+            "OpenAI API call failed: cannot schedule new futures after shutdown"
+        )
         logger.error(
             "Error during fallback text parsing: cannot schedule new futures after shutdown"
         )

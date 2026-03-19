@@ -8,8 +8,9 @@ from typing import Any, Mapping
 from crewai import Crew, Task
 
 from dialectic.agents import (
+    _get_agent_config,
+    build_agent_from_config,
     create_critico_socratico,
-    create_implementer,
     create_sintetizador,
     create_validador_macro,
 )
@@ -20,25 +21,33 @@ from dialectic.crew_builder import (
 from dialectic.knowledge import (
     _vision_label,
     _vision_path,
-    crew_memory,
+    crew_memory as _crew_memory_compat,
     style_guide_knowledge,
     vision_knowledge,
 )
 from dialectic.llm import llm_planning
 from dialectic.vision import VisionContext, normalize_vision_context
-from dialectic.yaml_config import load_yaml_config
+from dialectic.yaml_config import load_yaml_config, render_yaml_config
 
 
 _TASKS_CONFIG_PATH = Path(__file__).with_name("config") / "tasks_dialectic.yaml"
+crew_memory = _crew_memory_compat
 _FINAL_TEXT_RESPONSE_RULES = """
 Final response rules:
 - Return only the completed plain-text answer for this task.
 - Never return raw tool-call objects, tool arguments, JSON wrappers, or tool metadata.
 - If you use tools, execute them first and then reply with the finished textual result only.
 """.strip()
+_FILE_SECTION_RESPONSE_RULES = """
+When the task changes files, include the complete final file contents directly in your plain-text answer using one or more sections in this exact format:
+--- relative/path/to/file.ext ---
+<complete file contents>
+
+Optionally include a short summary before or after the file sections, but do not wrap the file contents in JSON envelopes or tool-call syntax.
+""".strip()
 _PLAIN_TEXT_IMPLEMENTATION_EXPECTED_OUTPUT = (
-    "Plain-text answer only describing what was implemented and which files "
-    "were created or modified"
+    "Plain-text answer only with a concise implementation summary plus complete "
+    "file sections for each created or modified file"
 )
 _PLAIN_TEXT_CRITIQUE_EXPECTED_OUTPUT = (
     "Plain-text answer only containing a detailed critique of the implementation"
@@ -46,12 +55,40 @@ _PLAIN_TEXT_CRITIQUE_EXPECTED_OUTPUT = (
 _PLAIN_TEXT_SYNTHESIS_EXPECTED_OUTPUT = (
     "Plain-text answer only containing the refined synthesis and retry instructions"
 )
+_TASK_EXECUTION_IMPLEMENTER_SUFFIX = """
+
+Execution-mode constraints:
+- Do not rely on live project tool calls during task execution; produce the final answer as plain text.
+- Do not use file tools to reread the vision file; rely on the provided knowledge-source content for vision guidance unless the task explicitly requires quoting the file.
+- Never finish with a tool call, tool arguments, or raw tool output.
+- When files must change, emit complete file contents using `--- relative/path ---` sections so the runtime can materialize them safely.
+- After describing any file changes, always produce a concise plain-text completion summary.
+""".strip()
+
+
+def build_task_execution_implementer(vision_context: VisionContext) -> Any:
+    """Create a task-scoped implementer agent tuned for live execution reliability."""
+    config = dict(
+        render_yaml_config(
+            _get_agent_config("implementer"),
+            {
+                "vision_label": _vision_label(vision_context),
+                "vision_path": _vision_path(vision_context),
+            },
+        )
+    )
+    config["tool_bundle"] = "none"
+    config["mcp_bundle"] = "none"
+    config["backstory"] = (
+        f"{config['backstory'].rstrip()}\n\n{_TASK_EXECUTION_IMPLEMENTER_SUFFIX}"
+    )
+    return build_agent_from_config(config)
 
 
 def _build_runtime_agents(vision_context: VisionContext) -> dict[str, Any]:
     """Create the agent set used by the task dialectic execution crew."""
     return {
-        "implementer": create_implementer(vision_context),
+        "implementer": build_task_execution_implementer(vision_context),
         "critico_socratico": create_critico_socratico(vision_context),
         "sintetizador": create_sintetizador(vision_context),
         "validador_macro": create_validador_macro(vision_context),
@@ -76,6 +113,7 @@ def _build_runtime_placeholders(
         "vision_file_ref": vision_file_ref,
         "min_score": min_score,
         "final_text_response_rules": _FINAL_TEXT_RESPONSE_RULES,
+        "file_section_response_rules": _FILE_SECTION_RESPONSE_RULES,
         "plain_text_implementation_expected_output": _PLAIN_TEXT_IMPLEMENTATION_EXPECTED_OUTPUT,
         "plain_text_critique_expected_output": _PLAIN_TEXT_CRITIQUE_EXPECTED_OUTPUT,
         "plain_text_synthesis_expected_output": _PLAIN_TEXT_SYNTHESIS_EXPECTED_OUTPUT,
@@ -175,8 +213,8 @@ def build_task_dialectic_crew(
         thesis_agent_name="implementer",
         tasks=tasks,
         knowledge_sources=knowledge_sources,
-        memory=crew_memory(normalized_context, "task_dialectic"),
-        planning=True,
+        memory=None,
+        planning=False,
         planning_llm=llm_planning,
     )
 
@@ -202,6 +240,11 @@ Definition of done:
 - Update related tests or supporting files when this change requires it.
 - Do not leave static-analysis, editor, or adjacent files breakage behind.
 """.strip()
+    vision_usage_block = """
+Vision usage rules:
+- Treat the provided knowledge-source content for the vision file as authoritative.
+- Do not use file tools to reread the vision file unless the task explicitly requires quoting specific lines from it.
+""".strip()
 
     if synthesis_for_retry is None:
         return f"""
@@ -214,7 +257,11 @@ CONTEXT:
 
 {integration_done_block}
 
+{vision_usage_block}
+
 {_FINAL_TEXT_RESPONSE_RULES}
+
+{_FILE_SECTION_RESPONSE_RULES}
 
 Consult the system's anti-drift file {vision_file_ref} at exact path `{vision_path}`.
 Treat the knowledge-source content for `{vision_path}` as authoritative.
@@ -228,6 +275,8 @@ TASK: {task_id} — {task_title}
 {task_description}
 
 {integration_done_block}
+
+{vision_usage_block}
 
 {_FINAL_TEXT_RESPONSE_RULES}
 

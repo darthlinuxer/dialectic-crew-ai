@@ -51,4 +51,3 @@ __all__ = [
     "SELF_IMPROVE_STATE_DIR_ENV_VAR",
 ]
 # End of exported self-improve path constants.
-

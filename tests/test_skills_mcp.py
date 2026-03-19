@@ -120,4 +120,3 @@ def test_run_server_falls_back_to_default_http_port(
 
     assert fake_mcp.settings.port == skills_mcp.DEFAULT_HTTP_PORT
     assert fake_mcp.calls == [skills_mcp.HTTP_TRANSPORT]
-

@@ -117,7 +117,12 @@ def _prd_guardrail(result) -> Tuple[bool, Any]:
                     "dependency-graph-rejected by prd guardrail: %s",
                     "; ".join(dependency_errors),
                 )
-                emit_metric("guardrail_reject", 1.0, guardrail="prd", reason="invalid_dependencies")
+                emit_metric(
+                    "guardrail_reject",
+                    1.0,
+                    guardrail="prd",
+                    reason="invalid_dependencies",
+                )
                 return False, format_dependency_errors(
                     dependency_errors,
                     subject="PRD",

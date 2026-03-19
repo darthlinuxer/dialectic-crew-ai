@@ -32,8 +32,13 @@ from poker_planning import PokerPlanningCalculator, PokerConfig, Story, Estimati
 from gantt_chart import GanttChartGenerator, GanttConfig, Task, TaskType, TaskStatus
 from burndown_chart import BurndownCalculator, BurndownConfig, ChartType
 from exporters import (
-    MarkdownExporter, MermaidExporter, PlantUMLExporter,
-    HTMLExporter, CSVExporter, JSONExporter, save_to_file
+    MarkdownExporter,
+    MermaidExporter,
+    PlantUMLExporter,
+    HTMLExporter,
+    CSVExporter,
+    JSONExporter,
+    save_to_file,
 )
 
 
@@ -45,7 +50,9 @@ class IntegrationTestBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Create output directory for test files"""
-        cls._temp_dir = tempfile.TemporaryDirectory(prefix="budget_analyst_test_output_")
+        cls._temp_dir = tempfile.TemporaryDirectory(
+            prefix="budget_analyst_test_output_"
+        )
         cls.output_dir = cls._temp_dir.name
         os.makedirs(cls.output_dir, exist_ok=True)
         print(f"\n📁 Test outputs will be saved to: {cls.output_dir}")
@@ -82,20 +89,20 @@ class IntegrationTestBase(unittest.TestCase):
     def assertValidMarkdown(self, content: str):
         """Basic markdown validation"""
         # Should have at least one heading
-        self.assertIn('#', content, "No markdown headings found")
+        self.assertIn("#", content, "No markdown headings found")
 
     def assertValidMermaid(self, content: str):
         """Basic mermaid validation"""
         # Should have mermaid diagram type
-        mermaid_types = ['flowchart', 'gantt', 'pie', 'xychart']
+        mermaid_types = ["flowchart", "gantt", "pie", "xychart"]
         has_type = any(t in content for t in mermaid_types)
         self.assertTrue(has_type, "No mermaid diagram type found")
 
     def assertValidHTML(self, content: str):
         """Basic HTML validation"""
-        self.assertIn('<!DOCTYPE html>', content, "Missing DOCTYPE")
-        self.assertIn('<html>', content, "Missing html tag")
-        self.assertIn('</html>', content, "HTML not closed")
+        self.assertIn("<!DOCTYPE html>", content, "Missing DOCTYPE")
+        self.assertIn("<html>", content, "Missing html tag")
+        self.assertIn("</html>", content, "HTML not closed")
 
 
 class TestCriticalPathIntegration(IntegrationTestBase):
@@ -109,7 +116,7 @@ class TestCriticalPathIntegration(IntegrationTestBase):
             {"id": "C", "name": "Procurement", "duration": 3, "predecessors": ["A"]},
             {"id": "D", "name": "Development", "duration": 10, "predecessors": ["B"]},
             {"id": "E", "name": "Testing", "duration": 5, "predecessors": ["D", "C"]},
-            {"id": "F", "name": "Deployment", "duration": 2, "predecessors": ["E"]}
+            {"id": "F", "name": "Deployment", "duration": 2, "predecessors": ["E"]},
         ]
 
     def test_01_critical_path_analysis_runs(self):
@@ -120,15 +127,15 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         result = analyzer.analyze()
 
         # Validate result structure
-        self.assertIn('project_duration', result)
-        self.assertIn('critical_path', result)
-        self.assertIn('activities', result)
+        self.assertIn("project_duration", result)
+        self.assertIn("critical_path", result)
+        self.assertIn("activities", result)
 
         # Validate project duration is positive
-        self.assertGreater(result['project_duration'], 0)
+        self.assertGreater(result["project_duration"], 0)
 
         # Validate critical path exists
-        self.assertGreater(len(result['critical_path']), 0)
+        self.assertGreater(len(result["critical_path"]), 0)
 
         print(f"   ✅ Project Duration: {result['project_duration']} days")
         print(f"   ✅ Critical Path: {' → '.join(result['critical_path'])}")
@@ -141,7 +148,7 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         result = analyzer.analyze()
 
         json_output = JSONExporter.to_json(result)
-        filepath = self.save_output(json_output, 'cpm_result.json')
+        filepath = self.save_output(json_output, "cpm_result.json")
 
         self.assertFileNotEmpty(filepath)
         self.assertValidJSON(json_output)
@@ -161,16 +168,25 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         md_lines.append(f"Duration: {result['project_duration']} days\n")
 
         headers = ["ID", "Name", "Duration", "ES", "EF", "Critical"]
-        rows = [[a['id'], a['name'], a['duration'], a['ES'], a['EF'], "✅" if a['critical'] else "❌"]
-                for a in result['activities']]
+        rows = [
+            [
+                a["id"],
+                a["name"],
+                a["duration"],
+                a["ES"],
+                a["EF"],
+                "✅" if a["critical"] else "❌",
+            ]
+            for a in result["activities"]
+        ]
         md_lines.append(MarkdownExporter.table(headers, rows))
 
-        md_output = '\n'.join(md_lines)
-        filepath = self.save_output(md_output, 'cpm_report.md')
+        md_output = "\n".join(md_lines)
+        filepath = self.save_output(md_output, "cpm_report.md")
 
         self.assertFileNotEmpty(filepath)
         self.assertValidMarkdown(md_output)
-        self.assertIn('Critical Path Analysis', md_output)
+        self.assertIn("Critical Path Analysis", md_output)
 
         print(f"   ✅ Markdown saved: {filepath}")
 
@@ -182,19 +198,24 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         result = analyzer.analyze()
 
         # Create mermaid flowchart
-        nodes = [{"id": a['id'], "label": a['name'], "critical": a['critical']}
-                 for a in result['activities']]
-        edges = [{"from": p, "to": a['id']}
-                 for a in result['activities'] for p in a.get('predecessors', [])]
+        nodes = [
+            {"id": a["id"], "label": a["name"], "critical": a["critical"]}
+            for a in result["activities"]
+        ]
+        edges = [
+            {"from": p, "to": a["id"]}
+            for a in result["activities"]
+            for p in a.get("predecessors", [])
+        ]
 
         mermaid = MermaidExporter.flowchart(nodes, edges, direction="LR")
         mermaid_output = f"```mermaid\n{mermaid}\n```"
 
-        filepath = self.save_output(mermaid_output, 'cpm_flowchart.md')
+        filepath = self.save_output(mermaid_output, "cpm_flowchart.md")
 
         self.assertFileNotEmpty(filepath)
         self.assertValidMermaid(mermaid)
-        self.assertIn('flowchart', mermaid)
+        self.assertIn("flowchart", mermaid)
 
         print(f"   ✅ Mermaid saved: {filepath}")
 
@@ -205,25 +226,83 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         # Complex project: Enterprise Application Development
         complex_activities = [
             {"id": "A", "name": "Project Kickoff", "duration": 2, "predecessors": []},
-            {"id": "B", "name": "Requirements Analysis", "duration": 5, "predecessors": ["A"]},
-            {"id": "C", "name": "Architecture Design", "duration": 8, "predecessors": ["B"]},
-            {"id": "D", "name": "Database Design", "duration": 5, "predecessors": ["B"]},
+            {
+                "id": "B",
+                "name": "Requirements Analysis",
+                "duration": 5,
+                "predecessors": ["A"],
+            },
+            {
+                "id": "C",
+                "name": "Architecture Design",
+                "duration": 8,
+                "predecessors": ["B"],
+            },
+            {
+                "id": "D",
+                "name": "Database Design",
+                "duration": 5,
+                "predecessors": ["B"],
+            },
             {"id": "E", "name": "UI/UX Design", "duration": 6, "predecessors": ["B"]},
-            {"id": "F", "name": "Backend Development", "duration": 15, "predecessors": ["C", "D"]},
-            {"id": "G", "name": "Frontend Development", "duration": 12, "predecessors": ["C", "E"]},
-            {"id": "H", "name": "API Integration", "duration": 5, "predecessors": ["F", "G"]},
-            {"id": "I", "name": "Security Implementation", "duration": 7, "predecessors": ["F"]},
-            {"id": "J", "name": "Unit Testing", "duration": 8, "predecessors": ["H", "I"]},
-            {"id": "K", "name": "Integration Testing", "duration": 6, "predecessors": ["J"]},
-            {"id": "L", "name": "UAT & Deployment", "duration": 4, "predecessors": ["K"]}
+            {
+                "id": "F",
+                "name": "Backend Development",
+                "duration": 15,
+                "predecessors": ["C", "D"],
+            },
+            {
+                "id": "G",
+                "name": "Frontend Development",
+                "duration": 12,
+                "predecessors": ["C", "E"],
+            },
+            {
+                "id": "H",
+                "name": "API Integration",
+                "duration": 5,
+                "predecessors": ["F", "G"],
+            },
+            {
+                "id": "I",
+                "name": "Security Implementation",
+                "duration": 7,
+                "predecessors": ["F"],
+            },
+            {
+                "id": "J",
+                "name": "Unit Testing",
+                "duration": 8,
+                "predecessors": ["H", "I"],
+            },
+            {
+                "id": "K",
+                "name": "Integration Testing",
+                "duration": 6,
+                "predecessors": ["J"],
+            },
+            {
+                "id": "L",
+                "name": "UAT & Deployment",
+                "duration": 4,
+                "predecessors": ["K"],
+            },
         ]
 
         analyzer = CriticalPathAnalyzer(complex_activities, unit="days")
         result = analyzer.analyze()
 
         # Validate critical path exists and has reasonable length
-        self.assertGreater(len(result['critical_path']), 5, "Complex project should have long critical path")
-        self.assertGreater(result['project_duration'], 40, "Complex project should take significant time")
+        self.assertGreater(
+            len(result["critical_path"]),
+            5,
+            "Complex project should have long critical path",
+        )
+        self.assertGreater(
+            result["project_duration"],
+            40,
+            "Complex project should take significant time",
+        )
 
         print(f"   ✅ Project Duration: {result['project_duration']} days")
         print(f"   ✅ Critical Path Length: {len(result['critical_path'])} activities")
@@ -231,10 +310,15 @@ class TestCriticalPathIntegration(IntegrationTestBase):
 
         # Test Mermaid Flowchart with RED critical paths
         print("\n   🎨 Testing Mermaid Flowchart with Critical Path Coloring...")
-        nodes = [{"id": a['id'], "label": a['name'], "critical": a['critical']}
-                 for a in result['activities']]
-        edges = [{"from": p, "to": a['id']}
-                 for a in result['activities'] for p in a.get('predecessors', [])]
+        nodes = [
+            {"id": a["id"], "label": a["name"], "critical": a["critical"]}
+            for a in result["activities"]
+        ]
+        edges = [
+            {"from": p, "to": a["id"]}
+            for a in result["activities"]
+            for p in a.get("predecessors", [])
+        ]
 
         # Verify edges were extracted correctly
         self.assertGreater(len(edges), 10, "Complex project should have many edges")
@@ -244,23 +328,29 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         mermaid = MermaidExporter.flowchart(nodes, edges, direction="TB")
         mermaid_output = f"```mermaid\n{mermaid}\n```"
 
-        filepath = self.save_output(mermaid_output, 'cpm_complex_flowchart.md')
+        filepath = self.save_output(mermaid_output, "cpm_complex_flowchart.md")
 
         # Validate Mermaid output structure
         self.assertFileNotEmpty(filepath)
         self.assertValidMermaid(mermaid)
 
         # CRITICAL: Verify edges are present in output
-        self.assertIn('-->', mermaid, "Mermaid flowchart MUST contain edges (arrows)")
-        edge_count = mermaid.count('-->')
-        self.assertGreater(edge_count, 10, f"Expected many edges, found only {edge_count}")
+        self.assertIn("-->", mermaid, "Mermaid flowchart MUST contain edges (arrows)")
+        edge_count = mermaid.count("-->")
+        self.assertGreater(
+            edge_count, 10, f"Expected many edges, found only {edge_count}"
+        )
 
         # Verify critical path styling is applied (red color by default)
-        self.assertIn('classDef critical', mermaid, "Critical path styling must be defined")
-        self.assertIn('#ff6b6b', mermaid, "Critical nodes should use red color by default")
+        self.assertIn(
+            "classDef critical", mermaid, "Critical path styling must be defined"
+        )
+        self.assertIn(
+            "#ff6b6b", mermaid, "Critical nodes should use red color by default"
+        )
 
         # Verify normal node styling is also present
-        self.assertIn('classDef normal', mermaid, "Normal node styling must be defined")
+        self.assertIn("classDef normal", mermaid, "Normal node styling must be defined")
 
         print(f"   ✅ Mermaid flowchart has {edge_count} edges (arrows)")
         print("   ✅ Critical path nodes styled in RED (#ff6b6b)")
@@ -270,37 +360,42 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         print("\n   📊 Testing PlantUML Gantt with Critical Path...")
 
         tasks = []
-        for a in result['activities']:
+        for a in result["activities"]:
             task = {
-                "id": a['id'],
-                "name": a['name'],
-                "duration": a['duration'],
-                "dependencies": a.get('predecessors', []),
-                "critical": a['critical']
+                "id": a["id"],
+                "name": a["name"],
+                "duration": a["duration"],
+                "dependencies": a.get("predecessors", []),
+                "critical": a["critical"],
             }
             tasks.append(task)
 
         plantuml = PlantUMLExporter.gantt_diagram(
-            tasks,
-            title="Complex Enterprise Application Development"
+            tasks, title="Complex Enterprise Application Development"
         )
 
-        filepath = self.save_output(plantuml, 'cpm_complex_gantt.puml')
+        filepath = self.save_output(plantuml, "cpm_complex_gantt.puml")
 
         # Validate PlantUML structure
         self.assertFileNotEmpty(filepath)
-        self.assertIn('@startgantt', plantuml)
-        self.assertIn('@endgantt', plantuml)
+        self.assertIn("@startgantt", plantuml)
+        self.assertIn("@endgantt", plantuml)
 
         # Verify all tasks are present
         for activity in complex_activities:
-            self.assertIn(activity['name'], plantuml, f"Task {activity['name']} missing from Gantt")
+            self.assertIn(
+                activity["name"],
+                plantuml,
+                f"Task {activity['name']} missing from Gantt",
+            )
 
         # Verify dependencies are represented
-        self.assertIn('starts at', plantuml, "PlantUML Gantt should show dependencies")
+        self.assertIn("starts at", plantuml, "PlantUML Gantt should show dependencies")
 
         # Verify critical tasks are colored red
-        self.assertIn('colored in Red', plantuml, "Critical tasks should be colored red")
+        self.assertIn(
+            "colored in Red", plantuml, "Critical tasks should be colored red"
+        )
 
         print(f"   ✅ PlantUML Gantt includes all {len(complex_activities)} tasks")
         print("   ✅ Dependencies properly represented")
@@ -315,28 +410,44 @@ class TestCriticalPathIntegration(IntegrationTestBase):
         md_lines.append(MarkdownExporter.heading("Executive Summary", 2))
         md_lines.append(f"- **Total Duration:** {result['project_duration']} days\n")
         md_lines.append(f"- **Total Activities:** {len(result['activities'])}\n")
-        md_lines.append(f"- **Critical Path Length:** {len(result['critical_path'])} activities\n")
-        md_lines.append(f"- **Critical Path:** {' → '.join(result['critical_path'])}\n\n")
+        md_lines.append(
+            f"- **Critical Path Length:** {len(result['critical_path'])} activities\n"
+        )
+        md_lines.append(
+            f"- **Critical Path:** {' → '.join(result['critical_path'])}\n\n"
+        )
 
         md_lines.append(MarkdownExporter.heading("Activity Details", 2))
-        headers = ["ID", "Name", "Duration", "ES", "EF", "LS", "LF", "Slack", "Critical"]
+        headers = [
+            "ID",
+            "Name",
+            "Duration",
+            "ES",
+            "EF",
+            "LS",
+            "LF",
+            "Slack",
+            "Critical",
+        ]
         rows = []
-        for a in result['activities']:
-            rows.append([
-                a['id'],
-                a['name'],
-                f"{a['duration']} days",
-                a['ES'],
-                a['EF'],
-                a['LS'],
-                a['LF'],
-                a['slack'],
-                "🔴 YES" if a['critical'] else "⚪ No"
-            ])
+        for a in result["activities"]:
+            rows.append(
+                [
+                    a["id"],
+                    a["name"],
+                    f"{a['duration']} days",
+                    a["ES"],
+                    a["EF"],
+                    a["LS"],
+                    a["LF"],
+                    a["slack"],
+                    "🔴 YES" if a["critical"] else "⚪ No",
+                ]
+            )
         md_lines.append(MarkdownExporter.table(headers, rows))
 
-        md_output = '\n'.join(md_lines)
-        filepath = self.save_output(md_output, 'cpm_complex_report.md')
+        md_output = "\n".join(md_lines)
+        filepath = self.save_output(md_output, "cpm_complex_report.md")
 
         self.assertFileNotEmpty(filepath)
         self.assertValidMarkdown(md_output)
@@ -354,14 +465,14 @@ class TestBudgetIntegration(IntegrationTestBase):
             TeamMember("Tech Lead", 1, 120),
             TeamMember("Senior Dev", 2, 100),
             TeamMember("Developer", 3, 70),
-            TeamMember("QA", 2, 65)
+            TeamMember("QA", 2, 65),
         ]
 
         self.config = BudgetConfig(
             total_story_points=100,
             points_per_sprint=20,
             sprint_duration_weeks=2,
-            hours_per_sprint=320
+            hours_per_sprint=320,
         )
 
     def test_01_budget_calculation_runs(self):
@@ -372,14 +483,14 @@ class TestBudgetIntegration(IntegrationTestBase):
         result = calculator.calculate()
 
         # Validate structure
-        self.assertIn('summary', result)
-        self.assertIn('breakdown', result)
-        self.assertIn('scenarios', result)
+        self.assertIn("summary", result)
+        self.assertIn("breakdown", result)
+        self.assertIn("scenarios", result)
 
         # Validate calculations
-        summary = result['summary']
-        self.assertGreater(summary['total_budget'], 0)
-        self.assertGreater(summary['base_cost'], 0)
+        summary = result["summary"]
+        self.assertGreater(summary["total_budget"], 0)
+        self.assertGreater(summary["base_cost"], 0)
 
         print(f"   ✅ Total Budget: ${summary['total_budget']:,.2f}")
         print(f"   ✅ Base Cost: ${summary['base_cost']:,.2f}")
@@ -391,16 +502,22 @@ class TestBudgetIntegration(IntegrationTestBase):
         calculator = BudgetCalculator(self.config, self.team, fixed_costs=10000)
         result = calculator.calculate()
 
-        scenarios = result['scenarios']
+        scenarios = result["scenarios"]
 
         # Validate scenarios
-        self.assertIn('optimistic', scenarios)
-        self.assertIn('realistic', scenarios)
-        self.assertIn('pessimistic', scenarios)
+        self.assertIn("optimistic", scenarios)
+        self.assertIn("realistic", scenarios)
+        self.assertIn("pessimistic", scenarios)
 
         # Validate ordering: optimistic < realistic < pessimistic
-        self.assertLess(scenarios['optimistic']['total_budget'], scenarios['realistic']['total_budget'])
-        self.assertLess(scenarios['realistic']['total_budget'], scenarios['pessimistic']['total_budget'])
+        self.assertLess(
+            scenarios["optimistic"]["total_budget"],
+            scenarios["realistic"]["total_budget"],
+        )
+        self.assertLess(
+            scenarios["realistic"]["total_budget"],
+            scenarios["pessimistic"]["total_budget"],
+        )
 
         print(f"   ✅ Optimistic: ${scenarios['optimistic']['total_budget']:,.2f}")
         print(f"   ✅ Realistic: ${scenarios['realistic']['total_budget']:,.2f}")
@@ -414,22 +531,22 @@ class TestBudgetIntegration(IntegrationTestBase):
         result = calculator.calculate()
 
         # Create pie chart from breakdown (extract numeric values only)
-        breakdown = result['breakdown']
+        breakdown = result["breakdown"]
         data = {
-            "Base Cost": breakdown['base_cost']['total'],
-            "Overhead": breakdown['overhead']['total'],
-            "Fixed Costs": breakdown['fixed_costs']['total'],
-            "Contingency": breakdown['contingency']['total']
+            "Base Cost": breakdown["base_cost"]["total"],
+            "Overhead": breakdown["overhead"]["total"],
+            "Fixed Costs": breakdown["fixed_costs"]["total"],
+            "Contingency": breakdown["contingency"]["total"],
         }
 
         pie_chart = MermaidExporter.pie_chart("Budget Composition", data)
         output = f"```mermaid\n{pie_chart}\n```"
 
-        filepath = self.save_output(output, 'budget_pie.md')
+        filepath = self.save_output(output, "budget_pie.md")
 
         self.assertFileNotEmpty(filepath)
-        self.assertIn('pie', pie_chart)
-        self.assertIn('title', pie_chart)
+        self.assertIn("pie", pie_chart)
+        self.assertIn("title", pie_chart)
 
         print(f"   ✅ Pie chart saved: {filepath}")
 
@@ -441,14 +558,14 @@ class TestBudgetIntegration(IntegrationTestBase):
         result = calculator.calculate()
 
         # Export sprint breakdown to CSV
-        sprint_data = result['by_sprint']
+        sprint_data = result["by_sprint"]
 
         csv_output = CSVExporter.dict_to_csv(sprint_data)
-        filepath = self.save_output(csv_output, 'budget_by_sprint.csv')
+        filepath = self.save_output(csv_output, "budget_by_sprint.csv")
 
         self.assertFileNotEmpty(filepath)
-        self.assertIn('sprint', csv_output)
-        self.assertIn('budget', csv_output)
+        self.assertIn("sprint", csv_output)
+        self.assertIn("budget", csv_output)
 
         print(f"   ✅ CSV saved: {filepath}")
 
@@ -461,7 +578,7 @@ class TestPokerPlanningIntegration(IntegrationTestBase):
         self.config = PokerConfig(
             scale=EstimationScale.FIBONACCI,
             breakdown_threshold=13,
-            points_per_sprint=20
+            points_per_sprint=20,
         )
 
     def test_01_estimate_validation(self):
@@ -488,14 +605,14 @@ class TestPokerPlanningIntegration(IntegrationTestBase):
 
         # Test story that should be broken down
         breakdown = calculator.recommend_breakdown(21)
-        self.assertTrue(breakdown['should_breakdown'])
-        self.assertGreater(len(breakdown['suggested_breakdown']), 0)
+        self.assertTrue(breakdown["should_breakdown"])
+        self.assertGreater(len(breakdown["suggested_breakdown"]), 0)
 
         print(f"   ✅ 21 points: {breakdown['reason']}")
 
         # Test story that doesn't need breakdown
         breakdown = calculator.recommend_breakdown(8)
-        self.assertFalse(breakdown['should_breakdown'])
+        self.assertFalse(breakdown["should_breakdown"])
 
         print(f"   ✅ 8 points: {breakdown['reason']}")
 
@@ -507,11 +624,46 @@ class TestPokerPlanningIntegration(IntegrationTestBase):
 
         # Add completed stories
         stories = [
-            Story("US-1", "Feature 1", estimated_points=8, actual_points=8, completed=True, sprint=1),
-            Story("US-2", "Feature 2", estimated_points=5, actual_points=5, completed=True, sprint=1),
-            Story("US-3", "Feature 3", estimated_points=13, actual_points=13, completed=True, sprint=2),
-            Story("US-4", "Feature 4", estimated_points=8, actual_points=8, completed=True, sprint=2),
-            Story("US-5", "Feature 5", estimated_points=5, actual_points=5, completed=True, sprint=3),
+            Story(
+                "US-1",
+                "Feature 1",
+                estimated_points=8,
+                actual_points=8,
+                completed=True,
+                sprint=1,
+            ),
+            Story(
+                "US-2",
+                "Feature 2",
+                estimated_points=5,
+                actual_points=5,
+                completed=True,
+                sprint=1,
+            ),
+            Story(
+                "US-3",
+                "Feature 3",
+                estimated_points=13,
+                actual_points=13,
+                completed=True,
+                sprint=2,
+            ),
+            Story(
+                "US-4",
+                "Feature 4",
+                estimated_points=8,
+                actual_points=8,
+                completed=True,
+                sprint=2,
+            ),
+            Story(
+                "US-5",
+                "Feature 5",
+                estimated_points=5,
+                actual_points=5,
+                completed=True,
+                sprint=3,
+            ),
         ]
 
         for story in stories:
@@ -519,11 +671,13 @@ class TestPokerPlanningIntegration(IntegrationTestBase):
 
         velocity = calculator.calculate_velocity(completed_sprints=3)
 
-        self.assertNotIn('error', velocity)
-        self.assertIn('average_velocity', velocity)
-        self.assertGreater(velocity['average_velocity'], 0)
+        self.assertNotIn("error", velocity)
+        self.assertIn("average_velocity", velocity)
+        self.assertGreater(velocity["average_velocity"], 0)
 
-        print(f"   ✅ Average Velocity: {velocity['average_velocity']:.1f} points/sprint")
+        print(
+            f"   ✅ Average Velocity: {velocity['average_velocity']:.1f} points/sprint"
+        )
 
     def test_04_backlog_analysis_json(self):
         """Test backlog analysis JSON export"""
@@ -545,7 +699,7 @@ class TestPokerPlanningIntegration(IntegrationTestBase):
 
         # Export to JSON
         json_output = JSONExporter.to_json(analysis)
-        filepath = self.save_output(json_output, 'backlog_analysis.json')
+        filepath = self.save_output(json_output, "backlog_analysis.json")
 
         self.assertFileNotEmpty(filepath)
         self.assertValidJSON(json_output)
@@ -568,9 +722,30 @@ class TestGanttIntegration(IntegrationTestBase):
 
         # Add tasks
         tasks = [
-            Task("E1", "Epic 1", TaskType.EPIC, datetime(2024, 3, 1), 14, status=TaskStatus.COMPLETED),
-            Task("E2", "Epic 2", TaskType.EPIC, datetime(2024, 3, 15), 21, dependencies=["E1"]),
-            Task("E3", "Epic 3", TaskType.EPIC, datetime(2024, 4, 5), 14, dependencies=["E2"]),
+            Task(
+                "E1",
+                "Epic 1",
+                TaskType.EPIC,
+                datetime(2024, 3, 1),
+                14,
+                status=TaskStatus.COMPLETED,
+            ),
+            Task(
+                "E2",
+                "Epic 2",
+                TaskType.EPIC,
+                datetime(2024, 3, 15),
+                21,
+                dependencies=["E1"],
+            ),
+            Task(
+                "E3",
+                "Epic 3",
+                TaskType.EPIC,
+                datetime(2024, 4, 5),
+                14,
+                dependencies=["E2"],
+            ),
         ]
 
         for task in tasks:
@@ -579,11 +754,13 @@ class TestGanttIntegration(IntegrationTestBase):
         chart_data = generator.generate()
 
         # Validate structure
-        self.assertIn('timeline', chart_data)
-        self.assertIn('tasks', chart_data)
-        self.assertIn('ascii_chart', chart_data)
+        self.assertIn("timeline", chart_data)
+        self.assertIn("tasks", chart_data)
+        self.assertIn("ascii_chart", chart_data)
 
-        print(f"   ✅ Timeline: {chart_data['timeline']['project_start']} to {chart_data['timeline']['project_end']}")
+        print(
+            f"   ✅ Timeline: {chart_data['timeline']['project_start']} to {chart_data['timeline']['project_end']}"
+        )
 
     def test_02_gantt_ascii_output(self):
         """Test ASCII Gantt chart output"""
@@ -600,13 +777,13 @@ class TestGanttIntegration(IntegrationTestBase):
             generator.add_task(task)
 
         chart_data = generator.generate()
-        ascii_chart = chart_data['ascii_chart']
+        ascii_chart = chart_data["ascii_chart"]
 
-        filepath = self.save_output(ascii_chart, 'gantt_ascii.txt')
+        filepath = self.save_output(ascii_chart, "gantt_ascii.txt")
 
         self.assertFileNotEmpty(filepath)
-        self.assertIn('TASK', ascii_chart)
-        self.assertIn('TIMELINE', ascii_chart)
+        self.assertIn("TASK", ascii_chart)
+        self.assertIn("TIMELINE", ascii_chart)
 
         print(f"   ✅ ASCII chart saved: {filepath}")
 
@@ -617,21 +794,72 @@ class TestGanttIntegration(IntegrationTestBase):
         # Complex project with multiple phases
         complex_activities = [
             {"id": "A", "name": "Project Kickoff", "duration": 2, "predecessors": []},
-            {"id": "B", "name": "Requirements Analysis", "duration": 5, "predecessors": ["A"]},
-            {"id": "C", "name": "Architecture Design", "duration": 8, "predecessors": ["B"]},
-            {"id": "D", "name": "Database Design", "duration": 5, "predecessors": ["B"]},
+            {
+                "id": "B",
+                "name": "Requirements Analysis",
+                "duration": 5,
+                "predecessors": ["A"],
+            },
+            {
+                "id": "C",
+                "name": "Architecture Design",
+                "duration": 8,
+                "predecessors": ["B"],
+            },
+            {
+                "id": "D",
+                "name": "Database Design",
+                "duration": 5,
+                "predecessors": ["B"],
+            },
             {"id": "E", "name": "UI/UX Design", "duration": 6, "predecessors": ["B"]},
-            {"id": "F", "name": "Backend Development", "duration": 15, "predecessors": ["C", "D"]},
-            {"id": "G", "name": "Frontend Development", "duration": 12, "predecessors": ["C", "E"]},
-            {"id": "H", "name": "API Integration", "duration": 5, "predecessors": ["F", "G"]},
-            {"id": "I", "name": "Security Implementation", "duration": 7, "predecessors": ["F"]},
-            {"id": "J", "name": "Unit Testing", "duration": 8, "predecessors": ["H", "I"]},
-            {"id": "K", "name": "Integration Testing", "duration": 6, "predecessors": ["J"]},
-            {"id": "L", "name": "UAT & Deployment", "duration": 4, "predecessors": ["K"]}
+            {
+                "id": "F",
+                "name": "Backend Development",
+                "duration": 15,
+                "predecessors": ["C", "D"],
+            },
+            {
+                "id": "G",
+                "name": "Frontend Development",
+                "duration": 12,
+                "predecessors": ["C", "E"],
+            },
+            {
+                "id": "H",
+                "name": "API Integration",
+                "duration": 5,
+                "predecessors": ["F", "G"],
+            },
+            {
+                "id": "I",
+                "name": "Security Implementation",
+                "duration": 7,
+                "predecessors": ["F"],
+            },
+            {
+                "id": "J",
+                "name": "Unit Testing",
+                "duration": 8,
+                "predecessors": ["H", "I"],
+            },
+            {
+                "id": "K",
+                "name": "Integration Testing",
+                "duration": 6,
+                "predecessors": ["J"],
+            },
+            {
+                "id": "L",
+                "name": "UAT & Deployment",
+                "duration": 4,
+                "predecessors": ["K"],
+            },
         ]
 
         # Run CPM analysis to identify critical path
         from datetime import datetime, timedelta
+
         analyzer = CriticalPathAnalyzer(complex_activities, unit="days")
         result = analyzer.analyze()
 
@@ -642,50 +870,58 @@ class TestGanttIntegration(IntegrationTestBase):
         tasks_by_phase = {
             "Planning Phase": ["A", "B", "C", "D", "E"],
             "Development Phase": ["F", "G", "H", "I"],
-            "Testing Phase": ["J", "K", "L"]
+            "Testing Phase": ["J", "K", "L"],
         }
 
         sections = []
         for phase_name, task_ids in tasks_by_phase.items():
             phase_tasks = []
-            for activity in result['activities']:
-                if activity['id'] in task_ids:
-                    task_start = start_date + timedelta(days=activity['ES'])
-                    task_end = start_date + timedelta(days=activity['EF'])
+            for activity in result["activities"]:
+                if activity["id"] in task_ids:
+                    task_start = start_date + timedelta(days=activity["ES"])
+                    task_end = start_date + timedelta(days=activity["EF"])
 
                     # Critical path tasks use "crit" status, others use "active"
-                    status = "crit" if activity['critical'] else "active"
+                    status = "crit" if activity["critical"] else "active"
 
-                    phase_tasks.append({
-                        "id": activity['id'],
-                        "name": activity['name'],
-                        "start": task_start.strftime("%Y-%m-%d"),
-                        "end": task_end.strftime("%Y-%m-%d"),
-                        "status": status
-                    })
+                    phase_tasks.append(
+                        {
+                            "id": activity["id"],
+                            "name": activity["name"],
+                            "start": task_start.strftime("%Y-%m-%d"),
+                            "end": task_end.strftime("%Y-%m-%d"),
+                            "status": status,
+                        }
+                    )
 
             if phase_tasks:
                 sections.append({"name": phase_name, "tasks": phase_tasks})
 
-        mermaid_gantt = MermaidExporter.gantt("Enterprise Application Development Timeline", sections)
+        mermaid_gantt = MermaidExporter.gantt(
+            "Enterprise Application Development Timeline", sections
+        )
         output = f"```mermaid\n{mermaid_gantt}\n```"
 
-        filepath = self.save_output(output, 'gantt_mermaid.md')
+        filepath = self.save_output(output, "gantt_mermaid.md")
 
         self.assertFileNotEmpty(filepath)
-        self.assertIn('gantt', mermaid_gantt)
+        self.assertIn("gantt", mermaid_gantt)
 
         # Verify all phases are present
-        self.assertIn('Planning Phase', mermaid_gantt)
-        self.assertIn('Development Phase', mermaid_gantt)
-        self.assertIn('Testing Phase', mermaid_gantt)
+        self.assertIn("Planning Phase", mermaid_gantt)
+        self.assertIn("Development Phase", mermaid_gantt)
+        self.assertIn("Testing Phase", mermaid_gantt)
 
         # Verify critical path is marked with "crit" status
-        self.assertIn('crit', mermaid_gantt, "Critical path tasks should be marked with 'crit' status")
+        self.assertIn(
+            "crit",
+            mermaid_gantt,
+            "Critical path tasks should be marked with 'crit' status",
+        )
 
         # Count critical vs non-critical tasks
-        crit_count = mermaid_gantt.count(':crit,')
-        active_count = mermaid_gantt.count(':active,')
+        crit_count = mermaid_gantt.count(":crit,")
+        active_count = mermaid_gantt.count(":active,")
 
         print(f"   ✅ Critical path tasks: {crit_count}")
         print(f"   ✅ Non-critical tasks: {active_count}")
@@ -700,8 +936,7 @@ class TestBurndownIntegration(IntegrationTestBase):
     def setUp(self):
         """Set up test data"""
         self.config = BurndownConfig(
-            chart_type=ChartType.BURNDOWN,
-            sprint_duration_days=10
+            chart_type=ChartType.BURNDOWN, sprint_duration_days=10
         )
 
     def test_01_burndown_tracking(self):
@@ -709,16 +944,14 @@ class TestBurndownIntegration(IntegrationTestBase):
         print("\n📉 Testing Burndown Tracking...")
 
         calculator = BurndownCalculator(
-            self.config,
-            start_date=datetime(2024, 3, 1),
-            initial_scope=50
+            self.config, start_date=datetime(2024, 3, 1), initial_scope=50
         )
 
         # Add daily progress
         for day in range(1, 6):
             calculator.add_data_point(
                 date=datetime(2024, 3, 1) + timedelta(days=day),
-                completed_points=day * 10
+                completed_points=day * 10,
             )
 
         latest = calculator.get_latest_point()
@@ -732,23 +965,21 @@ class TestBurndownIntegration(IntegrationTestBase):
         print("\n🔮 Testing Burndown Forecast...")
 
         calculator = BurndownCalculator(
-            self.config,
-            start_date=datetime(2024, 3, 1),
-            initial_scope=50
+            self.config, start_date=datetime(2024, 3, 1), initial_scope=50
         )
 
         # Add progress data
         for day in range(1, 6):
             calculator.add_data_point(
                 date=datetime(2024, 3, 1) + timedelta(days=day),
-                completed_points=day * 5
+                completed_points=day * 5,
             )
 
         forecast = calculator.forecast_completion()
 
-        self.assertNotIn('error', forecast)
-        self.assertIn('current_velocity', forecast)
-        self.assertIn('status', forecast)
+        self.assertNotIn("error", forecast)
+        self.assertIn("current_velocity", forecast)
+        self.assertIn("status", forecast)
 
         print(f"   ✅ Velocity: {forecast['current_velocity']} points/day")
         print(f"   ✅ Status: {forecast['status']}")
@@ -758,25 +989,23 @@ class TestBurndownIntegration(IntegrationTestBase):
         print("\n📊 Testing Burndown ASCII Chart...")
 
         calculator = BurndownCalculator(
-            self.config,
-            start_date=datetime(2024, 3, 1),
-            initial_scope=50
+            self.config, start_date=datetime(2024, 3, 1), initial_scope=50
         )
 
         # Add progress
         for day in range(1, 8):
             calculator.add_data_point(
                 date=datetime(2024, 3, 1) + timedelta(days=day),
-                completed_points=day * 7
+                completed_points=day * 7,
             )
 
         chart_data = calculator.generate()
-        ascii_chart = chart_data['ascii_chart']
+        ascii_chart = chart_data["ascii_chart"]
 
-        filepath = self.save_output(ascii_chart, 'burndown_ascii.txt')
+        filepath = self.save_output(ascii_chart, "burndown_ascii.txt")
 
         self.assertFileNotEmpty(filepath)
-        self.assertIn('BURNDOWN', ascii_chart)
+        self.assertIn("BURNDOWN", ascii_chart)
 
         print(f"   ✅ ASCII chart saved: {filepath}")
 
@@ -795,11 +1024,11 @@ class TestExportersIntegration(IntegrationTestBase):
         ]
 
         table = MarkdownExporter.table(headers, rows)
-        filepath = self.save_output(table, 'markdown_table.md')
+        filepath = self.save_output(table, "markdown_table.md")
 
         self.assertFileNotEmpty(filepath)
-        self.assertIn('Name', table)
-        self.assertIn('|', table)
+        self.assertIn("Name", table)
+        self.assertIn("|", table)
 
         print(f"   ✅ Table saved: {filepath}")
 
@@ -809,15 +1038,15 @@ class TestExportersIntegration(IntegrationTestBase):
 
         sections = [
             {"heading": "Summary", "content": "<p>Test content</p>"},
-            {"heading": "Details", "content": "<p>More details</p>"}
+            {"heading": "Details", "content": "<p>More details</p>"},
         ]
 
         html = HTMLExporter.simple_report("Test Report", sections)
-        filepath = self.save_output(html, 'test_report.html')
+        filepath = self.save_output(html, "test_report.html")
 
         self.assertFileNotEmpty(filepath)
         self.assertValidHTML(html)
-        self.assertIn('Test Report', html)
+        self.assertIn("Test Report", html)
 
         print(f"   ✅ HTML saved: {filepath}")
 
@@ -833,11 +1062,11 @@ class TestExportersIntegration(IntegrationTestBase):
         diagram = PlantUMLExporter.activity_diagram(activities, "Test Diagram")
         output = f"```plantuml\n{diagram}\n```"
 
-        filepath = self.save_output(output, 'plantuml_diagram.puml')
+        filepath = self.save_output(output, "plantuml_diagram.puml")
 
         self.assertFileNotEmpty(filepath)
-        self.assertIn('@startuml', diagram)
-        self.assertIn('@enduml', diagram)
+        self.assertIn("@startuml", diagram)
+        self.assertIn("@enduml", diagram)
 
         print(f"   ✅ PlantUML saved: {filepath}")
 
@@ -874,7 +1103,11 @@ def run_integration_tests():
     print(f"Failures: {len(result.failures)}")
     print(f"Errors: {len(result.errors)}")
 
-    output_dir = IntegrationTestBase.output_dir if hasattr(IntegrationTestBase, 'output_dir') else '<temporary output dir>'
+    output_dir = (
+        IntegrationTestBase.output_dir
+        if hasattr(IntegrationTestBase, "output_dir")
+        else "<temporary output dir>"
+    )
     print(f"\n📁 All test outputs saved to: {output_dir}")
     print("   You can visually inspect all generated files!")
 

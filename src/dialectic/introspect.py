@@ -2,8 +2,8 @@
 Introspection engine -- 4-lens analysis of the app's current state.
 
 Lenses:
-    1. **Roadmap / vision gap** -- parses the self roadmap (or the active vision document)
-         to find incomplete items
+    1. **Roadmap / vision gap** -- parses the self roadmap
+         (or the active vision document) to find incomplete items
     2. **Metric trends** -- queries MetricsStore for declining scores / rising retries
     3. **Code health** -- counts TODOs, test inventory via pytest --co -q
     4. **Past failures** -- analyses guardrail rejection patterns and failed tasks
@@ -35,9 +35,23 @@ _IMPACT_ORDER = {"high": 0, "medium": 1, "low": 2}
 _SELF_ROADMAP_PATH = Path("internal") / "ROADMAP.md"
 
 
-def _vision_gap_lens(
-    vision_path: Path,
-) -> list[ImprovementOpportunity]:
+def _normalize_backlog_label(label: str) -> str:
+    return re.sub(r"\s+", " ", label).strip().lower()
+
+
+def _backlog_source_path(vision_path: Path) -> str:
+    if not vision_path.is_absolute():
+        return vision_path.as_posix()
+
+    parts = vision_path.parts
+    for anchor in ("internal", "knowledge"):
+        if anchor in parts:
+            anchor_index = parts.index(anchor)
+            return Path(*parts[anchor_index:]).as_posix()
+    return vision_path.name
+
+
+def _vision_gap_lens(vision_path: Path) -> list[ImprovementOpportunity]:
     """Parse ``[ ]`` / ``[x]`` checkboxes in the vision document."""
     if not vision_path.exists():
         return []
@@ -57,18 +71,26 @@ def _vision_gap_lens(
     if not incomplete_items:
         return []
 
+    source_path = _backlog_source_path(vision_path)
+
     for idx, item in enumerate(incomplete_items):
         impact: Literal["high", "medium"] = "high" if idx < 3 else "medium"
         opportunities.append(
             ImprovementOpportunity(
-                id=f"vision-gap-{idx+1}",
+                id=f"vision-gap-{idx + 1}",
                 category="vision_gap",
                 title=f"Incomplete roadmap item: {item[:80]}",
                 description=item,
                 evidence=[
-                    f"{len(incomplete_items)}/{total_checkboxes} roadmap items remain unchecked"
+                    (
+                        f"{len(incomplete_items)}/{total_checkboxes} roadmap "
+                        "items remain unchecked"
+                    )
                 ],
                 estimated_impact=impact,
+                source_path=source_path,
+                source_label=item,
+                source_key=_normalize_backlog_label(item),
             )
         )
     return opportunities
@@ -202,7 +224,9 @@ def _code_health_lens(project_root: Path) -> list[ImprovementOpportunity]:
             cwd=str(project_root),
         )
         if result.returncode == 0:
-            lines = [line for line in result.stdout.strip().splitlines() if line.strip()]
+            lines = [
+                line for line in result.stdout.strip().splitlines() if line.strip()
+            ]
             test_count_line = lines[-1] if lines else ""
             match = re.search(r"(\d+)\s+test", test_count_line)
             test_count = int(match.group(1)) if match else 0

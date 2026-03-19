@@ -57,7 +57,10 @@ def test_crewai_event_logger_emits_structured_log(caplog):
         handler(source, event)
 
     assert any("CrewAI runtime event" in record.message for record in caplog.records)
-    assert any(getattr(record, "event_type", None) == "flow_started" for record in caplog.records)
+    assert any(
+        getattr(record, "event_type", None) == "flow_started"
+        for record in caplog.records
+    )
 
 
 def test_crewai_event_logger_suppresses_immediate_duplicate_events(caplog):

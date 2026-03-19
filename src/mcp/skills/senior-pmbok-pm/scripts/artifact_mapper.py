@@ -52,7 +52,9 @@ def resolve_artifact(
 ) -> Optional[Dict[str, str]]:
     normalized_query = normalize_text(query)
     for row in artifacts:
-        candidates = _split_artifact_names(row["artifact_names"]) + _split_aliases(row["aliases"])
+        candidates = _split_artifact_names(row["artifact_names"]) + _split_aliases(
+            row["aliases"]
+        )
         candidates.append(row["folder_ptbr"].split("/")[-1])
         if normalized_query in [normalize_text(c) for c in candidates]:
             folder_ptbr = row["folder_ptbr"].strip("`")
@@ -93,13 +95,18 @@ def main() -> int:
     args = parser.parse_args()
 
     base_dir = Path(__file__).resolve().parents[1]
-    index_path = Path(args.index) if args.index else base_dir / "reference" / "artifact-index.md"
+    index_path = (
+        Path(args.index) if args.index else base_dir / "reference" / "artifact-index.md"
+    )
     artifacts = load_artifacts(index_path)
 
     output_path = Path(args.output) if args.output else None
 
     if args.list:
-        payload = [{"artifact": row["artifact_names"], "folder": row["folder_ptbr"]} for row in artifacts]
+        payload = [
+            {"artifact": row["artifact_names"], "folder": row["folder_ptbr"]}
+            for row in artifacts
+        ]
         write_output(payload, args.format, output_path, pretty=args.pretty)
         return 0
 
@@ -108,7 +115,12 @@ def main() -> int:
 
     resolved = resolve_artifact(args.artifact, args.language, artifacts, base_dir)
     if not resolved:
-        write_output({"error": "Artifact not found", "query": args.artifact}, args.format, output_path, pretty=args.pretty)
+        write_output(
+            {"error": "Artifact not found", "query": args.artifact},
+            args.format,
+            output_path,
+            pretty=args.pretty,
+        )
         return 2
 
     write_output(resolved, args.format, output_path, pretty=args.pretty)

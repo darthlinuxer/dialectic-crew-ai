@@ -36,10 +36,13 @@ class TestOutputFormatsIntegration(unittest.TestCase):
         self.assertTrue(mmd_path.read_text(encoding="utf-8").startswith("graph TD"))
         # Accept both @startuml and @startjson (both valid PlantUML formats)
         puml_content = puml_path.read_text(encoding="utf-8")
-        self.assertTrue(puml_content.startswith("@startuml") or puml_content.startswith("@startjson"),
-                        f"PlantUML should start with @startuml or @startjson, got: {puml_content[:20]}")
+        self.assertTrue(
+            puml_content.startswith("@startuml")
+            or puml_content.startswith("@startjson"),
+            f"PlantUML should start with @startuml or @startjson, got: {puml_content[:20]}",
+        )
         self.assertIn("<html>", html_path.read_text(encoding="utf-8"))
-        self.assertIn("\"title\"", txt_path.read_text(encoding="utf-8"))
+        self.assertIn('"title"', txt_path.read_text(encoding="utf-8"))
 
     def test_generate_pdf(self):
         data = {"title": "Report", "items": ["a", "b"]}

@@ -17,7 +17,11 @@ def _target_config(app_root: Path) -> TargetConfig:
         set_at=datetime(2026, 3, 14, 14, 0, tzinfo=timezone.utc),
         repo_name="target-repo",
         repo_remote="git@github.com:octo/target-repo.git",
-        vision_path=app_root / "knowledge" / "target" / "github-com-octo-target-repo--abc12345" / "VISION.md",
+        vision_path=app_root
+        / "knowledge"
+        / "target"
+        / "github-com-octo-target-repo--abc12345"
+        / "VISION.md",
         target_slug="github-com-octo-target-repo--abc12345",
     )
 
@@ -29,8 +33,13 @@ def test_prd_output_dir_defaults_to_default_scope(tmp_path, monkeypatch):
     monkeypatch.setattr(output_paths, "resolve_app_root", lambda: app_root)
     monkeypatch.setattr(output_paths, "get_active_target", lambda: None)
 
-    assert resolve_prd_output_dir(VisionContext.PROJECT) == app_root / "prd_output" / "default"
-    assert resolve_prd_output_dir(VisionContext.SELF) == app_root / "prd_output" / "self"
+    assert (
+        resolve_prd_output_dir(VisionContext.PROJECT)
+        == app_root / "prd_output" / "default"
+    )
+    assert (
+        resolve_prd_output_dir(VisionContext.SELF) == app_root / "prd_output" / "self"
+    )
 
 
 def test_output_dirs_use_target_scope_when_active(tmp_path, monkeypatch):
@@ -57,5 +66,11 @@ def test_output_dirs_use_runtime_root_override(tmp_path, monkeypatch):
     monkeypatch.setattr(output_paths, "get_active_target", lambda: None)
     monkeypatch.setenv(output_paths.RUNTIME_ROOT_ENV_VAR, str(runtime_root))
 
-    assert resolve_prd_output_dir(VisionContext.SELF) == runtime_root / "prd_output" / "self"
-    assert resolve_exec_output_dir(VisionContext.PROJECT) == runtime_root / "exec_output" / "default"
+    assert (
+        resolve_prd_output_dir(VisionContext.SELF)
+        == runtime_root / "prd_output" / "self"
+    )
+    assert (
+        resolve_exec_output_dir(VisionContext.PROJECT)
+        == runtime_root / "exec_output" / "default"
+    )

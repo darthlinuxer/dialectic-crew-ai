@@ -47,7 +47,9 @@ def validate_placeholders(template_text: str, inputs_text: str) -> Dict[str, Lis
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate TEMPLATE.md placeholders vs INPUTS.md keys.")
+    parser = argparse.ArgumentParser(
+        description="Validate TEMPLATE.md placeholders vs INPUTS.md keys."
+    )
     parser.add_argument("--template", required=True, help="Path to TEMPLATE.md")
     parser.add_argument("--inputs", required=True, help="Path to INPUTS.md")
     parser.add_argument(

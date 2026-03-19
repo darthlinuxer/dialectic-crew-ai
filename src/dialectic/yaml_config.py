@@ -19,7 +19,9 @@ def load_yaml_config(path: str | Path) -> dict[str, Any]:
     config_path = Path(path)
     data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError(f"YAML config at {config_path} must contain a top-level mapping")
+        raise ValueError(
+            f"YAML config at {config_path} must contain a top-level mapping"
+        )
     return data
 
 
@@ -31,8 +33,7 @@ def render_yaml_config(value: Any, placeholders: dict[str, Any]) -> Any:
         return [render_yaml_config(item, placeholders) for item in value]
     if isinstance(value, dict):
         return {
-            key: render_yaml_config(item, placeholders)
-            for key, item in value.items()
+            key: render_yaml_config(item, placeholders) for key, item in value.items()
         }
     return value
 

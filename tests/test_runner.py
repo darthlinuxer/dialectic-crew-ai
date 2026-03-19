@@ -69,6 +69,7 @@ class TestFindLatestPlan:
         os.utime(new_file, (2000000, 2000000))
 
         from execution import runner
+
         original = runner.PRD_OUTPUT_DIR
         runner.PRD_OUTPUT_DIR = str(d)
         try:
@@ -82,6 +83,7 @@ class TestFindLatestPlan:
         d.mkdir()
 
         from execution import runner
+
         original = runner.PRD_OUTPUT_DIR
         runner.PRD_OUTPUT_DIR = str(d)
         try:

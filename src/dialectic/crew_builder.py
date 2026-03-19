@@ -9,7 +9,11 @@ from crewai import Process, Task
 
 from dialectic.crew_log_summarizer import get_step_summarizer_callback
 from dialectic.crew_verbose_config import get_output_log_file, is_verbose
-from dialectic.yaml_config import render_yaml_config, resolve_guardrail, resolve_output_schema
+from dialectic.yaml_config import (
+    render_yaml_config,
+    resolve_guardrail,
+    resolve_output_schema,
+)
 
 
 def build_task_from_agent_mapping(

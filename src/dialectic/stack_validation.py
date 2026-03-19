@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from dialectic.target import resolve_active_project_root
 
 StackName = Literal["python", "dotnet", "typescript", "react"]
-ValidationProfile = Literal["task", "story"]
+ValidationProfile = Literal["task", "story", "release"]
 PackageManager = Literal["npm", "pnpm", "yarn", "bun"]
 _KNOWN_STACKS: tuple[StackName, ...] = ("python", "dotnet", "typescript", "react")
 
@@ -29,6 +29,7 @@ class ValidationStep:
     label: str
     command: list[str]
     reason: str
+    advisory: bool = False
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class ValidationStepResult:
     returncode: int
     stdout_tail: str
     stderr_tail: str
+    advisory: bool = False
     skipped: bool = False
     reason: str = ""
 
@@ -189,7 +191,8 @@ def run_validation_plan(
     )
     selected_labels = set(include_steps or [])
     steps = [
-        step for step in plan.steps
+        step
+        for step in plan.steps
         if not selected_labels or step.label in selected_labels
     ]
     runner = run_cmd_fn or subprocess.run
@@ -214,6 +217,7 @@ def run_validation_plan(
                     returncode=completed.returncode,
                     stdout_tail=(completed.stdout or "")[-500:],
                     stderr_tail=(completed.stderr or "")[-500:],
+                    advisory=step.advisory,
                     reason=step.reason,
                 )
             )
@@ -227,6 +231,7 @@ def run_validation_plan(
                     returncode=127,
                     stdout_tail="",
                     stderr_tail=str(exc),
+                    advisory=step.advisory,
                     skipped=True,
                     reason=f"Command unavailable: {step.command[0]}",
                 )
@@ -241,12 +246,15 @@ def run_validation_plan(
                     returncode=-1,
                     stdout_tail=_truncate_process_output(exc.output),
                     stderr_tail=_truncate_process_output(exc.stderr),
+                    advisory=step.advisory,
                     skipped=False,
                     reason=f"Timed out after {timeout}s",
                 )
             )
 
-    passed = all(result.passed for result in results) if results else True
+    passed = (
+        all(result.passed or result.advisory for result in results) if results else True
+    )
     return ValidationReport(
         project_root=plan.project_root,
         detected_stacks=plan.detected_stacks,
@@ -260,8 +268,11 @@ def step_labels_for_profile(
     profile: ValidationProfile,
 ) -> list[str]:
     """Select the appropriate validation step labels for a task or full-story gate."""
-    if profile == "story":
+    if profile == "release":
         return [step.label for step in plan.steps]
+
+    if profile == "story":
+        return [step.label for step in plan.steps if step.label != "pyright"]
 
     preferred_by_stack: dict[StackName, tuple[str, ...]] = {
         "python": ("ruff", "mypy"),
@@ -282,7 +293,9 @@ def _command_available(command: str) -> bool:
     return shutil.which(command) is not None
 
 
-def _select_stacks(detected: list[StackName], target_stack: str | None) -> list[StackName]:
+def _select_stacks(
+    detected: list[StackName], target_stack: str | None
+) -> list[StackName]:
     if target_stack is None:
         return detected
     if target_stack not in _KNOWN_STACKS:
@@ -304,6 +317,13 @@ def _python_steps(
     )
     lint_targets = _existing_targets(project_root, "src", "tests") or ["."]
     type_targets = ["src"] if (project_root / "src").exists() else ["."]
+    mypy_command = _python_mypy_command(
+        project_root,
+        prefix,
+        python_executable,
+        command_available_fn,
+        fallback_targets=type_targets,
+    )
     return [
         ValidationStep(
             stack="python",
@@ -313,8 +333,14 @@ def _python_steps(
         ),
         ValidationStep(
             stack="python",
+            label="ruff-format",
+            command=[*prefix, "ruff", "format", "--check", *lint_targets],
+            reason="Catch formatting drift before branch publication.",
+        ),
+        ValidationStep(
+            stack="python",
             label="mypy",
-            command=[*prefix, "mypy", *type_targets],
+            command=mypy_command,
             reason="Catch type and symbol-resolution issues before runtime.",
         ),
         ValidationStep(
@@ -323,7 +349,78 @@ def _python_steps(
             command=[*prefix, "pytest", "--tb=short", "-q", "--reruns", "1"],
             reason="Exercise the repository test suite from the active environment.",
         ),
+        *(_pyright_steps(project_root, command_available_fn)),
     ]
+
+
+def _pyright_steps(
+    project_root: Path,
+    command_available_fn: Callable[[str], bool],
+) -> list[ValidationStep]:
+    """Build optional advisory Pyright steps for Python projects."""
+    if not (project_root / "pyrightconfig.json").exists():
+        return []
+
+    if command_available_fn("pyright"):
+        command = ["pyright", "--project", "pyrightconfig.json", "--outputjson"]
+    elif command_available_fn("npx"):
+        command = [
+            "npx",
+            "--yes",
+            "pyright",
+            "--project",
+            "pyrightconfig.json",
+            "--outputjson",
+        ]
+    else:
+        return []
+
+    return [
+        ValidationStep(
+            stack="python",
+            label="pyright",
+            command=command,
+            reason="Align branch validation with editor-level type diagnostics.",
+            advisory=True,
+        )
+    ]
+
+
+def _python_mypy_command(
+    project_root: Path,
+    prefix: list[str],
+    python_executable: str,
+    command_available_fn: Callable[[str], bool],
+    *,
+    fallback_targets: list[str],
+) -> list[str]:
+    src_root = project_root / "src"
+    if src_root.exists() and command_available_fn("env"):
+        package_targets = sorted(
+            child.name
+            for child in src_root.iterdir()
+            if child.is_dir() and (child / "__init__.py").exists()
+        )
+        module_targets = sorted(
+            child.stem
+            for child in src_root.iterdir()
+            if child.is_file() and child.suffix == ".py"
+        )
+        if package_targets or module_targets:
+            base_command = (
+                [*prefix, "python", "-m", "mypy"]
+                if prefix[:2] == ["uv", "run"]
+                else [python_executable, "-m", "mypy"]
+            )
+            return [
+                "env",
+                f"MYPYPATH={src_root.name}",
+                *base_command,
+                *[arg for package in package_targets for arg in ("-p", package)],
+                *[arg for module in module_targets for arg in ("-m", module)],
+            ]
+
+    return [*prefix, "mypy", *fallback_targets]
 
 
 def _dotnet_steps(project_root: Path) -> list[ValidationStep]:

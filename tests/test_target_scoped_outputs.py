@@ -20,7 +20,11 @@ def _target_config(app_root: Path, target_root: Path) -> TargetConfig:
         set_at=datetime(2026, 3, 14, 15, 0, tzinfo=timezone.utc),
         repo_name=target_root.name,
         repo_remote="git@github.com:octo/target-repo.git",
-        vision_path=app_root / "knowledge" / "target" / "github-com-octo-target-repo--abc12345" / "VISION.md",
+        vision_path=app_root
+        / "knowledge"
+        / "target"
+        / "github-com-octo-target-repo--abc12345"
+        / "VISION.md",
         target_slug="github-com-octo-target-repo--abc12345",
     )
 
@@ -40,11 +44,17 @@ def test_run_user_story_planning_saves_under_target_scope(tmp_path, monkeypatch)
 
     class FakeCrew:
         def kickoff(self):
-            return type("CrewResult", (), {"pydantic": make_plan(tasks=[make_task()])})()
+            return type(
+                "CrewResult", (), {"pydantic": make_plan(tasks=[make_task()])}
+            )()
 
-    monkeypatch.setattr(planning_flow, "build_planning_crew", lambda **kwargs: FakeCrew())
+    monkeypatch.setattr(
+        planning_flow, "build_planning_crew", lambda **kwargs: FakeCrew()
+    )
     monkeypatch.setattr(planning_flow, "MAX_PLAN_RETRIES", 0)
-    monkeypatch.setattr(planning_flow, "resolve_prd_output_dir", lambda context: prd_dir)
+    monkeypatch.setattr(
+        planning_flow, "resolve_prd_output_dir", lambda context: prd_dir
+    )
 
     result = planning_flow.run_user_story_planning(
         prd_path=str(prd_path),
@@ -59,7 +69,9 @@ def test_run_user_story_planning_saves_under_target_scope(tmp_path, monkeypatch)
 def test_run_dialectic_execution_uses_target_scope_and_repo_cwd(tmp_path, monkeypatch):
     app_root = tmp_path / "app"
     target_root = tmp_path / "target-repo"
-    prd_dir = app_root / "prd_output" / "targets" / "github-com-octo-target-repo--abc12345"
+    prd_dir = (
+        app_root / "prd_output" / "targets" / "github-com-octo-target-repo--abc12345"
+    )
     app_root.mkdir()
     target_root.mkdir()
     prd_dir.mkdir(parents=True)
@@ -86,12 +98,18 @@ def test_run_dialectic_execution_uses_target_scope_and_repo_cwd(tmp_path, monkey
                 execution_phases=["dialectic", "verify"],
             )
 
-    exec_dir = app_root / "exec_output" / "targets" / "github-com-octo-target-repo--abc12345"
+    exec_dir = (
+        app_root / "exec_output" / "targets" / "github-com-octo-target-repo--abc12345"
+    )
     monkeypatch.setattr(de, "TaskExecutionFlow", FakeFlow)
     monkeypatch.setattr(de, "_get_task_persistence", lambda: object())
     monkeypatch.setattr(de, "update_user_story_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(de, "update_task_status", lambda *args, **kwargs: None)
-    monkeypatch.setattr(de, "_run_verification", lambda *args, **kwargs: {"verified": True, "score": 9.5, "notes": "ok"})
+    monkeypatch.setattr(
+        de,
+        "_run_verification",
+        lambda *args, **kwargs: {"verified": True, "score": 9.5, "notes": "ok"},
+    )
     monkeypatch.setattr(de, "_load_prd_for_plan", lambda *args, **kwargs: None)
     monkeypatch.setattr(de, "_extract_acceptance_criteria", lambda *args, **kwargs: [])
     monkeypatch.setattr(de, "resolve_exec_output_dir", lambda context: exec_dir)

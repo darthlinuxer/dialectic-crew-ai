@@ -1,5 +1,8 @@
 """Tests for dialectic.introspect -- 4-lens introspection engine."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=use-implicit-booleaness-not-comparison
+
 import textwrap
 
 import pytest
@@ -29,13 +32,15 @@ def _metrics_store(tmp_path):
 class TestVisionGapLens:
     def test_finds_incomplete_items(self, tmp_path):
         vision = tmp_path / "VISION.md"
-        vision.write_text(textwrap.dedent("""\
+        vision.write_text(
+            textwrap.dedent("""\
             # Roadmap
             - [x] Completed item
             - [ ] Incomplete item A
             - [ ] Incomplete item B
             - [x] Another done
-        """))
+        """)
+        )
         results = _vision_gap_lens(vision)
         assert len(results) == 2
         assert results[0].category == "vision_gap"
@@ -62,20 +67,45 @@ class TestVisionGapLens:
         assert results[0].estimated_impact == "high"
         assert results[3].estimated_impact == "medium"
 
-    def test_run_introspection_uses_roadmap_for_self_mode(self, tmp_path, metrics_store, monkeypatch):
+    def test_records_roadmap_source_provenance(self, tmp_path):
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        roadmap.parent.mkdir(parents=True)
+        roadmap.write_text(
+            textwrap.dedent("""\
+            # Roadmap
+            - [ ] Expose output-format selection through the CLI/runtime UX
+        """)
+        )
+
+        results = _vision_gap_lens(roadmap)
+
+        assert len(results) == 1
+        assert results[0].source_path == "internal/ROADMAP.md"
+        assert (
+            results[0].source_label
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            results[0].source_key
+            == "expose output-format selection through the cli/runtime ux"
+        )
+
+    def test_run_introspection_uses_roadmap_for_self_mode(
+        self, tmp_path, metrics_store, monkeypatch
+    ):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         roadmap = tmp_path / "internal" / "ROADMAP.md"
         vision.parent.mkdir(parents=True)
         vision.write_text("# Anti-drift only\nNo checkboxes live here anymore.\n")
-        roadmap.write_text(textwrap.dedent("""\
+        roadmap.write_text(
+            textwrap.dedent("""\
             # Roadmap
             - [x] Completed item
             - [ ] Move introspection checklist source to ROADMAP
-        """))
-
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
+        """)
         )
+
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
@@ -103,7 +133,9 @@ class TestMetricTrendsLens:
 
     def test_guardrail_rejections_detected(self, metrics_store):
         for _ in range(5):
-            metrics_store.record(MetricRecord(metric_type="guardrail_reject", value=1.0))
+            metrics_store.record(
+                MetricRecord(metric_type="guardrail_reject", value=1.0)
+            )
         results = _metric_trends_lens(metrics_store, window=10)
         assert any(o.id == "metric-guardrail-rejections" for o in results)
 
@@ -143,11 +175,13 @@ class TestCodeHealthLens:
 class TestFailurePatternsLens:
     def test_recurring_rejections(self, metrics_store):
         for _ in range(5):
-            metrics_store.record(MetricRecord(
-                metric_type="guardrail_reject",
-                value=1.0,
-                context={"guardrail": "prd", "reason": "invalid_schema"},
-            ))
+            metrics_store.record(
+                MetricRecord(
+                    metric_type="guardrail_reject",
+                    value=1.0,
+                    context={"guardrail": "prd", "reason": "invalid_schema"},
+                )
+            )
         results = _failure_patterns_lens(metrics_store)
         assert len(results) == 1
         assert "prd" in results[0].title
@@ -158,11 +192,13 @@ class TestFailurePatternsLens:
 
     def test_below_threshold(self, metrics_store):
         for _ in range(2):
-            metrics_store.record(MetricRecord(
-                metric_type="guardrail_reject",
-                value=1.0,
-                context={"guardrail": "quality", "reason": "bad"},
-            ))
+            metrics_store.record(
+                MetricRecord(
+                    metric_type="guardrail_reject",
+                    value=1.0,
+                    context={"guardrail": "quality", "reason": "bad"},
+                )
+            )
         assert _failure_patterns_lens(metrics_store) == []
 
 
@@ -172,9 +208,7 @@ class TestRunIntrospection:
         vision.parent.mkdir(parents=True)
         vision.write_text("- [ ] Unfinished feature\n- [x] Done feature\n")
 
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
-        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
@@ -193,13 +227,13 @@ class TestRunIntrospection:
         for v in [5.0, 6.0, 6.5]:
             metrics_store.record(MetricRecord(metric_type="prd_score", value=v))
 
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
-        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
 
         report = run_introspection(store=metrics_store)
         impacts = [o.estimated_impact for o in report.opportunities]
-        assert impacts == sorted(impacts, key=lambda i: {"high": 0, "medium": 1, "low": 2}[i])
+        assert impacts == sorted(
+            impacts, key=lambda i: {"high": 0, "medium": 1, "low": 2}[i]
+        )

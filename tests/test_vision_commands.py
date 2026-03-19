@@ -43,7 +43,11 @@ def _target_config(tmp_path: Path) -> TargetConfig:
         set_at=datetime(2026, 3, 14, 12, 0, tzinfo=timezone.utc),
         repo_name="target-repo",
         repo_remote="git@github.com:octo/target-repo.git",
-        vision_path=tmp_path / "knowledge" / "target" / "github-com-octo-target-repo--abc12345" / "VISION.md",
+        vision_path=tmp_path
+        / "knowledge"
+        / "target"
+        / "github-com-octo-target-repo--abc12345"
+        / "VISION.md",
         target_slug="github-com-octo-target-repo--abc12345",
     )
 
@@ -55,7 +59,9 @@ class TestMakeVisionCommands:
         with pytest.raises(SystemExit):
             vision_commands.cmd_make_vision(output_path=None, self_mode=False)
 
-    def test_cmd_make_vision_writes_target_vision_by_default(self, tmp_path, monkeypatch, capsys):
+    def test_cmd_make_vision_writes_target_vision_by_default(
+        self, tmp_path, monkeypatch, capsys
+    ):
         target_config = _target_config(tmp_path)
 
         def fake_analysis(repo_root: Path) -> RepoAnalysis:
@@ -63,7 +69,11 @@ class TestMakeVisionCommands:
 
         monkeypatch.setattr(vision_commands, "get_active_target", lambda: target_config)
         monkeypatch.setattr(vision_commands, "analyze_repository", fake_analysis)
-        monkeypatch.setattr(vision_commands, "generate_vision_markdown", lambda analysis: "# Generated Vision\n")
+        monkeypatch.setattr(
+            vision_commands,
+            "generate_vision_markdown",
+            lambda analysis: "# Generated Vision\n",
+        )
         monkeypatch.setattr(vision_commands, "resolve_app_root", lambda: tmp_path)
 
         vision_commands.cmd_make_vision(output_path=None, self_mode=False)
@@ -71,7 +81,10 @@ class TestMakeVisionCommands:
         output = capsys.readouterr().out
         assert "Vision saved:" in output
         assert target_config.vision_path is not None
-        assert target_config.vision_path.read_text(encoding="utf-8") == "# Generated Vision\n"
+        assert (
+            target_config.vision_path.read_text(encoding="utf-8")
+            == "# Generated Vision\n"
+        )
 
 
 class TestMakeVisionCli:
@@ -90,7 +103,9 @@ class TestMakeVisionCli:
 
         monkeypatch.setattr(cli, "cmd_make_vision", fake_cmd_make_vision)
 
-        result = RUNNER.invoke(cli.app, ["make-vision", "--self", "--output", "/tmp/out.md"])
+        result = RUNNER.invoke(
+            cli.app, ["make-vision", "--self", "--output", "/tmp/out.md"]
+        )
 
         assert result.exit_code == 0
         assert captured == {"output_path": "/tmp/out.md", "self_mode": True}

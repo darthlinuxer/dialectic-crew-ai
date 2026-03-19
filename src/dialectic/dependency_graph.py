@@ -32,11 +32,7 @@ def _validate_dependency_pairs(
     known_ids = set(dependency_map)
     for item_id, dependencies in dependency_map.items():
         unknown = sorted(
-            {
-                dependency
-                for dependency in dependencies
-                if dependency not in known_ids
-            }
+            {dependency for dependency in dependencies if dependency not in known_ids}
         )
         if unknown:
             errors.append(

@@ -39,7 +39,7 @@ class TestEnhancedExports(unittest.TestCase):
 - [ ] Validate/normalize template format
 - [ ] Map inputs from user context to placeholders
 - [ ] create|update|refactor artifact following TEMPLATE.md
-- [ ] Run quality checks"""
+- [ ] Run quality checks""",
         }
 
         puml_path = EXAMPLES_DIR / "workflow_activity.puml"
@@ -82,7 +82,7 @@ class TestEnhancedExports(unittest.TestCase):
 - [ ] Apply changes maintaining structure
 - [ ] Validate output
 - [ ] Run quality audit
-- [ ] Update version control"""
+- [ ] Update version control""",
         }
 
         mmd_path = EXAMPLES_DIR / "workflow_flowchart.mmd"
@@ -103,7 +103,9 @@ class TestEnhancedExports(unittest.TestCase):
 
         # Validate arrows/connections
         arrow_count = content.count("-->")
-        self.assertGreater(arrow_count, 5, f"Should have many connections, found {arrow_count}")
+        self.assertGreater(
+            arrow_count, 5, f"Should have many connections, found {arrow_count}"
+        )
 
         # Verify not a generic tree diagram
         self.assertNotIn("root[", content, "Should not be generic tree")
@@ -129,7 +131,7 @@ class TestEnhancedExports(unittest.TestCase):
 - [ ] Validate ownership and approvals
 - [ ] Generate review report
 - [ ] Document findings
-- [ ] Create action items if needed"""
+- [ ] Create action items if needed""",
         }
 
         # Test both formats
@@ -147,11 +149,15 @@ class TestEnhancedExports(unittest.TestCase):
 
         # Validate PlantUML has all steps
         step_count_puml = puml_content.count(":")
-        self.assertGreater(step_count_puml, 10, f"Should have 10+ steps, found {step_count_puml}")
+        self.assertGreater(
+            step_count_puml, 10, f"Should have 10+ steps, found {step_count_puml}"
+        )
 
         # Validate Mermaid has all steps
         step_count_mmd = mmd_content.count("Step")
-        self.assertGreater(step_count_mmd, 10, f"Should have 10+ steps, found {step_count_mmd}")
+        self.assertGreater(
+            step_count_mmd, 10, f"Should have 10+ steps, found {step_count_mmd}"
+        )
 
         print(f"   ✅ Complex PlantUML: {step_count_puml} activities")
         print(f"   ✅ Complex Mermaid: {step_count_mmd} steps")
@@ -166,20 +172,20 @@ class TestEnhancedExports(unittest.TestCase):
                     "status": "complete",
                     "version": "1.2",
                     "owner": "PM Team",
-                    "issues": 0
+                    "issues": 0,
                 },
                 "wbs": {
                     "status": "in_progress",
                     "version": "0.8",
                     "owner": "Tech Lead",
-                    "issues": 2
+                    "issues": 2,
                 },
                 "risk_register": {
                     "status": "complete",
                     "version": "1.0",
                     "owner": "Risk Manager",
-                    "issues": 0
-                }
+                    "issues": 0,
+                },
             }
         }
 
@@ -223,13 +229,13 @@ class TestEnhancedExports(unittest.TestCase):
                 "stakeholder_register": {
                     "status": "approved",
                     "last_updated": "2024-01-15",
-                    "compliance": "100%"
+                    "compliance": "100%",
                 },
                 "communication_plan": {
                     "status": "draft",
                     "last_updated": "2024-01-10",
-                    "compliance": "85%"
-                }
+                    "compliance": "85%",
+                },
             }
         }
 
@@ -256,10 +262,7 @@ class TestEnhancedExports(unittest.TestCase):
         """Test fallback to generic diagrams for non-PM data"""
         print("\n🔄 Testing Fallback for Generic Data...")
 
-        generic_data = {
-            "title": "Generic Report",
-            "items": ["a", "b", "c"]
-        }
+        generic_data = {"title": "Generic Report", "items": ["a", "b", "c"]}
 
         puml_path = EXAMPLES_DIR / "fallback_generic.puml"
         mmd_path = EXAMPLES_DIR / "fallback_generic.mmd"

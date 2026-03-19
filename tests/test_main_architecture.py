@@ -81,5 +81,5 @@ def test_main_bootstrap_imports_canonical_modules_directly():
     assert "src.main.git_helpers" not in imports
     assert "src.main.pr_builder" not in imports
 
-# End of architecture regression tests.
 
+# End of architecture regression tests.

@@ -1,5 +1,8 @@
 """Tests for Pydantic schema validation in schemas.py."""
 
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=too-few-public-methods
+
 from typing import Any, cast
 
 import pytest
@@ -123,6 +126,23 @@ class TestPRDSchema:
         assert prd2.feature_name == prd.feature_name
         assert len(prd2.user_stories) == len(prd.user_stories)
 
+    def test_supports_roadmap_provenance_fields(self):
+        prd = make_prd(
+            source_roadmap_path="internal/ROADMAP.md",
+            source_roadmap_label="Expose output-format selection through the CLI/runtime UX",
+            source_roadmap_key="expose output-format selection through the cli/runtime ux",
+        )
+
+        assert prd.source_roadmap_path == "internal/ROADMAP.md"
+        assert (
+            prd.source_roadmap_label
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            prd.source_roadmap_key
+            == "expose output-format selection through the cli/runtime ux"
+        )
+
 
 class TestImplementationTask:
     def test_defaults(self):
@@ -150,6 +170,23 @@ class TestUserStoryExecutionPlan:
     def test_quality_score_bounds(self):
         with pytest.raises(ValidationError, match="quality_score"):
             make_plan(quality_score=11.0)
+
+    def test_supports_roadmap_provenance_fields(self):
+        plan = make_plan(
+            source_roadmap_path="internal/ROADMAP.md",
+            source_roadmap_label="Expose output-format selection through the CLI/runtime UX",
+            source_roadmap_key="expose output-format selection through the cli/runtime ux",
+        )
+
+        assert plan.source_roadmap_path == "internal/ROADMAP.md"
+        assert (
+            plan.source_roadmap_label
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            plan.source_roadmap_key
+            == "expose output-format selection through the cli/runtime ux"
+        )
 
 
 class TestValidationOutput:
@@ -195,6 +232,26 @@ class TestExecutionReport:
         assert report.task_results == []
         assert report.task_flow_ids == {}
 
+    def test_supports_roadmap_provenance_fields(self):
+        report = ExecutionReport(
+            plan_id="US-001",
+            plan_title="Story",
+            run_id="20260101",
+            source_roadmap_path="internal/ROADMAP.md",
+            source_roadmap_label="Expose output-format selection through the CLI/runtime UX",
+            source_roadmap_key="expose output-format selection through the cli/runtime ux",
+        )
+
+        assert report.source_roadmap_path == "internal/ROADMAP.md"
+        assert (
+            report.source_roadmap_label
+            == "Expose output-format selection through the CLI/runtime UX"
+        )
+        assert (
+            report.source_roadmap_key
+            == "expose output-format selection through the cli/runtime ux"
+        )
+
 
 class TestExecutionCheckpoint:
     def test_construction(self):
@@ -217,3 +274,41 @@ class TestSelfImprovementRecordResumeMetadata:
         )
         assert record.prd_flow_id == ""
         assert record.execution_task_flow_ids == {}
+        assert record.continue_prd is False
+        assert record.continue_prd_source_prd_path == ""
+        assert record.continue_prd_current_story_ref == ""
+        assert record.continue_prd_completed_story_refs == []
+        assert record.continue_prd_story_history == []
+
+    def test_supports_continue_prd_loop_state_roundtrip(self):
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd",
+            timestamp="2026-03-10T00:00:00Z",
+            continue_prd=True,
+            continue_prd_source_prd_path="prd_output/self/input_prd.json",
+            continue_prd_current_story_ref="US2",
+            continue_prd_completed_story_refs=["US1"],
+            continue_prd_story_history=[
+                {
+                    "story_ref": "US1",
+                    "plan_path_json": "prd_output/self/exec_US1.json",
+                    "execution_run_id": "run-us1",
+                    "story_status": "completed",
+                }
+            ],
+        )
+
+        restored = SelfImprovementRecord.model_validate(record.model_dump())
+
+        assert restored.continue_prd is True
+        assert restored.continue_prd_source_prd_path == "prd_output/self/input_prd.json"
+        assert restored.continue_prd_current_story_ref == "US2"
+        assert restored.continue_prd_completed_story_refs == ["US1"]
+        assert restored.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": "prd_output/self/exec_US1.json",
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            }
+        ]

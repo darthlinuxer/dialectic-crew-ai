@@ -7,10 +7,14 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from schemas import ValidationOutput
+from dialectic.stack_validation import ValidationReport, ValidationStepResult
+from src.main.self_improve import quality_gate_remediation as remediation_module
 from src.main.self_improve.quality_gate import (
     QualityCheckResult,
     QualityGateResult,
     _run_mypy,
+    _run_python_remediation,
     _run_ruff_check,
     _run_ruff_format_check,
     _run_pyright,
@@ -53,6 +57,15 @@ class TestQualityGateResult:
         summary = result.build_summary()
         assert "ruff: PASS" in summary
         assert "mypy: FAIL" in summary
+
+    def test_remediation_defaults(self):
+        result = QualityGateResult(passed=True)
+        assert result.remediation_attempted is False
+        assert result.remediation_attempt_count == 0
+        assert result.remediation_succeeded is False
+        assert not result.remediation_steps
+        assert result.remediation_failure_reason == ""
+        assert result.remediation_exhausted is False
 
 
 class TestRuffCheck:
@@ -185,6 +198,42 @@ class TestMypyCheck:
         ]
         assert env["MYPYPATH"].startswith("src")
 
+    def test_build_mypy_command_can_target_precise_files(self):
+        command = build_mypy_command(
+            ["src/execution/verify.py", "src/publication/policy.py"],
+            prefer_precise_paths=True,
+        )
+
+        assert command is not None
+        cmd, env = command
+        assert cmd == [
+            "mypy",
+            "--explicit-package-bases",
+            "--follow-imports=skip",
+            "src/execution/verify.py",
+            "src/publication/policy.py",
+        ]
+        assert env["MYPYPATH"].startswith("src")
+
+    def test_build_mypy_command_excludes_skill_scripts_from_precise_targets(self):
+        command = build_mypy_command(
+            [
+                "src/mcp/skills/senior-software-developer/scripts/check_quality.py",
+                "src/main/self_improve/persistence.py",
+            ],
+            prefer_precise_paths=True,
+        )
+
+        assert command is not None
+        cmd, env = command
+        assert cmd == [
+            "mypy",
+            "--explicit-package-bases",
+            "--follow-imports=skip",
+            "src/main/self_improve/persistence.py",
+        ]
+        assert env["MYPYPATH"].startswith("src")
+
     @patch("src.main.self_improve.quality_gate.command_available")
     def test_mypy_not_available(self, mock_available):
         mock_available.return_value = False
@@ -219,6 +268,95 @@ class TestMypyCheck:
         assert result.passed is False
         assert result.error_count == 1
 
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
+    def test_mypy_falls_back_to_package_command_when_precise_paths_fail(
+        self,
+        mock_available,
+        mock_run,
+    ):
+        mock_available.return_value = True
+        mock_run.side_effect = [
+            MagicMock(
+                returncode=1,
+                stdout="src/dialectic/config.py:1: error: boom",
+                stderr="",
+            ),
+            MagicMock(
+                returncode=0,
+                stdout="Success: no issues found in 10 source files",
+                stderr="",
+            ),
+        ]
+
+        result = _run_mypy(
+            Path("/tmp"),
+            touched_files=["src/dialectic/config.py", "src/main/cli/entrypoint.py"],
+        )
+
+        assert result.passed is True
+        assert "package-level fallback passed" in result.output
+        first_cmd = mock_run.call_args_list[0].args[0]
+        second_cmd = mock_run.call_args_list[1].args[0]
+        assert "--follow-imports=skip" in first_cmd
+        assert "--follow-imports=skip" not in second_cmd
+
+    @patch("src.main.self_improve.quality_gate.command_available")
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    def test_mypy_falls_back_to_canonical_repo_command_when_needed(
+        self,
+        mock_run,
+        mock_available,
+    ):
+        mock_available.return_value = True
+        mock_run.side_effect = [
+            MagicMock(
+                returncode=1,
+                stdout="src/dialectic/config.py:1: error: boom",
+                stderr="",
+            ),
+            MagicMock(
+                returncode=1,
+                stdout="src/main/cli/entrypoint.py:1: error: boom again",
+                stderr="",
+            ),
+            MagicMock(
+                returncode=0,
+                stdout="Success: no issues found in 262 source files",
+                stderr="",
+            ),
+        ]
+
+        result = _run_mypy(
+            Path("/tmp"),
+            touched_files=["src/dialectic/config.py", "src/main/cli/entrypoint.py"],
+        )
+
+        assert result.passed is True
+        assert "canonical repo-wide fallback passed" in result.output
+        first_cmd = mock_run.call_args_list[0].args[0]
+        second_cmd = mock_run.call_args_list[1].args[0]
+        third_cmd = mock_run.call_args_list[2].args[0]
+        assert "--follow-imports=skip" in first_cmd
+        assert "--follow-imports=skip" not in second_cmd
+        assert third_cmd == [
+            "mypy",
+            "--explicit-package-bases",
+            "-p",
+            "dialectic",
+            "-p",
+            "execution",
+            "-p",
+            "main",
+            "-p",
+            "mcp",
+            "-p",
+            "planning",
+            "-m",
+            "schemas",
+            "--no-error-summary",
+        ]
+
 
 class TestPyrightCheck:
     @patch("src.main.self_improve.quality_gate.command_available")
@@ -247,63 +385,572 @@ class TestPyrightCheck:
 
 
 class TestRunQualityGate:
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.run_validation_plan")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
     @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
-    @patch("src.main.self_improve.quality_gate._run_pyright")
-    @patch("src.main.self_improve.quality_gate._run_mypy")
-    @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
-    @patch("src.main.self_improve.quality_gate._run_ruff_check")
     def test_all_checks_pass(
-        self, mock_ruff, mock_format, mock_mypy, mock_pyright, mock_collect
+        self,
+        mock_collect,
+        mock_build_plan,
+        mock_run_plan,
+        mock_step_labels,
     ):
         mock_collect.return_value = ["src/dialectic/agents.py"]
-        mock_ruff.return_value = QualityCheckResult(tool="ruff-lint", passed=True)
-        mock_format.return_value = QualityCheckResult(tool="ruff-format", passed=True)
-        mock_mypy.return_value = QualityCheckResult(tool="mypy", passed=True)
-        mock_pyright.return_value = QualityCheckResult(tool="pyright", passed=True)
+        mock_build_plan.return_value = MagicMock(
+            project_root=Path("/tmp"),
+            steps=[MagicMock(label="ruff")],
+        )
+        mock_step_labels.return_value = ["ruff", "mypy", "pytest", "pyright"]
+        mock_run_plan.return_value = ValidationReport(
+            project_root=Path("/tmp"),
+            detected_stacks=["python"],
+            passed=True,
+            results=[
+                ValidationStepResult(
+                    stack="python",
+                    label="ruff",
+                    command=["ruff", "check", "src"],
+                    passed=True,
+                    returncode=0,
+                    stdout_tail="",
+                    stderr_tail="",
+                    reason="lint",
+                ),
+                ValidationStepResult(
+                    stack="python",
+                    label="mypy",
+                    command=["python", "-m", "mypy"],
+                    passed=True,
+                    returncode=0,
+                    stdout_tail="",
+                    stderr_tail="",
+                    reason="type",
+                ),
+                ValidationStepResult(
+                    stack="python",
+                    label="pytest",
+                    command=["python", "-m", "pytest"],
+                    passed=True,
+                    returncode=0,
+                    stdout_tail="",
+                    stderr_tail="",
+                    reason="tests",
+                ),
+                ValidationStepResult(
+                    stack="python",
+                    label="pyright",
+                    command=["npx", "--yes", "pyright"],
+                    passed=True,
+                    returncode=1,
+                    stdout_tail='{"generalDiagnostics": []}',
+                    stderr_tail="",
+                    reason="editor parity",
+                ),
+            ],
+        )
 
         result = run_quality_gate(Path("/tmp"))
         assert result.passed is True
         assert len(result.checks) == 4
-        mock_ruff.assert_called_once_with(
+        mock_collect.assert_called_once_with(Path("/tmp"))
+        mock_build_plan.assert_called_once_with(Path("/tmp"))
+        mock_step_labels.assert_called_once()
+        mock_run_plan.assert_called_once_with(
             Path("/tmp"),
-            "src/",
-            touched_files=["src/dialectic/agents.py"],
+            include_steps=["ruff", "mypy", "pytest", "pyright"],
         )
 
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.run_validation_plan")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
     @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
-    @patch("src.main.self_improve.quality_gate._run_pyright")
-    @patch("src.main.self_improve.quality_gate._run_mypy")
-    @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
-    @patch("src.main.self_improve.quality_gate._run_ruff_check")
     def test_one_check_fails(
-        self, mock_ruff, mock_format, mock_mypy, mock_pyright, mock_collect
+        self,
+        mock_collect,
+        mock_build_plan,
+        mock_run_plan,
+        mock_step_labels,
     ):
         mock_collect.return_value = ["src/dialectic/agents.py"]
-        mock_ruff.return_value = QualityCheckResult(tool="ruff-lint", passed=True)
-        mock_format.return_value = QualityCheckResult(
-            tool="ruff-format",
-            passed=False,
-            error_count=1,
+        mock_build_plan.return_value = MagicMock(
+            project_root=Path("/tmp"),
+            steps=[MagicMock(label="ruff")],
         )
-        mock_mypy.return_value = QualityCheckResult(tool="mypy", passed=True)
-        mock_pyright.return_value = QualityCheckResult(tool="pyright", passed=True)
+        mock_step_labels.return_value = ["ruff", "mypy"]
+        mock_run_plan.return_value = ValidationReport(
+            project_root=Path("/tmp"),
+            detected_stacks=["python"],
+            passed=False,
+            results=[
+                ValidationStepResult(
+                    stack="python",
+                    label="ruff",
+                    command=["ruff", "check", "src"],
+                    passed=False,
+                    returncode=1,
+                    stdout_tail="bad",
+                    stderr_tail="",
+                    reason="lint",
+                )
+            ],
+        )
 
         result = run_quality_gate(Path("/tmp"))
         assert result.passed is False
 
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.run_validation_plan")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
     @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
-    @patch("src.main.self_improve.quality_gate._run_mypy")
-    @patch("src.main.self_improve.quality_gate._run_ruff_format_check")
-    @patch("src.main.self_improve.quality_gate._run_ruff_check")
-    def test_exclude_pyright(self, mock_ruff, mock_format, mock_mypy, mock_collect):
+    def test_exclude_pyright(
+        self,
+        mock_collect,
+        mock_build_plan,
+        mock_run_plan,
+        mock_step_labels,
+    ):
         mock_collect.return_value = ["src/dialectic/agents.py"]
-        mock_ruff.return_value = QualityCheckResult(tool="ruff-lint", passed=True)
-        mock_format.return_value = QualityCheckResult(tool="ruff-format", passed=True)
-        mock_mypy.return_value = QualityCheckResult(tool="mypy", passed=True)
+        mock_build_plan.return_value = MagicMock(
+            project_root=Path("/tmp"),
+            steps=[MagicMock(label="ruff"), MagicMock(label="pyright")],
+        )
+        mock_step_labels.return_value = ["ruff", "mypy", "pytest", "pyright"]
+        mock_run_plan.return_value = ValidationReport(
+            project_root=Path("/tmp"),
+            detected_stacks=["python"],
+            passed=True,
+            results=[
+                ValidationStepResult(
+                    stack="python",
+                    label="ruff",
+                    command=["ruff", "check", "src"],
+                    passed=True,
+                    returncode=0,
+                    stdout_tail="",
+                    stderr_tail="",
+                    reason="lint",
+                ),
+                ValidationStepResult(
+                    stack="python",
+                    label="mypy",
+                    command=["python", "-m", "mypy"],
+                    passed=True,
+                    returncode=0,
+                    stdout_tail="",
+                    stderr_tail="",
+                    reason="type",
+                ),
+            ],
+        )
 
         result = run_quality_gate(Path("/tmp"), include_pyright=False)
         assert result.passed is True
-        assert len(result.checks) == 3
+        assert len(result.checks) == 2
+        mock_run_plan.assert_called_once_with(
+            Path("/tmp"),
+            include_steps=["ruff", "mypy", "pytest"],
+        )
+
+    @patch("src.main.self_improve.quality_gate._run_python_remediation")
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.run_validation_plan")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
+    def test_retries_after_python_validation_failures(
+        self,
+        mock_collect,
+        mock_build_plan,
+        mock_run_plan,
+        mock_step_labels,
+        mock_remediate,
+    ):
+        mock_collect.return_value = ["src/dialectic/agents.py"]
+        mock_build_plan.return_value = MagicMock(
+            project_root=Path("/tmp"),
+            steps=[MagicMock(label="ruff")],
+        )
+        mock_step_labels.return_value = [
+            "ruff",
+            "ruff-format",
+            "mypy",
+            "pytest",
+            "pyright",
+        ]
+        mock_run_plan.side_effect = [
+            ValidationReport(
+                project_root=Path("/tmp"),
+                detected_stacks=["python"],
+                passed=False,
+                results=[
+                    ValidationStepResult(
+                        stack="python",
+                        label="ruff-format",
+                        command=["ruff", "format", "--check", "src"],
+                        passed=False,
+                        returncode=1,
+                        stdout_tail="diff",
+                        stderr_tail="",
+                        reason="format",
+                    )
+                ],
+            ),
+            ValidationReport(
+                project_root=Path("/tmp"),
+                detected_stacks=["python"],
+                passed=True,
+                results=[
+                    ValidationStepResult(
+                        stack="python",
+                        label="ruff-format",
+                        command=["ruff", "format", "--check", "src"],
+                        passed=True,
+                        returncode=0,
+                        stdout_tail="",
+                        stderr_tail="",
+                        reason="format",
+                    )
+                ],
+            ),
+        ]
+        mock_remediate.return_value = (True, ["ruff-format-fix", "ruff-lint-fix"])
+
+        result = run_quality_gate(Path("/tmp"))
+
+        assert result.passed is True
+        assert result.remediation_attempted is True
+        assert result.remediation_succeeded is True
+        assert result.remediation_steps == ["ruff-format-fix", "ruff-lint-fix"]
+        assert mock_run_plan.call_count == 2
+        mock_remediate.assert_called_once_with(
+            Path("/tmp"),
+            ["src/dialectic/agents.py"],
+        )
+
+    @patch("src.main.self_improve.quality_gate._run_python_remediation")
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.run_validation_plan")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
+    def test_skips_remediation_for_pytest_failures(
+        self,
+        mock_collect,
+        mock_build_plan,
+        mock_run_plan,
+        mock_step_labels,
+        mock_remediate,
+    ):
+        mock_collect.return_value = ["src/dialectic/agents.py"]
+        mock_build_plan.return_value = MagicMock(
+            project_root=Path("/tmp"),
+            steps=[MagicMock(label="pytest")],
+        )
+        mock_step_labels.return_value = ["ruff", "ruff-format", "mypy", "pytest"]
+        mock_run_plan.return_value = ValidationReport(
+            project_root=Path("/tmp"),
+            detected_stacks=["python"],
+            passed=False,
+            results=[
+                ValidationStepResult(
+                    stack="python",
+                    label="pytest",
+                    command=["python", "-m", "pytest"],
+                    passed=False,
+                    returncode=1,
+                    stdout_tail="test failure",
+                    stderr_tail="",
+                    reason="tests",
+                )
+            ],
+        )
+
+        result = run_quality_gate(Path("/tmp"))
+
+        assert result.passed is False
+        assert result.remediation_attempted is False
+        mock_remediate.assert_not_called()
+        mock_run_plan.assert_called_once()
+
+    @patch("src.main.self_improve.quality_gate._run_python_remediation")
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.run_validation_plan")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
+    def test_marks_remediation_budget_exhausted_when_resume_already_used_budget(
+        self,
+        mock_collect,
+        mock_build_plan,
+        mock_run_plan,
+        mock_step_labels,
+        mock_remediate,
+    ):
+        mock_collect.return_value = ["src/dialectic/agents.py"]
+        mock_build_plan.return_value = MagicMock(
+            project_root=Path("/tmp"),
+            steps=[MagicMock(label="ruff-format")],
+        )
+        mock_step_labels.return_value = ["ruff", "ruff-format", "mypy", "pytest"]
+        mock_run_plan.return_value = ValidationReport(
+            project_root=Path("/tmp"),
+            detected_stacks=["python"],
+            passed=False,
+            results=[
+                ValidationStepResult(
+                    stack="python",
+                    label="ruff-format",
+                    command=["ruff", "format", "--check", "src"],
+                    passed=False,
+                    returncode=1,
+                    stdout_tail="diff",
+                    stderr_tail="",
+                    reason="format",
+                )
+            ],
+        )
+
+        result = run_quality_gate(
+            Path("/tmp"),
+            previous_remediation_attempt_count=1,
+            max_python_remediation_attempts=1,
+        )
+
+        assert result.passed is False
+        assert result.remediation_attempted is False
+        assert result.remediation_attempt_count == 1
+        assert result.remediation_exhausted is True
+        assert "ruff-format: FAIL" in result.remediation_failure_reason
+        mock_remediate.assert_not_called()
+
+
+class TestCrewRemediation:
+    @patch.dict("os.environ", {}, clear=False)
+    @patch("src.main.self_improve.quality_gate._run_quality_gate_validation")
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
+    @patch("src.main.self_improve.quality_gate._run_crew_remediation")
+    def test_crew_remediation_is_disabled_by_default(
+        self,
+        mock_crew_remediation,
+        mock_collect,
+        mock_build_plan,
+        mock_step_labels,
+        mock_run_validation,
+    ):
+        mock_collect.return_value = ["src/main/self_improve/quality_gate.py"]
+        mock_build_plan.return_value = MagicMock()
+        mock_step_labels.return_value = ["mypy", "pyright"]
+        mock_run_validation.return_value = QualityGateResult(
+            passed=False,
+            checks=[QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+        )
+
+        result = run_quality_gate(Path("/tmp"))
+
+        assert result.passed is False
+        assert result.remediation_attempted is False
+        mock_crew_remediation.assert_not_called()
+
+    @patch.dict(
+        "os.environ",
+        {"DIALECTIC_SELF_IMPROVE_ENABLE_QUALITY_REPAIR_CREW": "1"},
+        clear=False,
+    )
+    @patch("src.main.self_improve.quality_gate._run_quality_gate_validation")
+    @patch("src.main.self_improve.quality_gate.step_labels_for_profile")
+    @patch("src.main.self_improve.quality_gate.build_validation_plan")
+    @patch("src.main.self_improve.quality_gate.collect_touched_python_files")
+    @patch("src.main.self_improve.quality_gate._run_crew_remediation")
+    @patch("src.main.self_improve.quality_gate._run_python_remediation")
+    def test_crew_remediation_runs_for_mypy_failures_when_enabled(
+        self,
+        mock_python_remediation,
+        mock_crew_remediation,
+        mock_collect,
+        mock_build_plan,
+        mock_step_labels,
+        mock_run_validation,
+    ):
+        mock_collect.return_value = ["src/main/self_improve/quality_gate.py"]
+        mock_build_plan.return_value = MagicMock()
+        mock_step_labels.return_value = ["mypy", "pyright"]
+        mock_python_remediation.return_value = (False, [])
+        mock_crew_remediation.return_value = (
+            True,
+            ["quality-repair-crew", "write:src/main/self_improve/quality_gate.py"],
+            "Crew produced a bounded repair.",
+        )
+        mock_run_validation.side_effect = [
+            QualityGateResult(
+                passed=False,
+                checks=[QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+            ),
+            QualityGateResult(
+                passed=True,
+                checks=[QualityCheckResult(tool="mypy", passed=True, error_count=0)],
+            ),
+        ]
+
+        result = run_quality_gate(Path("/tmp"))
+
+        assert result.passed is True
+        assert result.remediation_attempted is True
+        assert result.remediation_succeeded is True
+        assert result.remediation_attempt_count == 1
+        assert result.remediation_steps == [
+            "quality-repair-crew",
+            "write:src/main/self_improve/quality_gate.py",
+        ]
+        mock_crew_remediation.assert_called_once_with(
+            Path("/tmp"),
+            ["src/main/self_improve/quality_gate.py"],
+            [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+        )
+
+    def test_crew_eligibility_is_limited_to_type_check_failures(self):
+        assert (
+            remediation_module.should_attempt_crew_remediation(
+                [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+                ["src/main/self_improve/quality_gate.py"],
+            )
+            is True
+        )
+        assert (
+            remediation_module.should_attempt_crew_remediation(
+                [
+                    QualityCheckResult(
+                        tool="ruff-format",
+                        passed=False,
+                        error_count=1,
+                    )
+                ],
+                ["src/main/self_improve/quality_gate.py"],
+            )
+            is False
+        )
+        assert (
+            remediation_module.should_attempt_python_remediation(
+                [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+                ["src/main/self_improve/quality_gate.py"],
+            )
+            is False
+        )
+
+    @patch(
+        "src.main.self_improve.quality_gate_remediation._build_quality_remediation_crew"
+    )
+    @patch("execution.task_flow._materialize_generated_files")
+    @patch("dialectic.crewai_runtime.run_crew_kickoff")
+    def test_run_crew_remediation_skips_unapproved_repairs(
+        self,
+        mock_kickoff,
+        mock_materialize,
+        mock_build_crew,
+    ):
+        mock_build_crew.return_value = object()
+        mock_kickoff.return_value = MagicMock(
+            tasks_output=[
+                MagicMock(
+                    raw="--- src/main/self_improve/quality_gate.py ---\nprint('nope')"
+                ),
+                MagicMock(
+                    pydantic=ValidationOutput(
+                        quality_score=4.0,
+                        consensus_reached=False,
+                        final_validation_notes="Unsafe change.",
+                    )
+                ),
+            ]
+        )
+
+        attempted, steps, summary = remediation_module.run_crew_remediation(
+            Path("/tmp"),
+            ["src/main/self_improve/quality_gate.py"],
+            [QualityCheckResult(tool="mypy", passed=False, error_count=1)],
+        )
+
+        assert attempted is False
+        assert steps == []
+        assert summary == "Unsafe change."
+        mock_materialize.assert_not_called()
+
+    @patch(
+        "src.main.self_improve.quality_gate_remediation._build_quality_remediation_crew"
+    )
+    @patch("execution.task_flow._materialize_generated_files")
+    @patch("dialectic.crewai_runtime.run_crew_kickoff")
+    def test_run_crew_remediation_skips_no_file_change_responses(
+        self,
+        mock_kickoff,
+        mock_materialize,
+        mock_build_crew,
+    ):
+        mock_build_crew.return_value = object()
+        mock_kickoff.return_value = MagicMock(
+            tasks_output=[
+                MagicMock(raw="NO_FILE_CHANGES"),
+                MagicMock(
+                    pydantic=ValidationOutput(
+                        quality_score=8.5,
+                        consensus_reached=True,
+                        final_validation_notes="No safe bounded repair.",
+                    )
+                ),
+            ]
+        )
+
+        attempted, steps, summary = remediation_module.run_crew_remediation(
+            Path("/tmp"),
+            ["src/main/self_improve/quality_gate.py"],
+            [QualityCheckResult(tool="pyright", passed=False, error_count=1)],
+        )
+
+        assert attempted is False
+        assert steps == []
+        assert summary == "No safe bounded repair."
+        mock_materialize.assert_not_called()
+
+
+class TestPythonRemediation:
+    @patch("src.main.self_improve.quality_gate.run_cmd")
+    @patch("src.main.self_improve.quality_gate.command_available")
+    def test_runs_deterministic_ruff_fixes(self, mock_available, mock_run):
+        mock_available.return_value = True
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        attempted, steps = _run_python_remediation(
+            Path("/tmp"),
+            ["src/dialectic/agents.py", "src/main/cli/entrypoint.py"],
+        )
+
+        assert attempted is True
+        assert steps == ["ruff-format-fix", "ruff-lint-fix"]
+        assert mock_run.call_count == 2
+        assert mock_run.call_args_list[0].args[0] == [
+            "ruff",
+            "format",
+            "src/dialectic/agents.py",
+            "src/main/cli/entrypoint.py",
+        ]
+        assert mock_run.call_args_list[1].args[0] == [
+            "ruff",
+            "check",
+            "--fix",
+            "src/dialectic/agents.py",
+            "src/main/cli/entrypoint.py",
+        ]
+
+    @patch("src.main.self_improve.quality_gate.command_available")
+    def test_skips_when_ruff_unavailable(self, mock_available):
+        mock_available.return_value = False
+
+        attempted, steps = _run_python_remediation(
+            Path("/tmp"),
+            ["src/dialectic/agents.py"],
+        )
+
+        assert attempted is False
+        assert not steps
 
 
 class TestTouchedFileCollection:

@@ -204,12 +204,16 @@ def set_target(path: Path) -> TargetConfig:
 
     active_path = _active_target_file(app_root)
     active_path.parent.mkdir(parents=True, exist_ok=True)
-    active_path.write_text(json.dumps(_target_to_dict(config), indent=2), encoding="utf-8")
+    active_path.write_text(
+        json.dumps(_target_to_dict(config), indent=2), encoding="utf-8"
+    )
 
     registry_path = _target_registry_file(app_root)
     existing = {item.target_slug: item for item in _read_registry(registry_path)}
     existing[config.target_slug] = config
-    known_targets = sorted(existing.values(), key=lambda item: item.set_at, reverse=True)
+    known_targets = sorted(
+        existing.values(), key=lambda item: item.set_at, reverse=True
+    )
     _write_registry(registry_path, known_targets)
     return config
 
@@ -273,6 +277,5 @@ def temporary_working_directory(path: Path):
     finally:
         os.chdir(previous)
 
+
 TARGET_FILE_FORMAT = 1
-
-

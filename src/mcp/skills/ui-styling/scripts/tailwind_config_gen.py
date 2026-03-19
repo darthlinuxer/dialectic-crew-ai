@@ -7,4 +7,3 @@ implement automated Tailwind config generation, replace this stub with a real sc
 
 if __name__ == "__main__":
     raise SystemExit("tailwind_config_gen.py is a stub in this repository.")
-

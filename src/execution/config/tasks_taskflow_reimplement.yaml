@@ -20,8 +20,11 @@ reimplement_task_fix:
     Diagnose the root cause behind the failed checks before editing.
     If the issue is really about imports, references, tests, or package exports,
     fix those integration gaps instead of patching only the symptom.
-    Fix ONLY the identified gaps. Use the file reading and writing tools.
-  expected_output: Description of what was fixed
+    Fix ONLY the identified gaps.
+
+    RESPONSE FORMAT RULES:
+    {file_section_rules}
+  expected_output: Root-cause summary plus complete file sections when files must change
   guardrail: text_result
 
 reimplement_task_validate:

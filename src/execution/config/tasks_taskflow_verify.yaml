@@ -18,6 +18,9 @@ verify_task_flow_implementation:
     - checks_passed: list of checks that passed
     - checks_failed: list of checks that failed
     - notes: explanation of what was verified
+    
+    RESPONSE FORMAT RULES:
+    {verification_response_rules}
   expected_output: VerificationResult
   output_schema: VerificationResult
   guardrail: verification

@@ -10,11 +10,16 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
-from dialectic.app_logging import configure_application_logging, get_logging_config, shutdown_application_logging
+from dialectic.app_logging import (
+    configure_application_logging,
+    get_logging_config,
+    shutdown_application_logging,
+)
 from dialectic.crew_verbose_config import get_output_log_file
 from dialectic.metrics import MetricRecord, MetricsStore, _reset_metrics_store
 from dialectic.vision import VisionContext
@@ -134,13 +139,25 @@ class TestSnapshotTests:
             lambda name: "/usr/bin/uv" if name == "uv" else None,
         )
         assert _pytest_command() == [
-            "uv", "run", "pytest", "--tb=short", "-q", "--reruns", "1"
+            "uv",
+            "run",
+            "pytest",
+            "--tb=short",
+            "-q",
+            "--reruns",
+            "1",
         ]
 
     def test_falls_back_to_active_python_when_uv_missing(self, monkeypatch):
         monkeypatch.setattr("main.self_improve.shutil.which", lambda name: None)
         assert _pytest_command() == [
-            sys.executable, "-m", "pytest", "--tb=short", "-q", "--reruns", "1"
+            sys.executable,
+            "-m",
+            "pytest",
+            "--tb=short",
+            "-q",
+            "--reruns",
+            "1",
         ]
 
     def test_includes_single_rerun_for_flaky_llm_tests(self, monkeypatch):
@@ -220,9 +237,10 @@ class TestRunSelfImprove:
                 assert active_root.exists()
                 assert os.getenv("DIALECTIC_RUNTIME_ROOT") == str(runtime_root)
                 assert get_logging_config().log_dir == runtime_root / "logs"
-                assert get_output_log_file() == (
-                    runtime_root / "logs" / "crewai_verbose.log"
-                ).as_posix()
+                assert (
+                    get_output_log_file()
+                    == (runtime_root / "logs" / "crewai_verbose.log").as_posix()
+                )
 
             assert os.getenv("DIALECTIC_RUNTIME_ROOT") is None
             assert get_logging_config().log_dir == original_log_dir
@@ -250,6 +268,13 @@ class TestRunSelfImprove:
         with pytest.raises(ValueError, match="does not support --resume"):
             run_self_improve(simulate=True, resume_cycle_id="cycle-123")
 
+    def test_rejects_continue_prd_with_next_available_story(self):
+        with pytest.raises(
+            ValueError,
+            match=("does not support using --continue-prd with --next-available-story"),
+        ):
+            run_self_improve(continue_prd=True, next_available_story=True)
+
     def test_persists_resumable_state_when_prioritization_is_interrupted(
         self,
         tmp_path,
@@ -264,14 +289,27 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve._git_branch_create", lambda branch, cwd: True)
-        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda branch, cwd: None)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_branch_create", lambda branch, cwd: True
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_discard_branch", lambda branch, cwd: None
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
 
         opportunity = ImprovementOpportunity(
@@ -288,7 +326,9 @@ class TestRunSelfImprove:
             baseline_metrics={},
         )
 
-        monkeypatch.setattr("main.self_improve.run_introspection", lambda **kwargs: report)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection", lambda **kwargs: report
+        )
 
         def interrupt_prioritization(opps, **kwargs):
             del opps, kwargs
@@ -327,14 +367,27 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve._git_branch_create", lambda branch, cwd: True)
-        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda branch, cwd: None)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_branch_create", lambda branch, cwd: True
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_discard_branch", lambda branch, cwd: None
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
 
         opportunity = ImprovementOpportunity(
@@ -351,7 +404,9 @@ class TestRunSelfImprove:
             baseline_metrics={},
         )
 
-        monkeypatch.setattr("main.self_improve.run_introspection", lambda **kwargs: report)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection", lambda **kwargs: report
+        )
 
         suppression_calls: list[str] = []
         monkeypatch.setattr(
@@ -385,14 +440,25 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
         monkeypatch.setattr("main.self_improve.time.sleep", lambda seconds: None)
@@ -402,7 +468,10 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
 
         from unittest.mock import MagicMock, patch
@@ -419,7 +488,9 @@ class TestRunSelfImprove:
             del inputs
             attempts["count"] += 1
             if attempts["count"] == 1:
-                raise RuntimeError("Failed to connect to OpenAI API: Request timed out.")
+                raise RuntimeError(
+                    "Failed to connect to OpenAI API: Request timed out."
+                )
 
         mock_flow.kickoff.side_effect = fake_kickoff
 
@@ -434,13 +505,20 @@ class TestRunSelfImprove:
             "run_id": "run-retry-prd",
             "task_flow_ids": {"T-001": "task-flow-retry-prd"},
             "output_path": str(tmp_path / "exec_output" / "run-retry-prd"),
-            "report_path": str(tmp_path / "exec_output" / "run-retry-prd" / "report.json"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-retry-prd" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         assert attempts["count"] == 2
@@ -461,7 +539,9 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr(
             "dialectic.introspect.get_vision_path",
             lambda ctx: vision,
@@ -470,12 +550,16 @@ class TestRunSelfImprove:
             "dialectic.introspect.resolve_project_root",
             lambda: tmp_path,
         )
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr(
             "main.self_improve._prepare_simulation_branch",
             lambda cwd: (True, SIMULATION_BRANCH_NAME),
         )
-        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._cleanup_simulation_branch", lambda cwd: None
+        )
         monkeypatch.setattr(
             "main.self_improve.run_quality_gate",
             lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
@@ -488,10 +572,15 @@ class TestRunSelfImprove:
                 {"passed": True, "summary": "ok", "violations": []},
             )(),
         )
-        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
-            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not commit")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("simulate should not commit")
+            ),
         )
 
         snapshot_calls: list[str] = []
@@ -499,7 +588,12 @@ class TestRunSelfImprove:
         def fake_snapshot(_project_root, timeout=None):
             del timeout
             snapshot_calls.append("called")
-            return {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""}
+            return {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            }
 
         monkeypatch.setattr("main.self_improve._snapshot_tests", fake_snapshot)
 
@@ -528,8 +622,13 @@ class TestRunSelfImprove:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(
                             simulate=True,
                             skip_baseline_tests=True,
@@ -556,17 +655,26 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
         monkeypatch.setattr(
             "main.self_improve.dialectic_prioritize",
             lambda *args, **kwargs: (_ for _ in ()).throw(
                 AssertionError("--next-roadmap-item should bypass prioritization")
             ),
         )
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
 
@@ -610,9 +718,16 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
         monkeypatch.setattr(
@@ -621,7 +736,10 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
 
         plan_calls: list[str] = []
@@ -646,14 +764,21 @@ class TestRunSelfImprove:
                 "run_id": "run-shortcut-prd",
                 "task_flow_ids": {"T-001": "task-flow-shortcut-prd"},
                 "output_path": str(tmp_path / "exec_output" / "run-shortcut-prd"),
-                "report_path": str(tmp_path / "exec_output" / "run-shortcut-prd" / "report.json"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-shortcut-prd" / "report.json"
+                ),
             }
 
         from unittest.mock import patch
 
         with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
-            with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=fake_exec):
-                record = run_self_improve(max_improvements=1, artifact_path=str(artifact_path))
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_exec,
+            ):
+                record = run_self_improve(
+                    max_improvements=1, artifact_path=str(artifact_path)
+                )
 
         assert plan_calls == [str(artifact_path)]
         assert exec_calls == [str(tmp_path / "prd_output" / "exec_shortcut.json")]
@@ -687,9 +812,16 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
         monkeypatch.setattr(
@@ -698,7 +830,10 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
 
         from unittest.mock import patch
@@ -715,10 +850,14 @@ class TestRunSelfImprove:
                     "run_id": "run-shortcut-plan",
                     "task_flow_ids": {"T-001": "task-flow-shortcut-plan"},
                     "output_path": str(tmp_path / "exec_output" / "run-shortcut-plan"),
-                    "report_path": str(tmp_path / "exec_output" / "run-shortcut-plan" / "report.json"),
+                    "report_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-plan" / "report.json"
+                    ),
                 },
             ) as mock_exec:
-                record = run_self_improve(max_improvements=1, artifact_path=str(artifact_path))
+                record = run_self_improve(
+                    max_improvements=1, artifact_path=str(artifact_path)
+                )
 
         mock_exec.assert_called_once_with(
             plan_path=str(artifact_path),
@@ -727,6 +866,2044 @@ class TestRunSelfImprove:
         )
         assert record.plan_generated is True
         assert record.execution_attempted is True
+
+    def test_next_available_story_uses_first_unfinished_prd_story(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        artifact_path = tmp_path / "input_prd.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Shortcut PRD",
+                    "objective": "Pick the next story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        completed_plan = tmp_path / "exec_US1_20260317_091912.json"
+        completed_plan.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(artifact_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("PRD shortcut should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-prd",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-prd"},
+                    "output_path": str(tmp_path / "exec_output" / "run-shortcut-prd"),
+                    "report_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-prd" / "report.json"
+                    ),
+                },
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(artifact_path),
+                    next_available_story=True,
+                )
+
+        assert plan_calls == [{"prd_path": str(artifact_path), "user_story_ref": "US2"}]
+        assert record.planning_user_story_ref == "US2"
+
+    def test_next_available_story_reports_when_prd_is_fully_complete(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        artifact_path = tmp_path / "input_prd.json"
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Shortcut PRD",
+                    "objective": "Pick the next story",
+                    "user_stories": [{"id": "US1", "title": "Story one"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        completed_plan = tmp_path / "exec_US1_20260317_091912.json"
+        completed_plan.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(artifact_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        record = run_self_improve(
+            max_improvements=1,
+            artifact_path=str(artifact_path),
+            next_available_story=True,
+        )
+
+        assert "No unfinished user stories remain" in record.failure_reason
+
+    def test_next_available_story_auto_discovers_latest_self_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_dir = tmp_path / "prd_output" / "self"
+        prd_dir.mkdir(parents=True, exist_ok=True)
+        older_artifact_path = prd_dir / "older_prd.json"
+        latest_artifact_path = prd_dir / "latest_prd.json"
+        older_artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Older PRD",
+                    "objective": "Ignore older PRD",
+                    "user_stories": [{"id": "US1", "title": "Story one"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        latest_artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Latest PRD",
+                    "objective": "Pick the next story from the latest PRD",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.utime(older_artifact_path, (1, 1))
+        os.utime(latest_artifact_path, (2, 2))
+
+        completed_plan = prd_dir / "exec_US1_20260317_091912.json"
+        completed_plan.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(latest_artifact_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("Auto-discovered PRD flow should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-prd-latest",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-prd-latest"},
+                    "output_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-prd-latest"
+                    ),
+                    "report_path": str(
+                        tmp_path
+                        / "exec_output"
+                        / "run-shortcut-prd-latest"
+                        / "report.json"
+                    ),
+                },
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    next_available_story=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(latest_artifact_path), "user_story_ref": "US2"}
+        ]
+        assert record.prd_path_json == str(latest_artifact_path)
+        assert record.planning_user_story_ref == "US2"
+
+    def test_next_available_story_prefers_latest_unfinished_self_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_dir = tmp_path / "prd_output" / "self"
+        prd_dir.mkdir(parents=True, exist_ok=True)
+        older_unfinished_prd = prd_dir / "older_unfinished.json"
+        latest_completed_prd = prd_dir / "latest_completed.json"
+        older_unfinished_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Older unfinished PRD",
+                    "objective": "Still has work remaining",
+                    "user_stories": [
+                        {"id": "US1", "title": "Done story"},
+                        {"id": "US2", "title": "Remaining story"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        latest_completed_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Latest completed PRD",
+                    "objective": "Already fully done",
+                    "user_stories": [{"id": "US1", "title": "Done story"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.utime(older_unfinished_prd, (1, 1))
+        os.utime(latest_completed_prd, (2, 2))
+
+        (prd_dir / "exec_older_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(older_unfinished_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_dir / "exec_latest_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(latest_completed_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-002", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("Auto-discovered PRD flow should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(tmp_path / "prd_output" / "exec_shortcut.json"),
+                "plan_path_md": str(tmp_path / "prd_output" / "exec_shortcut.md"),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                return_value={
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-shortcut-prd-unfinished",
+                    "task_flow_ids": {"T-001": "task-flow-shortcut-prd-unfinished"},
+                    "output_path": str(
+                        tmp_path / "exec_output" / "run-shortcut-prd-unfinished"
+                    ),
+                    "report_path": str(
+                        tmp_path
+                        / "exec_output"
+                        / "run-shortcut-prd-unfinished"
+                        / "report.json"
+                    ),
+                },
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    next_available_story=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(older_unfinished_prd), "user_story_ref": "US2"}
+        ]
+        assert record.prd_path_json == str(older_unfinished_prd)
+        assert record.planning_user_story_ref == "US2"
+
+    def test_continue_prd_auto_discovers_latest_unfinished_self_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_dir = tmp_path / "prd_output" / "self"
+        prd_dir.mkdir(parents=True, exist_ok=True)
+        older_unfinished_prd = prd_dir / "older_unfinished.json"
+        latest_completed_prd = prd_dir / "latest_completed.json"
+        older_unfinished_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Older unfinished PRD",
+                    "objective": "Still has one remaining story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Done story"},
+                        {"id": "US2", "title": "Remaining story"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        latest_completed_prd.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Latest completed PRD",
+                    "objective": "Already fully done",
+                    "user_stories": [{"id": "US1", "title": "Done story"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.utime(older_unfinished_prd, (1, 1))
+        os.utime(latest_completed_prd, (2, 2))
+
+        (prd_dir / "exec_older_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(older_unfinished_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_dir / "exec_latest_us1.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(latest_completed_prd.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-002", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError(
+                    "continue-prd auto-discovery should not run introspection"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = prd_dir / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(prd_dir / f"plan_{user_story_ref}.md"),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"run-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (prd_dir / f"exec_{story_ref.lower()}_complete.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(older_unfinished_prd.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"run-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    continue_prd=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(older_unfinished_prd), "user_story_ref": "US2"}
+        ]
+        assert record.prd_path_json == str(older_unfinished_prd)
+        assert record.continue_prd is True
+        assert record.continue_prd_source_prd_path == str(older_unfinished_prd)
+        assert record.continue_prd_current_story_ref == ""
+        assert record.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert record.continue_prd_story_history == [
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_dir / "plan_US2.json"),
+                "execution_run_id": "run-us2",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_runs_all_remaining_stories_for_supplied_prd(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_path = tmp_path / "prd_output" / "self" / "input_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Continue full PRD",
+                    "objective": "Run every remaining story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError(
+                    "continue-prd with PRD artifact should not run introspection"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = prd_path_obj.parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(prd_path_obj.parent / f"plan_{user_story_ref}.md"),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"run-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (
+                prd_path_obj.parent / f"exec_{story_ref.lower()}_complete.json"
+            ).write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path_obj.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"run-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        prd_path_obj = prd_path
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path_obj),
+                    continue_prd=True,
+                )
+
+        assert plan_calls == [
+            {"prd_path": str(prd_path_obj), "user_story_ref": "US1"},
+            {"prd_path": str(prd_path_obj), "user_story_ref": "US2"},
+        ]
+        assert record.continue_prd is True
+        assert record.continue_prd_source_prd_path == str(prd_path_obj)
+        assert record.continue_prd_current_story_ref == ""
+        assert record.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert record.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": str(prd_path_obj.parent / "plan_US1.json"),
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            },
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_path_obj.parent / "plan_US2.json"),
+                "execution_run_id": "run-us2",
+                "story_status": "completed",
+            },
+        ]
+
+    def test_continue_prd_prints_story_progress_summary(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        prd_path = tmp_path / "prd_output" / "self" / "progress_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Progress PRD",
+                    "objective": "Show progress while continuing stories",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            story_ref = json.loads(Path(plan_path).read_text(encoding="utf-8"))[
+                "user_story_id"
+            ]
+            report_dir = tmp_path / "exec_output" / f"progress-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            (prd_path.parent / f"exec_{story_ref.lower()}_progress.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"progress-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-progress-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path),
+                    continue_prd=True,
+                )
+
+        out = capsys.readouterr().out
+        assert "[continue-prd] Completed 0/2 stories. Next: US1" in out
+        assert "[continue-prd] Completed 1/2 stories. Next: US2" in out
+
+    def test_continue_prd_resume_advances_from_saved_next_story(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity
+        from src.main.self_improve import _save_self_improve_record
+
+        prd_path = tmp_path / "prd_output" / "self" / "resume_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Resume continue PRD",
+                    "objective": "Pick up the saved next story",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_path.parent / "exec_us1_complete.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(prd_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd-resume",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-continue-prd",
+                    category="code_health",
+                    title="Resume saved continue PRD",
+                    description="Resume the next pending story from saved loop state.",
+                    evidence=[str(prd_path)],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            prd_path_json=str(prd_path),
+            continue_prd=True,
+            continue_prd_source_prd_path=str(prd_path),
+            continue_prd_current_story_ref="US2",
+            continue_prd_completed_story_refs=["US1"],
+            planning_user_story_ref="US2",
+            branch_name="self-improve/cycle-continue-prd-resume",
+            failure_reason="Interrupted during planning",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"resume-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (prd_path.parent / f"exec_{story_ref.lower()}_resume.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"resume-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-resume-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                resumed = run_self_improve(resume_cycle_id="cycle-continue-prd-resume")
+
+        assert plan_calls == [{"prd_path": str(prd_path), "user_story_ref": "US2"}]
+        assert resumed.continue_prd is True
+        assert resumed.continue_prd_current_story_ref == ""
+        assert resumed.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert resumed.continue_prd_story_history == [
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_path.parent / "plan_US2.json"),
+                "execution_run_id": "resume-us2",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_resume_reruns_second_story_execution_without_replanning(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity
+        from src.main.self_improve import _save_self_improve_record
+
+        prd_path = tmp_path / "prd_output" / "self" / "resume_execution_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Resume second execution",
+                    "objective": "Resume execution for the second story only",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_path.parent / "exec_us1_done.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(prd_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        plan_path = prd_path.parent / "plan_US2.json"
+        plan_path.write_text(
+            json.dumps({"user_story_id": "US2", "source_prd_path": str(prd_path)}),
+            encoding="utf-8",
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd-execution-resume",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-continue-prd-execution",
+                    category="code_health",
+                    title="Resume second-story execution",
+                    description="Resume execution without replanning the second story.",
+                    evidence=[str(prd_path)],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            plan_generated=True,
+            prd_path_json=str(prd_path),
+            continue_prd=True,
+            continue_prd_source_prd_path=str(prd_path),
+            continue_prd_current_story_ref="US2",
+            continue_prd_completed_story_refs=["US1"],
+            continue_prd_story_history=[
+                {
+                    "story_ref": "US1",
+                    "plan_path_json": str(prd_path.parent / "plan_US1.json"),
+                    "execution_run_id": "run-us1",
+                    "story_status": "completed",
+                }
+            ],
+            planning_user_story_ref="US2",
+            plan_path_json=str(plan_path),
+            branch_name="self-improve/cycle-continue-prd-execution-resume",
+            failure_reason="Interrupted during execution",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        planning_calls: list[dict[str, object]] = []
+        execution_calls: list[dict[str, object]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del prd_path, user_story_ref, vision_context
+            planning_calls.append({"called": True})
+            raise AssertionError(
+                "Resume during second-story execution should not replan"
+            )
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context
+            execution_calls.append(
+                {"plan_path": plan_path, "resume_run_id": resume_run_id}
+            )
+            report_dir = tmp_path / "exec_output" / "resume-second-exec"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            (prd_path.parent / "exec_us2_done.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": "US2",
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-002", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "resume-exec-us2",
+                "task_flow_ids": {"T-002": "task-flow-resume-exec-us2"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                resumed = run_self_improve(
+                    resume_cycle_id="cycle-continue-prd-execution-resume"
+                )
+
+        assert not planning_calls
+        assert execution_calls == [{"plan_path": str(plan_path), "resume_run_id": None}]
+        assert resumed.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert resumed.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": str(prd_path.parent / "plan_US1.json"),
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            },
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(plan_path),
+                "execution_run_id": "resume-exec-us2",
+                "story_status": "completed",
+            },
+        ]
+
+    def test_continue_prd_resume_after_completed_story_advances_to_next_story(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity
+        from src.main.self_improve import _save_self_improve_record
+
+        prd_path = tmp_path / "prd_output" / "self" / "resume_after_completion_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Resume after completed story",
+                    "objective": "Advance to the next story after a completed iteration",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (prd_path.parent / "exec_us1_done.json").write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "source_prd_path": str(prd_path.resolve()),
+                    "status": "completed",
+                    "tasks": [{"id": "T-001", "title": "Done", "status": "completed"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        record = SelfImprovementRecord(
+            cycle_id="cycle-continue-prd-post-story-resume",
+            timestamp="2026-03-10T00:00:00Z",
+            baseline_metrics={"prd_score": {"count": 0, "mean": 0}},
+            selected_opportunities=[
+                ImprovementOpportunity(
+                    id="opp-continue-prd-post-story",
+                    category="code_health",
+                    title="Resume after a completed continue-PRD story",
+                    description="Advance to the next unfinished story before replanning.",
+                    evidence=[str(prd_path)],
+                    estimated_impact="high",
+                )
+            ],
+            opportunities_found=1,
+            opportunities_attempted=1,
+            prd_generated=True,
+            prd_path_json=str(prd_path),
+            continue_prd=True,
+            continue_prd_source_prd_path=str(prd_path),
+            continue_prd_current_story_ref="",
+            continue_prd_completed_story_refs=["US1"],
+            planning_user_story_ref="",
+            plan_generated=False,
+            execution_attempted=False,
+            branch_name="self-improve/cycle-continue-prd-post-story-resume",
+            failure_reason="Interrupted during branch setup",
+        )
+        _save_self_improve_record(tmp_path, record)
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_calls: list[dict[str, str | None]] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append({"prd_path": prd_path, "user_story_ref": user_story_ref})
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            story_ref = json.loads(Path(plan_path).read_text(encoding="utf-8"))[
+                "user_story_id"
+            ]
+            report_dir = tmp_path / "exec_output" / "resume-after-completion"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            (prd_path.parent / "exec_us2_done.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-002", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "resume-after-completion-us2",
+                "task_flow_ids": {"T-002": "task-flow-resume-after-completion-us2"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                resumed = run_self_improve(
+                    resume_cycle_id="cycle-continue-prd-post-story-resume"
+                )
+
+        assert plan_calls == [{"prd_path": str(prd_path), "user_story_ref": "US2"}]
+        assert resumed.continue_prd_completed_story_refs == ["US1", "US2"]
+        assert resumed.continue_prd_story_history == [
+            {
+                "story_ref": "US2",
+                "plan_path_json": str(prd_path.parent / "plan_US2.json"),
+                "execution_run_id": "resume-after-completion-us2",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_stops_after_intermediate_execution_failure(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        prd_path = tmp_path / "prd_output" / "self" / "intermediate_failure_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Stop on intermediate failure",
+                    "objective": "Do not start later stories after a failure",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                        {"id": "US3", "title": "Story three"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError(
+                    "continue-prd with PRD artifact should not run introspection"
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        plan_calls: list[str] = []
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_calls.append(cast(str, user_story_ref))
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        execution_calls: list[str] = []
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            story_ref = json.loads(Path(plan_path).read_text(encoding="utf-8"))[
+                "user_story_id"
+            ]
+            execution_calls.append(story_ref)
+            report_dir = tmp_path / "exec_output" / story_ref.lower()
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text("{}", encoding="utf-8")
+            report_path.write_text("{}", encoding="utf-8")
+            if story_ref == "US1":
+                (prd_path.parent / "exec_us1_done.json").write_text(
+                    json.dumps(
+                        {
+                            "user_story_id": "US1",
+                            "source_prd_path": str(prd_path.resolve()),
+                            "status": "completed",
+                            "tasks": [
+                                {"id": "T-001", "title": "Done", "status": "completed"}
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return {
+                    "overall_success": True,
+                    "story_status": "completed",
+                    "run_id": "run-us1",
+                    "task_flow_ids": {"T-001": "task-flow-us1"},
+                    "output_path": str(output_path),
+                    "report_path": str(report_path),
+                }
+
+            return {
+                "overall_success": False,
+                "story_status": "failed",
+                "run_id": "run-us2",
+                "task_flow_ids": {"T-002": "task-flow-us2"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path),
+                    continue_prd=True,
+                )
+
+        assert plan_calls == ["US1", "US2"]
+        assert execution_calls == ["US1", "US2"]
+        assert record.failure_reason == "Execution failed: failed"
+        assert record.continue_prd_current_story_ref == "US2"
+        assert record.continue_prd_completed_story_refs == ["US1"]
+        assert record.continue_prd_story_history == [
+            {
+                "story_ref": "US1",
+                "plan_path_json": str(prd_path.parent / "plan_US1.json"),
+                "execution_run_id": "run-us1",
+                "story_status": "completed",
+            }
+        ]
+
+    def test_continue_prd_marks_roadmap_after_final_story_completion(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        roadmap_label = "Complete the full roadmap-backed PRD through continue-prd"
+        internal_dir = tmp_path / "internal"
+        internal_dir.mkdir(parents=True, exist_ok=True)
+        (internal_dir / "SELF_VISION.md").write_text(
+            "# Anti-drift only\n", encoding="utf-8"
+        )
+        roadmap_path = internal_dir / "ROADMAP.md"
+        roadmap_path.write_text(
+            f"- [ ] {roadmap_label}\n- [ ] Leave another item pending\n",
+            encoding="utf-8",
+        )
+
+        prd_path = tmp_path / "prd_output" / "self" / "roadmap_continue_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Roadmap continue PRD",
+                    "objective": "Finish all roadmap-backed stories",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="all green",
+                remediation_attempted=False,
+                remediation_attempt_count=0,
+                remediation_succeeded=False,
+                remediation_steps=[],
+                remediation_failure_reason="",
+                remediation_exhausted=False,
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.validate_code_structure",
+            lambda *args, **kwargs: SimpleNamespace(
+                passed=True,
+                summary="ok",
+                violations=[],
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+
+        def fake_plan(*, prd_path, user_story_ref, vision_context):
+            del vision_context
+            plan_path = Path(prd_path).parent / f"plan_{user_story_ref}.json"
+            plan_path.write_text(
+                json.dumps(
+                    {"user_story_id": user_story_ref, "source_prd_path": prd_path}
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_path),
+                "plan_path_md": str(
+                    Path(prd_path).parent / f"plan_{user_story_ref}.md"
+                ),
+            }
+
+        def fake_execute(*, plan_path, vision_context, resume_run_id):
+            del vision_context, resume_run_id
+            plan_payload = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+            story_ref = plan_payload["user_story_id"]
+            report_dir = tmp_path / "exec_output" / f"roadmap-{story_ref.lower()}"
+            report_dir.mkdir(parents=True, exist_ok=True)
+            output_path = report_dir / "output.json"
+            report_path = report_dir / "report.json"
+            output_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            report_path.write_text(json.dumps({"story": story_ref}), encoding="utf-8")
+            (prd_path.parent / f"exec_{story_ref.lower()}_roadmap.json").write_text(
+                json.dumps(
+                    {
+                        "user_story_id": story_ref,
+                        "source_prd_path": str(prd_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {"id": "T-001", "title": "Done", "status": "completed"}
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": f"roadmap-{story_ref.lower()}",
+                "task_flow_ids": {"T-001": f"task-flow-roadmap-{story_ref.lower()}"},
+                "output_path": str(output_path),
+                "report_path": str(report_path),
+            }
+
+        from unittest.mock import patch
+
+        with patch("planning.flow.run_user_story_planning", side_effect=fake_plan):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_execute,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(prd_path),
+                    continue_prd=True,
+                )
+
+        assert record.completed_roadmap_items == [roadmap_label]
+        assert record.roadmap_marking_succeeded is True
+        assert f"- [x] {roadmap_label}" in roadmap_path.read_text(encoding="utf-8")
+
+    def test_marks_roadmap_item_after_roadmap_backed_prd_story_completion(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("# Anti-drift only\n")
+        roadmap_label = (
+            "Expose output-format selection and configurable Markdown templates "
+            "through the CLI/runtime UX"
+        )
+        roadmap.write_text(
+            f"- [ ] {roadmap_label}\n- [ ] Keep another item pending\n",
+            encoding="utf-8",
+        )
+
+        artifact_path = tmp_path / "prd_output" / "self" / "input_prd.json"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Roadmap-backed PRD",
+                    "objective": "Finish the roadmap-backed story",
+                    "user_stories": [{"id": "US1", "title": "Story one"}],
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("PRD shortcut should not run introspection")
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        plan_artifact_path = artifact_path.parent / "exec_shortcut.json"
+
+        def fake_exec(**kwargs):
+            del kwargs
+            plan_artifact_path.write_text(
+                json.dumps(
+                    {
+                        "user_story_id": "US1",
+                        "source_prd_path": str(artifact_path.resolve()),
+                        "status": "completed",
+                        "tasks": [
+                            {
+                                "id": "T-001",
+                                "title": "Done",
+                                "status": "completed",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return {
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "run-roadmap-backed-prd",
+                "task_flow_ids": {"T-001": "task-flow-roadmap-backed-prd"},
+                "output_path": str(tmp_path / "exec_output" / "run-roadmap-backed-prd"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-roadmap-backed-prd" / "report.json"
+                ),
+            }
+
+        from unittest.mock import patch
+
+        with patch(
+            "planning.flow.run_user_story_planning",
+            return_value={
+                "quality_score": 9.0,
+                "plan_path_json": str(plan_artifact_path),
+                "plan_path_md": str(artifact_path.parent / "exec_shortcut.md"),
+            },
+        ):
+            with patch(
+                "execution.dialectic_execution.run_dialectic_execution",
+                side_effect=fake_exec,
+            ):
+                record = run_self_improve(
+                    max_improvements=1,
+                    artifact_path=str(artifact_path),
+                    next_available_story=True,
+                )
+
+        roadmap_text = roadmap.read_text(encoding="utf-8")
+        assert f"- [x] {roadmap_label}" in roadmap_text
+        assert record.completed_roadmap_items == [roadmap_label]
+
+    def test_plan_artifact_defers_roadmap_update_until_source_prd_is_complete(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+        capsys,
+    ):
+        from unittest.mock import patch
+
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        roadmap.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_label = "Keep roadmap completion gated by full PRD completion"
+        roadmap.write_text(f"- [ ] {roadmap_label}\n", encoding="utf-8")
+
+        prd_path = tmp_path / "prd_output" / "self" / "input_prd.json"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        prd_path.write_text(
+            json.dumps(
+                {
+                    "feature_name": "Roadmap-backed PRD",
+                    "objective": "Complete stories without premature roadmap updates",
+                    "user_stories": [
+                        {"id": "US1", "title": "Story one"},
+                        {"id": "US2", "title": "Story two"},
+                    ],
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        plan_path = prd_path.parent / "exec_us1.json"
+        plan_path.write_text(
+            json.dumps(
+                {
+                    "user_story_id": "US1",
+                    "user_story_title": "Story one",
+                    "tasks": [{"id": "T-001", "title": "Task", "status": "pending"}],
+                    "source_prd_path": str(prd_path.resolve()),
+                    "source_roadmap_path": "internal/ROADMAP.md",
+                    "source_roadmap_label": roadmap_label,
+                    "source_roadmap_key": roadmap_label.lower(),
+                    "status": "pending",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        with patch(
+            "execution.dialectic_execution.run_dialectic_execution",
+            return_value={
+                "overall_success": True,
+                "story_status": "completed",
+                "run_id": "run-plan-shortcut",
+                "task_flow_ids": {"T-001": "task-flow-plan-shortcut"},
+                "output_path": str(tmp_path / "exec_output" / "run-plan-shortcut"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-plan-shortcut" / "report.json"
+                ),
+            },
+        ):
+            record = run_self_improve(
+                max_improvements=1,
+                artifact_path=str(plan_path),
+            )
+
+        roadmap_text = roadmap.read_text(encoding="utf-8")
+        captured = capsys.readouterr().out
+
+        assert f"- [ ] {roadmap_label}" in roadmap_text
+        assert record.completed_roadmap_items == []
+        assert record.prd_path_json == str(prd_path.resolve())
+        assert (
+            "Deferring roadmap completion until the roadmap-backed PRD has no unfinished user stories."
+            in captured
+        )
 
     def test_skip_baseline_tests_skips_metrics_validation(
         self,
@@ -742,18 +2919,31 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
         monkeypatch.setattr(
             "main.self_improve._metrics_stable",
             lambda *args, **kwargs: (_ for _ in ()).throw(
-                AssertionError("metrics validation should be skipped without a baseline")
+                AssertionError(
+                    "metrics validation should be skipped without a baseline"
+                )
             ),
         )
         monkeypatch.setattr(
@@ -762,7 +2952,10 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
 
         from unittest.mock import MagicMock, patch
@@ -784,14 +2977,23 @@ class TestRunSelfImprove:
             "run_id": "run-skip-metrics",
             "task_flow_ids": {"T-001": "task-flow-skip-metrics"},
             "output_path": str(tmp_path / "exec_output" / "run-skip-metrics"),
-            "report_path": str(tmp_path / "exec_output" / "run-skip-metrics" / "report.json"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-skip-metrics" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
-                        record = run_self_improve(max_improvements=1, skip_baseline_tests=True)
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(
+                            max_improvements=1, skip_baseline_tests=True
+                        )
 
         assert record.tests_passed is True
 
@@ -808,18 +3010,31 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr(
             "main.self_improve._prepare_simulation_branch",
             lambda cwd: (True, SIMULATION_BRANCH_NAME),
         )
-        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._cleanup_simulation_branch", lambda cwd: None
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr(
             "main.self_improve.run_quality_gate",
@@ -833,14 +3048,21 @@ class TestRunSelfImprove:
                 {"passed": True, "summary": "ok", "violations": []},
             )(),
         )
-        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
-            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not commit")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("simulate should not commit")
+            ),
         )
         monkeypatch.setattr(
             "main.self_improve._create_pr",
-            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not create PRs")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("simulate should not create PRs")
+            ),
         )
 
         from unittest.mock import MagicMock, patch
@@ -868,8 +3090,13 @@ class TestRunSelfImprove:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         run_self_improve(simulate=True)
 
         out = capsys.readouterr().out
@@ -891,26 +3118,27 @@ class TestRunSelfImprove:
         vision.parent.mkdir(parents=True)
         vision.write_text("- [ ] Unfinished feature\n")
 
-        monkeypatch.setattr(
-            "main.self_improve.resolve_project_root", lambda: tmp_path
-        )
-        monkeypatch.setattr(
-            "main.self_improve.get_metrics_store", lambda: store
-        )
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
-        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
 
         prepared = []
         cleaned = []
@@ -943,18 +3171,27 @@ class TestRunSelfImprove:
                 {"passed": True, "summary": "ok", "violations": []},
             )(),
         )
-        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
-            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not commit")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("simulate should not commit")
+            ),
         )
         monkeypatch.setattr(
             "main.self_improve._create_pr",
-            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not create PRs")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("simulate should not create PRs")
+            ),
         )
         monkeypatch.setattr(
             "main.self_improve._mark_roadmap_items_completed",
-            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("simulate should not mutate roadmap")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                AssertionError("simulate should not mutate roadmap")
+            ),
         )
 
         from unittest.mock import MagicMock, patch
@@ -982,8 +3219,13 @@ class TestRunSelfImprove:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(simulate=True)
         out = capsys.readouterr().out
 
@@ -1011,18 +3253,31 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr(
             "main.self_improve._prepare_simulation_branch",
             lambda cwd: (True, SIMULATION_BRANCH_NAME),
         )
-        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._cleanup_simulation_branch", lambda cwd: None
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr(
             "main.self_improve.run_quality_gate",
@@ -1036,9 +3291,14 @@ class TestRunSelfImprove:
                 {"passed": True, "summary": "ok", "violations": []},
             )(),
         )
-        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
 
-        runtime_root = tmp_path / ".dialectic" / "self_improve" / "simulations" / "cycle-persist"
+        runtime_root = (
+            tmp_path / ".dialectic" / "self_improve" / "simulations" / "cycle-persist"
+        )
         monkeypatch.setattr(
             "main.self_improve._simulation_runtime_root",
             lambda project_root, cycle_id: runtime_root,
@@ -1055,31 +3315,54 @@ class TestRunSelfImprove:
         mock_flow.flow_id = "flow-sim-persist"
         mock_flow.state.quality_score = 9.5
         mock_flow.state.consensus_reached = True
-        mock_flow.state.prd_path_json = _write(runtime_root / "prd_output" / "self" / "prd.json")
-        mock_flow.state.prd_path_md = _write(runtime_root / "prd_output" / "self" / "prd.md", "# prd\n")
+        mock_flow.state.prd_path_json = _write(
+            runtime_root / "prd_output" / "self" / "prd.json"
+        )
+        mock_flow.state.prd_path_md = _write(
+            runtime_root / "prd_output" / "self" / "prd.md", "# prd\n"
+        )
 
         mock_plan = {
             "quality_score": 9.0,
-            "plan_path_json": _write(runtime_root / "prd_output" / "self" / "plan.json"),
-            "plan_path_md": _write(runtime_root / "prd_output" / "self" / "plan.md", "# plan\n"),
+            "plan_path_json": _write(
+                runtime_root / "prd_output" / "self" / "plan.json"
+            ),
+            "plan_path_md": _write(
+                runtime_root / "prd_output" / "self" / "plan.md", "# plan\n"
+            ),
         }
         mock_exec = {
             "overall_success": True,
             "story_status": "completed",
             "run_id": "sim-run-persist",
             "task_flow_ids": {"T-001": "task-flow-sim-persist"},
-            "output_path": _write(runtime_root / "exec_output" / "self" / "run-persist" / "checkpoint.json"),
-            "report_path": _write(runtime_root / "exec_output" / "self" / "run-persist" / "report.json"),
+            "output_path": _write(
+                runtime_root
+                / "exec_output"
+                / "self"
+                / "run-persist"
+                / "checkpoint.json"
+            ),
+            "report_path": _write(
+                runtime_root / "exec_output" / "self" / "run-persist" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(simulate=True)
 
         assert record.failure_reason == "simulated"
-        assert record.prd_path_json.startswith(str(tmp_path / ".dialectic" / "self_improve"))
+        assert record.prd_path_json.startswith(
+            str(tmp_path / ".dialectic" / "self_improve")
+        )
         assert Path(record.prd_path_json).exists()
         assert Path(record.plan_path_json).exists()
         assert Path(record.execution_report_path).exists()
@@ -1098,18 +3381,31 @@ class TestRunSelfImprove:
         monkeypatch.setenv("SELF_IMPROVE_EXECUTION_RETRIES", "1")
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr(
             "main.self_improve._prepare_simulation_branch",
             lambda cwd: (True, SIMULATION_BRANCH_NAME),
         )
-        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._cleanup_simulation_branch", lambda cwd: None
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr(
             "main.self_improve.run_quality_gate",
@@ -1123,7 +3419,10 @@ class TestRunSelfImprove:
                 {"passed": True, "summary": "ok", "violations": []},
             )(),
         )
-        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
 
         from unittest.mock import MagicMock, patch
 
@@ -1164,8 +3463,13 @@ class TestRunSelfImprove:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=fake_execution):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        side_effect=fake_execution,
+                    ):
                         record = run_self_improve(simulate=True)
 
         out = capsys.readouterr().out
@@ -1189,18 +3493,31 @@ class TestRunSelfImprove:
         monkeypatch.setenv("SELF_IMPROVE_EXECUTION_RETRIES", "1")
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr(
             "main.self_improve._prepare_simulation_branch",
             lambda cwd: (True, SIMULATION_BRANCH_NAME),
         )
-        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
+        monkeypatch.setattr(
+            "main.self_improve._cleanup_simulation_branch", lambda cwd: None
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
 
         from unittest.mock import MagicMock, patch
@@ -1229,8 +3546,13 @@ class TestRunSelfImprove:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", side_effect=[failed_exec, failed_exec]):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        side_effect=[failed_exec, failed_exec],
+                    ):
                         record = run_self_improve(simulate=True)
 
         assert record.failure_reason == "Execution failed: failed"
@@ -1241,27 +3563,26 @@ class TestRunSelfImprove:
         ]
 
     def test_aborts_when_baseline_tests_fail(self, tmp_path, monkeypatch, store):
-        monkeypatch.setattr(
-            "main.self_improve.resolve_project_root", lambda: tmp_path
-        )
-        monkeypatch.setattr(
-            "main.self_improve.get_metrics_store", lambda: store
-        )
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 1, "passed": False, "stdout_tail": "fail", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 1,
+                "passed": False,
+                "stdout_tail": "fail",
+                "stderr_tail": "",
+            },
         )
 
         record = run_self_improve()
         assert "Baseline tests" in record.failure_reason
 
-    def test_baseline_failure_prints_pytest_details(self, tmp_path, monkeypatch, store, capsys):
-        monkeypatch.setattr(
-            "main.self_improve.resolve_project_root", lambda: tmp_path
-        )
-        monkeypatch.setattr(
-            "main.self_improve.get_metrics_store", lambda: store
-        )
+    def test_baseline_failure_prints_pytest_details(
+        self, tmp_path, monkeypatch, store, capsys
+    ):
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
             lambda p: {
@@ -1289,22 +3610,21 @@ class TestRunSelfImprove:
         vision.parent.mkdir(parents=True)
         vision.write_text("- [x] All done\n")
 
-        monkeypatch.setattr(
-            "main.self_improve.resolve_project_root", lambda: tmp_path
-        )
-        monkeypatch.setattr(
-            "main.self_improve.get_metrics_store", lambda: store
-        )
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
-        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
@@ -1319,14 +3639,25 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr(
             "main.self_improve.shutil.which",
             lambda name: None if name == "git" else "/usr/bin/uv",
@@ -1343,18 +3674,33 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
 
         from unittest.mock import MagicMock, patch
 
@@ -1373,13 +3719,20 @@ class TestRunSelfImprove:
             "run_id": "run-commit-test",
             "task_flow_ids": {"T-001": "task-flow-commit-test"},
             "output_path": str(tmp_path / "exec_output" / "run-commit-test"),
-            "report_path": str(tmp_path / "exec_output" / "run-commit-test" / "report.json"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-commit-test" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan) as mock_plan_run:
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ) as mock_plan_run:
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         assert record.prd_generated is True
@@ -1398,12 +3751,23 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
 
@@ -1420,21 +3784,34 @@ class TestRunSelfImprove:
 
         assert "did not produce an exported JSON artifact" in record.failure_reason
 
-    def test_accepts_strong_prd_at_self_improve_floor(self, tmp_path, monkeypatch, store):
+    def test_accepts_strong_prd_at_self_improve_floor(
+        self, tmp_path, monkeypatch, store
+    ):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True, exist_ok=True)
         vision.write_text("- [ ] Accept strong PRDs at the self-improve score floor\n")
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
         monkeypatch.setattr(
@@ -1443,7 +3820,10 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
 
         from unittest.mock import MagicMock, patch
@@ -1465,13 +3845,20 @@ class TestRunSelfImprove:
             "run_id": "run-strong-prd",
             "task_flow_ids": {"T-001": "task-flow-strong-prd"},
             "output_path": str(tmp_path / "exec_output" / "run-strong-prd"),
-            "report_path": str(tmp_path / "exec_output" / "run-strong-prd" / "report.json"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-strong-prd" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan) as mock_plan_run:
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ) as mock_plan_run:
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         mock_plan_run.assert_called_once()
@@ -1489,27 +3876,44 @@ class TestRunSelfImprove:
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
 
         commit_calls: list[tuple[str, str]] = []
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
-            lambda cwd, message: (commit_calls.append((str(cwd), message)) or True, "created commit"),
+            lambda cwd, message: (
+                commit_calls.append((str(cwd), message)) or True,
+                "created commit",
+            ),
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
             lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
         )
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: "https://example/pr/1")
+        monkeypatch.setattr(
+            "main.self_improve._create_pr",
+            lambda *args, **kwargs: "https://example/pr/1",
+        )
 
         from unittest.mock import MagicMock, patch
 
@@ -1528,13 +3932,20 @@ class TestRunSelfImprove:
             "run_id": "run-no-commit-test",
             "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
             "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
-            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-no-commit-test" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         assert record.pr_created is True
@@ -1553,21 +3964,31 @@ class TestRunSelfImprove:
         vision.parent.mkdir(parents=True, exist_ok=True)
         vision.write_text("# Anti-drift only\n")
         roadmap.write_text(
-            "- [ ] Improve PR handoff\n"
-            "- [ ] Keep another item pending\n",
+            "- [ ] Improve PR handoff\n- [ ] Keep another item pending\n",
             encoding="utf-8",
         )
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
         monkeypatch.setattr(
@@ -1576,7 +3997,10 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
 
         from unittest.mock import MagicMock, patch
@@ -1596,34 +4020,85 @@ class TestRunSelfImprove:
             "run_id": "run-no-commit-test",
             "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
             "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
-            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-no-commit-test" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         run_self_improve(max_improvements=1)
 
         roadmap_text = roadmap.read_text(encoding="utf-8")
         assert "- [x] Improve PR handoff" in roadmap_text
         assert "- [ ] Keep another item pending" in roadmap_text
 
-    def test_skips_pr_when_no_commits_ahead(self, tmp_path, monkeypatch, store):
+    def test_marks_selected_roadmap_item_by_source_label_when_copy_changes(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+
         vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
         vision.parent.mkdir(parents=True, exist_ok=True)
-        vision.write_text("- [ ] Improve no-op PR handling\n")
+        vision.write_text("# Anti-drift only\n")
+        roadmap.write_text(
+            "- [ ] Expose output-format selection through the CLI/runtime UX\n"
+            "- [ ] Keep another item pending\n",
+            encoding="utf-8",
+        )
 
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
-        monkeypatch.setattr("main.self_improve._git_worktree_clean", lambda cwd: (True, "clean"))
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-18T00:00:00+00:00",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="vision-gap-1",
+                        category="vision_gap",
+                        title="Govern output views with template-backed publication",
+                        description="Expand the roadmap item into a richer implementation slice.",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                        source_path="internal/ROADMAP.md",
+                        source_label="Expose output-format selection through the CLI/runtime UX",
+                        source_key="expose output-format selection through the cli/runtime ux",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
         monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
         monkeypatch.setattr(
@@ -1632,7 +4107,193 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-mark-by-source-label",
+            "task_flow_ids": {"T-001": "task-flow-mark-by-source-label"},
+            "output_path": str(tmp_path / "exec_output" / "run-mark-by-source-label"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-mark-by-source-label" / "report.json"
+            ),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        roadmap_text = roadmap.read_text(encoding="utf-8")
+        assert (
+            "- [x] Expose output-format selection through the CLI/runtime UX"
+            in roadmap_text
+        )
+        assert record.roadmap_marking_attempted is True
+        assert record.roadmap_marking_succeeded is True
+        assert record.completed_roadmap_items == [
+            "Expose output-format selection through the CLI/runtime UX"
+        ]
+
+    def test_fails_when_roadmap_provenance_item_cannot_be_marked(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("# Anti-drift only\n")
+        roadmap.write_text("- [ ] Keep another item pending\n", encoding="utf-8")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-18T00:00:00+00:00",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="vision-gap-1",
+                        category="vision_gap",
+                        title="Govern output views with template-backed publication",
+                        description="Expand the roadmap item into a richer implementation slice.",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                        source_path="internal/ROADMAP.md",
+                        source_label="Expose output-format selection through the CLI/runtime UX",
+                        source_key="expose output-format selection through the cli/runtime ux",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-marking-failure",
+            "task_flow_ids": {"T-001": "task-flow-marking-failure"},
+            "output_path": str(tmp_path / "exec_output" / "run-marking-failure"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-marking-failure" / "report.json"
+            ),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.roadmap_marking_attempted is True
+        assert record.roadmap_marking_succeeded is False
+        assert record.completed_roadmap_items == []
+        assert record.roadmap_marking_failure_reason == (
+            "Failed to mark roadmap items complete: Expose output-format selection through the CLI/runtime UX"
+        )
+        assert record.failure_reason == record.roadmap_marking_failure_reason
+
+    def test_skips_pr_when_no_commits_ahead(self, tmp_path, monkeypatch, store):
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Improve no-op PR handling\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
 
         pr_attempted = {"value": False}
@@ -1660,18 +4321,128 @@ class TestRunSelfImprove:
             "run_id": "run-no-commit-test",
             "task_flow_ids": {"T-001": "task-flow-no-commit-test"},
             "output_path": str(tmp_path / "exec_output" / "run-no-commit-test"),
-            "report_path": str(tmp_path / "exec_output" / "run-no-commit-test" / "report.json"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-no-commit-test" / "report.json"
+            ),
         }
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         assert record.pr_created is False
         assert "No committable source changes" in record.failure_reason
         assert pr_attempted["value"] is False
+
+    def test_legacy_resume_style_vision_gap_without_source_label_does_not_fail(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        roadmap = tmp_path / "internal" / "ROADMAP.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("# Anti-drift only\n")
+        roadmap.write_text("- [ ] Some unrelated roadmap item\n", encoding="utf-8")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-18T00:00:00+00:00",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="vision-gap-legacy",
+                        category="vision_gap",
+                        title="Incomplete roadmap item: Legacy wording",
+                        description="Legacy wording",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda cwd, message: (False, "nothing to commit"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_has_commits_ahead",
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
+        )
+
+        from unittest.mock import MagicMock, patch
+
+        mock_flow = MagicMock()
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "prd_output" / "PRD_test.json")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "prd_output" / "exec_test.json"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-legacy-roadmap-gap",
+            "task_flow_ids": {"T-001": "task-flow-legacy-roadmap-gap"},
+            "output_path": str(tmp_path / "exec_output" / "run-legacy-roadmap-gap"),
+            "report_path": str(
+                tmp_path / "exec_output" / "run-legacy-roadmap-gap" / "report.json"
+            ),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.roadmap_marking_attempted is False
+        assert record.completed_roadmap_items == []
+        assert "No committable source changes" in record.failure_reason
 
     def test_resume_prints_last_failure_next_stage_and_reused_artifacts(
         self,
@@ -1687,9 +4458,16 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
 
         record = SelfImprovementRecord(
             cycle_id="cycle-summary",
@@ -1725,7 +4503,9 @@ class TestRunSelfImprove:
                 "run_id": "run-123",
                 "task_flow_ids": {},
                 "output_path": str(tmp_path / "exec_output" / "run-123"),
-                "report_path": str(tmp_path / "exec_output" / "run-123" / "report.json"),
+                "report_path": str(
+                    tmp_path / "exec_output" / "run-123" / "report.json"
+                ),
             },
         )
 
@@ -1753,7 +4533,12 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
@@ -1763,7 +4548,9 @@ class TestRunSelfImprove:
             "main.self_improve._git_has_commits_ahead",
             lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
         )
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
 
         switched = []
         monkeypatch.setattr(
@@ -1772,7 +4559,10 @@ class TestRunSelfImprove:
         )
         monkeypatch.setattr(
             "main.self_improve._git_checkout_branch",
-            lambda branch, cwd: (switched.append((branch, str(cwd))) or True, f"switched to {branch}"),
+            lambda branch, cwd: (
+                switched.append((branch, str(cwd))) or True,
+                f"switched to {branch}",
+            ),
         )
 
         record = SelfImprovementRecord(
@@ -1799,7 +4589,9 @@ class TestRunSelfImprove:
             plan_path_json=str(tmp_path / "prd_output" / "exec_test.json"),
             execution_run_id="run-123",
             execution_output_path=str(tmp_path / "exec_output" / "run-123"),
-            execution_report_path=str(tmp_path / "exec_output" / "run-123" / "report.json"),
+            execution_report_path=str(
+                tmp_path / "exec_output" / "run-123" / "report.json"
+            ),
             failure_reason="PR creation failed: drifted branch",
         )
         _save_self_improve_record(tmp_path, record)
@@ -1825,7 +4617,12 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
@@ -1835,20 +4632,28 @@ class TestRunSelfImprove:
             "main.self_improve._git_has_commits_ahead",
             lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
         )
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr(
             "main.self_improve._git_current_branch",
             lambda cwd: "self-improve/other-cycle",
         )
         monkeypatch.setattr(
             "main.self_improve._git_checkout_branch",
-            lambda branch, cwd: (False, f"pathspec '{branch}' did not match any file(s) known to git"),
+            lambda branch, cwd: (
+                False,
+                f"pathspec '{branch}' did not match any file(s) known to git",
+            ),
         )
 
         recreated = []
         monkeypatch.setattr(
             "main.self_improve._git_branch_create_from_head",
-            lambda branch, cwd: (recreated.append((branch, str(cwd))) or True, f"created {branch}"),
+            lambda branch, cwd: (
+                recreated.append((branch, str(cwd))) or True,
+                f"created {branch}",
+            ),
         )
 
         record = SelfImprovementRecord(
@@ -1875,7 +4680,9 @@ class TestRunSelfImprove:
             plan_path_json=str(tmp_path / "prd_output" / "exec_test.json"),
             execution_run_id="run-123",
             execution_output_path=str(tmp_path / "exec_output" / "run-123"),
-            execution_report_path=str(tmp_path / "exec_output" / "run-123" / "report.json"),
+            execution_report_path=str(
+                tmp_path / "exec_output" / "run-123" / "report.json"
+            ),
             failure_reason="PR creation failed: missing branch",
         )
         _save_self_improve_record(tmp_path, record)
@@ -1909,7 +4716,12 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
@@ -1919,17 +4731,25 @@ class TestRunSelfImprove:
             "main.self_improve._git_has_commits_ahead",
             lambda cwd, base_branch="main": (True, f"1 commit ahead of {base_branch}"),
         )
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr("main.self_improve._git_current_branch", lambda cwd: "main")
         monkeypatch.setattr(
             "main.self_improve._git_checkout_branch",
-            lambda branch, cwd: (False, f"pathspec '{branch}' did not match any file(s) known to git"),
+            lambda branch, cwd: (
+                False,
+                f"pathspec '{branch}' did not match any file(s) known to git",
+            ),
         )
 
         recreated = []
         monkeypatch.setattr(
             "main.self_improve._git_branch_create_from_head",
-            lambda branch, cwd: (recreated.append((branch, str(cwd))) or True, f"created {branch}"),
+            lambda branch, cwd: (
+                recreated.append((branch, str(cwd))) or True,
+                f"created {branch}",
+            ),
         )
 
         record = SelfImprovementRecord(
@@ -1980,7 +4800,12 @@ class TestRunSelfImprove:
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
         monkeypatch.setattr(
             "main.self_improve.run_quality_gate",
@@ -1994,16 +4819,24 @@ class TestRunSelfImprove:
                 {"passed": True, "summary": "ok", "violations": []},
             )(),
         )
-        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
         monkeypatch.setattr(
             "main.self_improve._git_commit_all",
             lambda cwd, message: (False, "nothing to commit"),
         )
         monkeypatch.setattr(
             "main.self_improve._git_has_commits_ahead",
-            lambda cwd, base_branch="main": (False, f"no commits ahead of {base_branch}"),
+            lambda cwd, base_branch="main": (
+                False,
+                f"no commits ahead of {base_branch}",
+            ),
         )
-        monkeypatch.setattr("main.self_improve._create_pr", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._create_pr", lambda *args, **kwargs: None
+        )
 
         prd_path = tmp_path / "prd_output" / "PRD_test.json"
         plan_path = tmp_path / "prd_output" / "exec_test.json"
@@ -2057,7 +4890,9 @@ class TestRunSelfImprove:
                     "run_id": "run-789",
                     "task_flow_ids": {"T-001": "task-flow-rerun"},
                     "output_path": str(tmp_path / "exec_output" / "run-789"),
-                    "report_path": str(tmp_path / "exec_output" / "run-789" / "report.json"),
+                    "report_path": str(
+                        tmp_path / "exec_output" / "run-789" / "report.json"
+                    ),
                 }
             ),
         )
@@ -2088,7 +4923,73 @@ class TestResumeSummary:
 
         assert summary["next_stage"] == "execution"
 
-    def test_prefers_execution_when_saved_story_status_failed_even_without_failure_reason(self):
+    def test_prefers_quality_gate_when_execution_is_reusable_but_not_validated(self):
+        summary = _summarize_resume_state(
+            SelfImprovementRecord(
+                cycle_id="c1-quality",
+                timestamp="2026-03-10T00:00:00Z",
+                prd_generated=True,
+                plan_generated=True,
+                execution_attempted=True,
+                prd_path_json="prd.json",
+                plan_path_json="plan.json",
+                execution_run_id="run-1",
+                execution_output_path="exec-output.json",
+                execution_report_path="exec-report.json",
+            ),
+            "Quality gate failed: ruff-format: FAIL (1 errors)",
+        )
+
+        assert summary["next_stage"] == "quality gate"
+
+    def test_prefers_quality_remediation_after_failed_quality_retry(self):
+        summary = _summarize_resume_state(
+            SelfImprovementRecord(
+                cycle_id="c1-remediate",
+                timestamp="2026-03-10T00:00:00Z",
+                prd_generated=True,
+                plan_generated=True,
+                execution_attempted=True,
+                prd_path_json="prd.json",
+                plan_path_json="plan.json",
+                execution_run_id="run-1",
+                execution_output_path="exec-output.json",
+                execution_report_path="exec-report.json",
+                quality_remediation_attempted=True,
+                quality_remediation_steps=["ruff-format-fix", "ruff-lint-fix"],
+            ),
+            "Quality gate failed: mypy: FAIL (1 errors)",
+        )
+
+        assert summary["next_stage"] == "quality remediation"
+
+    def test_prefers_quality_gate_when_remediation_budget_is_exhausted(self):
+        summary = _summarize_resume_state(
+            SelfImprovementRecord(
+                cycle_id="c1-remediate-exhausted",
+                timestamp="2026-03-10T00:00:00Z",
+                prd_generated=True,
+                plan_generated=True,
+                execution_attempted=True,
+                prd_path_json="prd.json",
+                plan_path_json="plan.json",
+                execution_run_id="run-1",
+                execution_output_path="exec-output.json",
+                execution_report_path="exec-report.json",
+                quality_remediation_attempted=True,
+                quality_remediation_attempt_count=1,
+                quality_remediation_steps=["ruff-format-fix", "ruff-lint-fix"],
+                quality_remediation_failure_reason="ruff-format: FAIL (1 errors)",
+                quality_remediation_exhausted=True,
+            ),
+            "Quality gate failed: ruff-format: FAIL (1 errors)",
+        )
+
+        assert summary["next_stage"] == "quality gate (remediation exhausted)"
+
+    def test_prefers_execution_when_saved_story_status_failed_even_without_failure_reason(
+        self,
+    ):
         summary = _summarize_resume_state(
             SelfImprovementRecord(
                 cycle_id="c1b",
@@ -2154,6 +5055,368 @@ class TestResumableCycles:
         assert rows[1]["next_stage"] == "planning"
 
 
+class TestQualityGatePersistence:
+    def test_records_quality_remediation_failure_for_resume(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+        from unittest.mock import MagicMock, patch
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Persist quality remediation failures\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-10T00:00:00Z",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="opp-quality-remediation",
+                        category="code_health",
+                        title="Persist quality remediation state",
+                        description="Remember when bounded remediation already ran.",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        quality_result = type(
+            "QualityResult",
+            (),
+            {
+                "passed": False,
+                "summary": "ruff-format: FAIL (1 errors)",
+                "checks": [],
+                "remediation_attempted": True,
+                "remediation_succeeded": False,
+                "remediation_steps": ["ruff-format-fix", "ruff-lint-fix"],
+            },
+        )()
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd: quality_result,
+        )
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-quality-remediation"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-quality-remediation",
+            "task_flow_ids": {"T-001": "task-flow-quality-remediation"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.failure_reason.startswith("Quality gate failed:")
+        assert record.quality_gate_passed is False
+        assert record.quality_remediation_attempted is True
+        assert record.quality_remediation_attempt_count == 0
+        assert record.quality_remediation_succeeded is False
+        assert record.quality_remediation_steps == [
+            "ruff-format-fix",
+            "ruff-lint-fix",
+        ]
+        assert record.quality_remediation_failure_reason == ""
+        assert record.quality_remediation_exhausted is False
+        assert _summarize_resume_state(record, record.failure_reason)["next_stage"] == (
+            "quality remediation"
+        )
+
+    def test_records_exhausted_quality_remediation_budget_for_resume(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+        from unittest.mock import MagicMock, patch
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Persist exhausted remediation budgets\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-10T00:00:00Z",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="opp-quality-remediation-exhausted",
+                        category="code_health",
+                        title="Persist exhausted remediation budgets",
+                        description="Remember when remediation budget is already spent.",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        quality_result = type(
+            "QualityResult",
+            (),
+            {
+                "passed": False,
+                "summary": "ruff-format: FAIL (1 errors)",
+                "checks": [],
+                "remediation_attempted": False,
+                "remediation_attempt_count": 1,
+                "remediation_succeeded": False,
+                "remediation_steps": ["ruff-format-fix", "ruff-lint-fix"],
+                "remediation_failure_reason": "ruff-format: FAIL (1 errors)",
+                "remediation_exhausted": True,
+            },
+        )()
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd, **kwargs: quality_result,
+        )
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-quality-remediation-exhausted"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-quality-remediation-exhausted",
+            "task_flow_ids": {"T-001": "task-flow-quality-remediation-exhausted"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.failure_reason.startswith("Quality gate failed:")
+        assert record.quality_remediation_attempted is False
+        assert record.quality_remediation_attempt_count == 1
+        assert (
+            record.quality_remediation_failure_reason == "ruff-format: FAIL (1 errors)"
+        )
+        assert record.quality_remediation_exhausted is True
+        assert _summarize_resume_state(record, record.failure_reason)["next_stage"] == (
+            "quality gate (remediation exhausted)"
+        )
+
+
+class TestCrewQualityGatePersistence:
+    def test_records_quality_repair_crew_steps_in_existing_remediation_fields(
+        self,
+        tmp_path,
+        monkeypatch,
+        store,
+    ):
+        from schemas import ImprovementOpportunity, IntrospectionReport
+        from unittest.mock import MagicMock, patch
+
+        vision = tmp_path / "internal" / "SELF_VISION.md"
+        vision.parent.mkdir(parents=True, exist_ok=True)
+        vision.write_text("- [ ] Persist quality repair crew state\n")
+
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests",
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
+        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
+        monkeypatch.setattr(
+            "main.self_improve.run_introspection",
+            lambda **kwargs: IntrospectionReport(
+                timestamp="2026-03-10T00:00:00Z",
+                opportunities=[
+                    ImprovementOpportunity(
+                        id="opp-quality-repair-crew",
+                        category="code_health",
+                        title="Persist quality repair crew state",
+                        description="Remember when the quality repair crew ran.",
+                        evidence=["internal/ROADMAP.md"],
+                        estimated_impact="high",
+                    )
+                ],
+                baseline_metrics={},
+            ),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
+        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
+
+        quality_result = type(
+            "QualityResult",
+            (),
+            {
+                "passed": False,
+                "summary": "mypy: FAIL (1 errors)",
+                "checks": [],
+                "remediation_attempted": True,
+                "remediation_attempt_count": 1,
+                "remediation_succeeded": False,
+                "remediation_steps": [
+                    "quality-repair-crew",
+                    "write:src/main/self_improve/quality_gate.py",
+                ],
+                "remediation_failure_reason": "mypy: FAIL (1 errors)",
+                "remediation_exhausted": True,
+            },
+        )()
+        monkeypatch.setattr(
+            "main.self_improve.run_quality_gate",
+            lambda cwd, **kwargs: quality_result,
+        )
+
+        mock_flow = MagicMock()
+        mock_flow.flow_id = "flow-quality-repair-crew"
+        mock_flow.state.quality_score = 9.5
+        mock_flow.state.consensus_reached = True
+        mock_flow.state.prd_path_json = str(tmp_path / "runtime" / "prd.json")
+        mock_flow.state.prd_path_md = str(tmp_path / "runtime" / "prd.md")
+
+        mock_plan = {
+            "quality_score": 9.0,
+            "plan_path_json": str(tmp_path / "runtime" / "plan.json"),
+            "plan_path_md": str(tmp_path / "runtime" / "plan.md"),
+        }
+        mock_exec = {
+            "overall_success": True,
+            "story_status": "completed",
+            "run_id": "run-quality-repair-crew",
+            "task_flow_ids": {"T-001": "task-flow-quality-repair-crew"},
+            "output_path": str(tmp_path / "runtime" / "exec"),
+            "report_path": str(tmp_path / "runtime" / "exec" / "report.json"),
+        }
+
+        with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
+            with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
+                        record = run_self_improve(max_improvements=1)
+
+        assert record.failure_reason.startswith("Quality gate failed:")
+        assert record.quality_remediation_attempted is True
+        assert record.quality_remediation_attempt_count == 1
+        assert record.quality_remediation_succeeded is False
+        assert record.quality_remediation_steps == [
+            "quality-repair-crew",
+            "write:src/main/self_improve/quality_gate.py",
+        ]
+        assert record.quality_remediation_failure_reason == "mypy: FAIL (1 errors)"
+        assert record.quality_remediation_exhausted is True
+        assert _summarize_resume_state(record, record.failure_reason)["next_stage"] == (
+            "quality gate (remediation exhausted)"
+        )
+
+
 class TestFailureBranchPreservation:
     def test_preserves_branch_when_post_execution_tests_fail(
         self,
@@ -2171,8 +5434,12 @@ class TestFailureBranchPreservation:
         monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
         monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
-        monkeypatch.setattr("dialectic.introspect.resolve_project_root", lambda: tmp_path)
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "dialectic.introspect.resolve_project_root", lambda: tmp_path
+        )
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr(
             "main.self_improve.dialectic_prioritize",
             lambda opps, **kw: opps,
@@ -2205,10 +5472,17 @@ class TestFailureBranchPreservation:
         snapshot_results = iter(
             [
                 {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
-                {"returncode": 1, "passed": False, "stdout_tail": "1 failed\n", "stderr_tail": ""},
+                {
+                    "returncode": 1,
+                    "passed": False,
+                    "stdout_tail": "1 failed\n",
+                    "stderr_tail": "",
+                },
             ]
         )
-        monkeypatch.setattr("main.self_improve._snapshot_tests", lambda p: next(snapshot_results))
+        monkeypatch.setattr(
+            "main.self_improve._snapshot_tests", lambda p: next(snapshot_results)
+        )
         monkeypatch.setattr(
             "main.self_improve.run_quality_gate",
             lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
@@ -2245,8 +5519,13 @@ class TestFailureBranchPreservation:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         assert record.failure_reason == "Tests failed after execution"
@@ -2256,7 +5535,9 @@ class TestFailureBranchPreservation:
 
 class TestTransientLlmRetries:
     def test_detects_transient_timeout_messages(self):
-        assert _is_transient_llm_error(RuntimeError("Failed to connect to OpenAI API: Request timed out."))
+        assert _is_transient_llm_error(
+            RuntimeError("Failed to connect to OpenAI API: Request timed out.")
+        )
         assert _is_transient_llm_error(RuntimeError("Rate limit exceeded"))
         assert not _is_transient_llm_error(RuntimeError("Invalid API key"))
 
@@ -2269,7 +5550,9 @@ class TestTransientLlmRetries:
         def flaky_operation():
             attempts["count"] += 1
             if attempts["count"] < 3:
-                raise RuntimeError("Failed to connect to OpenAI API: Request timed out.")
+                raise RuntimeError(
+                    "Failed to connect to OpenAI API: Request timed out."
+                )
             return "ok"
 
         assert _run_with_transient_llm_retries("planning", flaky_operation) == "ok"
@@ -2278,9 +5561,7 @@ class TestTransientLlmRetries:
 
 class TestSelfImprovementRecord:
     def test_schema_defaults(self):
-        r = SelfImprovementRecord(
-            cycle_id="test", timestamp="2026-01-01T00:00:00Z"
-        )
+        r = SelfImprovementRecord(cycle_id="test", timestamp="2026-01-01T00:00:00Z")
         assert r.prd_generated is False
         assert r.pr_created is False
         assert r.branch_name == ""
@@ -2296,9 +5577,7 @@ class TestSelfImprovementRecord:
         assert r.estimated_cost == 0.125
 
     def test_token_fields_default_zero(self):
-        r = SelfImprovementRecord(
-            cycle_id="t", timestamp="2026-01-01T00:00:00Z"
-        )
+        r = SelfImprovementRecord(cycle_id="t", timestamp="2026-01-01T00:00:00Z")
         assert r.total_tokens == 0
         assert r.estimated_cost == 0.0
 
@@ -2319,8 +5598,12 @@ class TestCreatePr:
             if cmd[:3] == ["git", "push", "-u"]:
                 return subprocess.CompletedProcess(cmd, 0, stdout="pushed\n", stderr="")
             if cmd[:3] == ["gh", "pr", "create"]:
-                return subprocess.CompletedProcess(cmd, 0, stdout="https://example/pr/123\n", stderr="")
-            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="unexpected command")
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="https://example/pr/123\n", stderr=""
+                )
+            return subprocess.CompletedProcess(
+                cmd, 1, stdout="", stderr="unexpected command"
+            )
 
         pr_url = create_pr(
             "self-improve/test-cycle",
@@ -2338,7 +5621,17 @@ class TestCreatePr:
         assert pr_url == "https://example/pr/123"
         assert commands == [
             ["git", "push", "-u", "origin", "self-improve/test-cycle"],
-            ["gh", "pr", "create", "--title", "title", "--body", "body", "--head", "self-improve/test-cycle"],
+            [
+                "gh",
+                "pr",
+                "create",
+                "--title",
+                "title",
+                "--body",
+                "body",
+                "--head",
+                "self-improve/test-cycle",
+            ],
         ]
 
     def test_returns_none_when_push_fails(self, tmp_path):
@@ -2352,8 +5645,12 @@ class TestCreatePr:
         def fake_run(cmd, cwd=None, timeout=120):
             commands.append(cmd)
             if cmd[:3] == ["git", "push", "-u"]:
-                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="push rejected")
-            return subprocess.CompletedProcess(cmd, 0, stdout="https://example/pr/123\n", stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, 1, stdout="", stderr="push rejected"
+                )
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="https://example/pr/123\n", stderr=""
+            )
 
         pr_url = create_pr(
             "self-improve/test-cycle",
@@ -2379,22 +5676,21 @@ class TestTokenBudgetIntegration:
         vision.parent.mkdir(parents=True, exist_ok=True)
         vision.write_text("- [ ] Unfinished feature A\n- [ ] Unfinished feature B\n")
 
-        monkeypatch.setattr(
-            "main.self_improve.resolve_project_root", lambda: tmp_path
-        )
-        monkeypatch.setattr(
-            "main.self_improve.get_metrics_store", lambda: store
-        )
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
-        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
@@ -2402,16 +5698,23 @@ class TestTokenBudgetIntegration:
 
     def test_simulate_does_not_leak_hooks_after_run(self, tmp_path, monkeypatch, store):
         from crewai.hooks import get_before_llm_call_hooks, clear_all_global_hooks
+
         clear_all_global_hooks()
         self._setup_introspection(tmp_path, monkeypatch, store)
 
-        monkeypatch.setattr("main.self_improve._run_git_preflight", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            "main.self_improve._run_git_preflight", lambda *args, **kwargs: None
+        )
         monkeypatch.setattr(
             "main.self_improve._prepare_simulation_branch",
             lambda cwd: (True, SIMULATION_BRANCH_NAME),
         )
-        monkeypatch.setattr("main.self_improve._cleanup_simulation_branch", lambda cwd: None)
-        monkeypatch.setattr("main.self_improve.dialectic_prioritize", lambda opps, **kw: opps)
+        monkeypatch.setattr(
+            "main.self_improve._cleanup_simulation_branch", lambda cwd: None
+        )
+        monkeypatch.setattr(
+            "main.self_improve.dialectic_prioritize", lambda opps, **kw: opps
+        )
         monkeypatch.setattr(
             "main.self_improve.run_quality_gate",
             lambda cwd: type("QualityResult", (), {"passed": True, "summary": "ok"})(),
@@ -2424,8 +5727,14 @@ class TestTokenBudgetIntegration:
                 {"passed": True, "summary": "ok", "violations": []},
             )(),
         )
-        monkeypatch.setattr("main.self_improve._metrics_stable", lambda *args, **kwargs: (True, "stable"))
-        monkeypatch.setattr("main.self_improve._git_commit_all", lambda *args, **kwargs: (False, "nothing to commit"))
+        monkeypatch.setattr(
+            "main.self_improve._metrics_stable",
+            lambda *args, **kwargs: (True, "stable"),
+        )
+        monkeypatch.setattr(
+            "main.self_improve._git_commit_all",
+            lambda *args, **kwargs: (False, "nothing to commit"),
+        )
 
         from unittest.mock import MagicMock, patch
 
@@ -2452,8 +5761,13 @@ class TestTokenBudgetIntegration:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(simulate=True)
 
         assert record.failure_reason == "simulated"
@@ -2469,12 +5783,8 @@ class TestTokenBudgetIntegration:
             "main.self_improve.dialectic_prioritize",
             lambda opps, **kw: opps,
         )
-        monkeypatch.setattr(
-            "main.self_improve._git_branch_create", lambda b, c: True
-        )
-        monkeypatch.setattr(
-            "main.self_improve._git_discard_branch", lambda b, c: None
-        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
 
         from unittest.mock import MagicMock, patch
 
@@ -2484,6 +5794,7 @@ class TestTokenBudgetIntegration:
 
         def fake_kickoff(**kwargs):
             from dialectic.hooks import _get_active_scope
+
             scope = _get_active_scope()
             if scope:
                 scope.tracker.add_input_tokens(100)
@@ -2506,12 +5817,8 @@ class TestTokenBudgetIntegration:
             "main.self_improve.dialectic_prioritize",
             lambda opps, **kw: opps,
         )
-        monkeypatch.setattr(
-            "main.self_improve._git_branch_create", lambda b, c: True
-        )
-        monkeypatch.setattr(
-            "main.self_improve._git_discard_branch", lambda b, c: None
-        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
 
         from unittest.mock import MagicMock, patch
 
@@ -2529,8 +5836,13 @@ class TestTokenBudgetIntegration:
 
         with patch("dialectic.prd_flow.DialecticFlow", return_value=mock_flow):
             with patch("dialectic.prd_flow._get_persistence", return_value=MagicMock()):
-                with patch("planning.flow.run_user_story_planning", return_value=mock_plan):
-                    with patch("execution.dialectic_execution.run_dialectic_execution", return_value=mock_exec):
+                with patch(
+                    "planning.flow.run_user_story_planning", return_value=mock_plan
+                ):
+                    with patch(
+                        "execution.dialectic_execution.run_dialectic_execution",
+                        return_value=mock_exec,
+                    ):
                         record = run_self_improve(max_improvements=1)
 
         assert isinstance(record.total_tokens, int)
@@ -2540,27 +5852,28 @@ class TestTokenBudgetIntegration:
 class TestDialecticPrioritizationIntegration:
     """Verify self_improve calls dialectic_prioritize."""
 
-    def test_self_improve_uses_dialectic_prioritization(self, tmp_path, monkeypatch, store):
+    def test_self_improve_uses_dialectic_prioritization(
+        self, tmp_path, monkeypatch, store
+    ):
         vision = tmp_path / "internal" / "SELF_VISION.md"
         vision.parent.mkdir(parents=True, exist_ok=True)
         vision.write_text("- [ ] Unfinished feature\n")
 
-        monkeypatch.setattr(
-            "main.self_improve.resolve_project_root", lambda: tmp_path
-        )
-        monkeypatch.setattr(
-            "main.self_improve.get_metrics_store", lambda: store
-        )
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
-        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
@@ -2571,17 +5884,12 @@ class TestDialecticPrioritizationIntegration:
             prioritize_called.append(len(opps))
             return opps
 
-        monkeypatch.setattr(
-            "main.self_improve.dialectic_prioritize", mock_prioritize
-        )
-        monkeypatch.setattr(
-            "main.self_improve._git_branch_create", lambda b, c: True
-        )
-        monkeypatch.setattr(
-            "main.self_improve._git_discard_branch", lambda b, c: None
-        )
+        monkeypatch.setattr("main.self_improve.dialectic_prioritize", mock_prioritize)
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
 
         from unittest.mock import MagicMock, patch
+
         mock_flow = MagicMock()
         mock_flow.state.quality_score = 5.0
         mock_flow.state.consensus_reached = False
@@ -2599,22 +5907,21 @@ class TestDialecticPrioritizationIntegration:
         vision.parent.mkdir(parents=True, exist_ok=True)
         vision.write_text("- [ ] Feature A\n- [ ] Feature B\n")
 
-        monkeypatch.setattr(
-            "main.self_improve.resolve_project_root", lambda: tmp_path
-        )
-        monkeypatch.setattr(
-            "main.self_improve.get_metrics_store", lambda: store
-        )
+        monkeypatch.setattr("main.self_improve.resolve_project_root", lambda: tmp_path)
+        monkeypatch.setattr("main.self_improve.get_metrics_store", lambda: store)
         monkeypatch.setattr(
             "main.self_improve._git_worktree_clean", lambda cwd: (True, "clean")
         )
         monkeypatch.setattr(
             "main.self_improve._snapshot_tests",
-            lambda p: {"returncode": 0, "passed": True, "stdout_tail": "", "stderr_tail": ""},
+            lambda p: {
+                "returncode": 0,
+                "passed": True,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            },
         )
-        monkeypatch.setattr(
-            "dialectic.introspect.get_vision_path", lambda ctx: vision
-        )
+        monkeypatch.setattr("dialectic.introspect.get_vision_path", lambda ctx: vision)
         monkeypatch.setattr(
             "dialectic.introspect.resolve_project_root", lambda: tmp_path
         )
@@ -2625,14 +5932,11 @@ class TestDialecticPrioritizationIntegration:
         monkeypatch.setattr(
             "main.self_improve.dialectic_prioritize", failing_prioritize
         )
-        monkeypatch.setattr(
-            "main.self_improve._git_branch_create", lambda b, c: True
-        )
-        monkeypatch.setattr(
-            "main.self_improve._git_discard_branch", lambda b, c: None
-        )
+        monkeypatch.setattr("main.self_improve._git_branch_create", lambda b, c: True)
+        monkeypatch.setattr("main.self_improve._git_discard_branch", lambda b, c: None)
 
         from unittest.mock import MagicMock, patch
+
         mock_flow = MagicMock()
         mock_flow.state.quality_score = 5.0
         mock_flow.state.consensus_reached = False

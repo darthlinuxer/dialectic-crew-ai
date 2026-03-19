@@ -38,8 +38,20 @@ def test_execution_plan_export_md():
         user_story_title="Configure 2FA",
         approach_summary="Implement configuration flow with TOTP and QR code.",
         tasks=[
-            ImplementationTask(id="T-001", title="Backend: 2FA endpoint", description="Create API to enable 2FA", order=1, dependencies=[]),
-            ImplementationTask(id="T-002", title="Frontend: config screen", description="Screen with QR and backup", order=2, dependencies=["T-001"]),
+            ImplementationTask(
+                id="T-001",
+                title="Backend: 2FA endpoint",
+                description="Create API to enable 2FA",
+                order=1,
+                dependencies=[],
+            ),
+            ImplementationTask(
+                id="T-002",
+                title="Frontend: config screen",
+                description="Screen with QR and backup",
+                order=2,
+                dependencies=["T-001"],
+            ),
         ],
         risks_mitigated=["Secure storage of the secret"],
         tech_notes="Use pyotp on the backend.",

@@ -22,10 +22,15 @@ class TestQualityAudit(unittest.TestCase):
     def test_main_returns_zero_when_no_placeholders(self):
         with tempfile.TemporaryDirectory() as tmp:
             artifact_path = Path(tmp) / "artifact.md"
-            artifact_path.write_text("Versão 1.0\nResponsável: PMO\nReferência: R1", encoding="utf-8")
+            artifact_path.write_text(
+                "Versão 1.0\nResponsável: PMO\nReferência: R1", encoding="utf-8"
+            )
             stdout = io.StringIO()
             argv = ["quality_audit.py", str(artifact_path)]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
             self.assertIn("score", stdout.getvalue())
@@ -36,7 +41,10 @@ class TestQualityAudit(unittest.TestCase):
             artifact_path.write_text("Versão 1.0\n{{placeholder}}", encoding="utf-8")
             stdout = io.StringIO()
             argv = ["quality_audit.py", str(artifact_path), "--pretty"]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 2)
 

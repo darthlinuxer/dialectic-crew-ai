@@ -66,14 +66,26 @@ class TestArtifactMapper(unittest.TestCase):
             index_path.write_text(content, encoding="utf-8")
             stdout = io.StringIO()
             argv = ["artifact_mapper.py", "--list", "--index", str(index_path)]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
             self.assertIn("PM_DOCS_PT_BR/01_TERMO", stdout.getvalue())
 
             stdout = io.StringIO()
-            argv = ["artifact_mapper.py", "--artifact", "unknown", "--index", str(index_path)]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            argv = [
+                "artifact_mapper.py",
+                "--artifact",
+                "unknown",
+                "--index",
+                str(index_path),
+            ]
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 2)
             self.assertIn("Artifact not found", stdout.getvalue())
@@ -112,7 +124,10 @@ class TestArtifactMapper(unittest.TestCase):
                 "--index",
                 str(index_path),
             ]
-            with unittest.mock.patch("sys.argv", argv), unittest.mock.patch("sys.stdout", stdout):
+            with (
+                unittest.mock.patch("sys.argv", argv),
+                unittest.mock.patch("sys.stdout", stdout),
+            ):
                 code = main()
             self.assertEqual(code, 0)
             self.assertIn("\n", stdout.getvalue())

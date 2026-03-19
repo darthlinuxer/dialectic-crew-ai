@@ -19,22 +19,25 @@ import logging
 from statistics import mean, median, stdev
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
 class ValidationError(Exception):
     """Raised when validation fails"""
+
     pass
 
 
 class CalculationError(Exception):
     """Raised when calculation fails"""
+
     pass
 
 
 class EstimationScale(Enum):
     """Supported estimation scales"""
+
     FIBONACCI = "fibonacci"
     MODIFIED_FIBONACCI = "modified_fibonacci"
     T_SHIRT = "t_shirt"
@@ -46,23 +49,17 @@ ESTIMATION_SCALES = {
     EstimationScale.FIBONACCI: [1, 2, 3, 5, 8, 13, 21, 34, 55, 89],
     EstimationScale.MODIFIED_FIBONACCI: [0, 0.5, 1, 2, 3, 5, 8, 13, 20, 40, 100],
     EstimationScale.T_SHIRT: ["XS", "S", "M", "L", "XL", "XXL"],
-    EstimationScale.POWERS_OF_2: [1, 2, 4, 8, 16, 32, 64]
+    EstimationScale.POWERS_OF_2: [1, 2, 4, 8, 16, 32, 64],
 }
 
 # T-shirt to numeric mapping
-T_SHIRT_TO_NUMERIC = {
-    "XS": 1,
-    "S": 2,
-    "M": 3,
-    "L": 5,
-    "XL": 8,
-    "XXL": 13
-}
+T_SHIRT_TO_NUMERIC = {"XS": 1, "S": 2, "M": 3, "L": 5, "XL": 8, "XXL": 13}
 
 
 @dataclass
 class Story:
     """Represents a User Story"""
+
     id: str
     title: str
     estimated_points: Optional[float] = None
@@ -75,6 +72,7 @@ class Story:
 @dataclass
 class PlanningSession:
     """Represents a Poker Planning session"""
+
     session_id: str
     story_id: str
     story_title: str
@@ -100,34 +98,46 @@ class PlanningSession:
             "range": max(self.estimates) - min(self.estimates),
             "std_dev": stdev(self.estimates) if len(self.estimates) > 1 else 0.0,
             "variance_coefficient": (stdev(self.estimates) / mean(self.estimates) * 100)
-                                   if len(self.estimates) > 1 and mean(self.estimates) > 0 else 0.0
+            if len(self.estimates) > 1 and mean(self.estimates) > 0
+            else 0.0,
         }
 
 
 @dataclass
 class PokerConfig:
     """Configuration for Poker Planning"""
+
     scale: EstimationScale = EstimationScale.FIBONACCI
     breakdown_threshold: float = 13  # Stories above this should be broken down
     points_per_sprint: float = 20  # Team velocity
     sprint_duration_weeks: int = 2
     ideal_story_size_min: float = 2  # Minimum recommended story size
     ideal_story_size_max: float = 8  # Maximum recommended story size
-    consensus_variance_threshold: float = 30.0  # % - if variance coef > this, re-estimate
+    consensus_variance_threshold: float = (
+        30.0  # % - if variance coef > this, re-estimate
+    )
 
     def validate(self) -> None:
         """Validate configuration"""
         if self.breakdown_threshold <= 0:
-            raise ValidationError(f"breakdown_threshold must be positive, got {self.breakdown_threshold}")
+            raise ValidationError(
+                f"breakdown_threshold must be positive, got {self.breakdown_threshold}"
+            )
 
         if self.points_per_sprint <= 0:
-            raise ValidationError(f"points_per_sprint must be positive, got {self.points_per_sprint}")
+            raise ValidationError(
+                f"points_per_sprint must be positive, got {self.points_per_sprint}"
+            )
 
         if self.sprint_duration_weeks <= 0:
-            raise ValidationError(f"sprint_duration_weeks must be positive, got {self.sprint_duration_weeks}")
+            raise ValidationError(
+                f"sprint_duration_weeks must be positive, got {self.sprint_duration_weeks}"
+            )
 
         if self.ideal_story_size_min >= self.ideal_story_size_max:
-            raise ValidationError(f"ideal_story_size_min ({self.ideal_story_size_min}) must be less than ideal_story_size_max ({self.ideal_story_size_max})")
+            raise ValidationError(
+                f"ideal_story_size_min ({self.ideal_story_size_min}) must be less than ideal_story_size_max ({self.ideal_story_size_max})"
+            )
 
 
 class PokerPlanningCalculator:
@@ -171,7 +181,9 @@ class PokerPlanningCalculator:
         self.sessions: List[PlanningSession] = []
         self.scale_values = ESTIMATION_SCALES[config.scale]
 
-        logger.info(f"PokerPlanningCalculator initialized with {config.scale.value} scale")
+        logger.info(
+            f"PokerPlanningCalculator initialized with {config.scale.value} scale"
+        )
 
     def validate_estimate(self, points: float) -> Tuple[bool, str]:
         """
@@ -194,7 +206,10 @@ class PokerPlanningCalculator:
         valid_nums = [v for v in self.scale_values if isinstance(v, (int, float))]
         closest = min(valid_nums, key=lambda x: abs(x - points))
 
-        return False, f"{points} is not in {self.config.scale.value} scale. Closest valid value: {closest}"
+        return (
+            False,
+            f"{points} is not in {self.config.scale.value} scale. Closest valid value: {closest}",
+        )
 
     def recommend_breakdown(self, points: float) -> Dict:
         """
@@ -213,7 +228,7 @@ class PokerPlanningCalculator:
             "estimated_points": points,
             "threshold": self.config.breakdown_threshold,
             "reason": "",
-            "suggested_breakdown": []
+            "suggested_breakdown": [],
         }
 
         if should_break:
@@ -232,7 +247,7 @@ class PokerPlanningCalculator:
 
             recommendation["suggested_breakdown"] = [
                 f"Break into {num_stories} stories of approximately {suggested_size} points each",
-                f"This brings each story within the ideal range of {self.config.ideal_story_size_min}-{self.config.ideal_story_size_max} points"
+                f"This brings each story within the ideal range of {self.config.ideal_story_size_min}-{self.config.ideal_story_size_max} points",
             ]
         else:
             recommendation["reason"] = "Story size is acceptable"
@@ -250,9 +265,7 @@ class PokerPlanningCalculator:
             Dictionary with session analysis
         """
         if not session.estimates:
-            return {
-                "error": "No estimates provided in session"
-            }
+            return {"error": "No estimates provided in session"}
 
         stats = session.calculate_statistics()
 
@@ -269,22 +282,21 @@ class PokerPlanningCalculator:
 
         analysis = {
             "session_id": session.session_id,
-            "story": {
-                "id": session.story_id,
-                "title": session.story_title
-            },
+            "story": {"id": session.story_id, "title": session.story_title},
             "statistics": stats,
             "consensus": {
                 "reached": consensus,
                 "variance_coefficient": variance_coef,
                 "threshold": self.config.consensus_variance_threshold,
-                "recommendation": "Consensus reached" if consensus else "Re-estimate recommended (high variance)"
+                "recommendation": "Consensus reached"
+                if consensus
+                else "Re-estimate recommended (high variance)",
             },
             "final_estimate": {
                 "recommended": final_estimate,
-                "basis": "median of estimates, rounded to nearest scale value"
+                "basis": "median of estimates, rounded to nearest scale value",
             },
-            "breakdown": self.recommend_breakdown(final_estimate)
+            "breakdown": self.recommend_breakdown(final_estimate),
         }
 
         return analysis
@@ -303,12 +315,12 @@ class PokerPlanningCalculator:
         Returns:
             Dictionary with velocity metrics
         """
-        completed_stories = [s for s in self.stories if s.completed and s.actual_points is not None]
+        completed_stories = [
+            s for s in self.stories if s.completed and s.actual_points is not None
+        ]
 
         if not completed_stories:
-            return {
-                "error": "No completed stories available for velocity calculation"
-            }
+            return {"error": "No completed stories available for velocity calculation"}
 
         # Group by sprint
         sprint_points: Dict[int, List[float]] = {}
@@ -319,16 +331,16 @@ class PokerPlanningCalculator:
                 sprint_points[story.sprint].append(story.actual_points)
 
         # Calculate points per sprint
-        sprint_totals = {sprint: sum(points) for sprint, points in sprint_points.items()}
+        sprint_totals = {
+            sprint: sum(points) for sprint, points in sprint_points.items()
+        }
 
         # Consider only recent sprints
         recent_sprints = sorted(sprint_totals.keys())[-completed_sprints:]
         recent_velocities = [sprint_totals[s] for s in recent_sprints]
 
         if not recent_velocities:
-            return {
-                "error": "No sprint data available"
-            }
+            return {"error": "No sprint data available"}
 
         velocity_metrics = {
             "average_velocity": mean(recent_velocities),
@@ -337,13 +349,20 @@ class PokerPlanningCalculator:
             "max_velocity": max(recent_velocities),
             "std_dev": stdev(recent_velocities) if len(recent_velocities) > 1 else 0.0,
             "sprints_analyzed": len(recent_velocities),
-            "sprint_details": {sprint: sprint_totals[sprint] for sprint in recent_sprints},
-            "stability": "Stable" if (stdev(recent_velocities) if len(recent_velocities) > 1 else 0) < mean(recent_velocities) * 0.2 else "Unstable"
+            "sprint_details": {
+                sprint: sprint_totals[sprint] for sprint in recent_sprints
+            },
+            "stability": "Stable"
+            if (stdev(recent_velocities) if len(recent_velocities) > 1 else 0)
+            < mean(recent_velocities) * 0.2
+            else "Unstable",
         }
 
         return velocity_metrics
 
-    def estimate_completion(self, remaining_points: float, use_velocity: Optional[float] = None) -> Dict:
+    def estimate_completion(
+        self, remaining_points: float, use_velocity: Optional[float] = None
+    ) -> Dict:
         """
         Estimate project completion timeline
 
@@ -382,7 +401,7 @@ class PokerPlanningCalculator:
             return {
                 "sprints": round(sprints, 1),
                 "weeks": round(weeks, 1),
-                "months": round(weeks / 4.33, 1)
+                "months": round(weeks / 4.33, 1),
             }
 
         estimation = {
@@ -391,23 +410,27 @@ class PokerPlanningCalculator:
             "scenarios": {
                 "optimistic": {
                     "velocity": optimistic_velocity,
-                    "duration": calculate_scenario(remaining_points, optimistic_velocity),
-                    "description": "Best case scenario with maximum historical velocity"
+                    "duration": calculate_scenario(
+                        remaining_points, optimistic_velocity
+                    ),
+                    "description": "Best case scenario with maximum historical velocity",
                 },
                 "realistic": {
                     "velocity": velocity,
                     "duration": calculate_scenario(remaining_points, velocity),
-                    "description": "Most likely scenario with average velocity"
+                    "description": "Most likely scenario with average velocity",
                 },
                 "pessimistic": {
                     "velocity": pessimistic_velocity,
-                    "duration": calculate_scenario(remaining_points, pessimistic_velocity),
-                    "description": "Worst case scenario with minimum historical velocity"
-                }
+                    "duration": calculate_scenario(
+                        remaining_points, pessimistic_velocity
+                    ),
+                    "description": "Worst case scenario with minimum historical velocity",
+                },
             },
             "recommendation": f"Plan for {calculate_scenario(remaining_points, velocity)['sprints']} sprints "
-                             f"({calculate_scenario(remaining_points, velocity)['weeks']} weeks) "
-                             f"but communicate a range to stakeholders"
+            f"({calculate_scenario(remaining_points, velocity)['weeks']} weeks) "
+            f"but communicate a range to stakeholders",
         }
 
         return estimation
@@ -420,20 +443,48 @@ class PokerPlanningCalculator:
             Dictionary with backlog analysis
         """
         if not self.stories:
-            return {
-                "error": "No stories in backlog"
-            }
+            return {"error": "No stories in backlog"}
 
-        total_points = sum(s.estimated_points for s in self.stories if s.estimated_points is not None)
-        completed_points = sum(s.actual_points for s in self.stories if s.completed and s.actual_points is not None)
+        total_points = sum(
+            s.estimated_points for s in self.stories if s.estimated_points is not None
+        )
+        completed_points = sum(
+            s.actual_points
+            for s in self.stories
+            if s.completed and s.actual_points is not None
+        )
         remaining_points = total_points - completed_points
 
         # Categorize stories by size
         size_distribution = {
-            "small": [s for s in self.stories if s.estimated_points and s.estimated_points <= self.config.ideal_story_size_min],
-            "ideal": [s for s in self.stories if s.estimated_points and self.config.ideal_story_size_min < s.estimated_points <= self.config.ideal_story_size_max],
-            "large": [s for s in self.stories if s.estimated_points and self.config.ideal_story_size_max < s.estimated_points <= self.config.breakdown_threshold],
-            "too_large": [s for s in self.stories if s.estimated_points and s.estimated_points > self.config.breakdown_threshold]
+            "small": [
+                s
+                for s in self.stories
+                if s.estimated_points
+                and s.estimated_points <= self.config.ideal_story_size_min
+            ],
+            "ideal": [
+                s
+                for s in self.stories
+                if s.estimated_points
+                and self.config.ideal_story_size_min
+                < s.estimated_points
+                <= self.config.ideal_story_size_max
+            ],
+            "large": [
+                s
+                for s in self.stories
+                if s.estimated_points
+                and self.config.ideal_story_size_max
+                < s.estimated_points
+                <= self.config.breakdown_threshold
+            ],
+            "too_large": [
+                s
+                for s in self.stories
+                if s.estimated_points
+                and s.estimated_points > self.config.breakdown_threshold
+            ],
         }
 
         analysis = {
@@ -441,41 +492,67 @@ class PokerPlanningCalculator:
             "total_points": total_points,
             "completed_points": completed_points,
             "remaining_points": remaining_points,
-            "completion_percentage": (completed_points / total_points * 100) if total_points > 0 else 0,
+            "completion_percentage": (completed_points / total_points * 100)
+            if total_points > 0
+            else 0,
             "size_distribution": {
                 "small": {
                     "count": len(size_distribution["small"]),
-                    "points": sum(s.estimated_points for s in size_distribution["small"]),
-                    "percentage": len(size_distribution["small"]) / len(self.stories) * 100
+                    "points": sum(
+                        s.estimated_points for s in size_distribution["small"]
+                    ),
+                    "percentage": len(size_distribution["small"])
+                    / len(self.stories)
+                    * 100,
                 },
                 "ideal": {
                     "count": len(size_distribution["ideal"]),
-                    "points": sum(s.estimated_points for s in size_distribution["ideal"]),
-                    "percentage": len(size_distribution["ideal"]) / len(self.stories) * 100
+                    "points": sum(
+                        s.estimated_points for s in size_distribution["ideal"]
+                    ),
+                    "percentage": len(size_distribution["ideal"])
+                    / len(self.stories)
+                    * 100,
                 },
                 "large": {
                     "count": len(size_distribution["large"]),
-                    "points": sum(s.estimated_points for s in size_distribution["large"]),
-                    "percentage": len(size_distribution["large"]) / len(self.stories) * 100
+                    "points": sum(
+                        s.estimated_points for s in size_distribution["large"]
+                    ),
+                    "percentage": len(size_distribution["large"])
+                    / len(self.stories)
+                    * 100,
                 },
                 "too_large": {
                     "count": len(size_distribution["too_large"]),
-                    "points": sum(s.estimated_points for s in size_distribution["too_large"]),
-                    "percentage": len(size_distribution["too_large"]) / len(self.stories) * 100,
+                    "points": sum(
+                        s.estimated_points for s in size_distribution["too_large"]
+                    ),
+                    "percentage": len(size_distribution["too_large"])
+                    / len(self.stories)
+                    * 100,
                     "action_required": "These stories should be broken down",
-                    "stories": [{"id": s.id, "title": s.title, "points": s.estimated_points}
-                               for s in size_distribution["too_large"]]
-                }
+                    "stories": [
+                        {"id": s.id, "title": s.title, "points": s.estimated_points}
+                        for s in size_distribution["too_large"]
+                    ],
+                },
             },
             "health_check": {
-                "ideal_distribution": len(size_distribution["ideal"]) / len(self.stories) * 100,
-                "status": "Healthy" if len(size_distribution["too_large"]) == 0 else f"{len(size_distribution['too_large'])} stories need breakdown"
-            }
+                "ideal_distribution": len(size_distribution["ideal"])
+                / len(self.stories)
+                * 100,
+                "status": "Healthy"
+                if len(size_distribution["too_large"]) == 0
+                else f"{len(size_distribution['too_large'])} stories need breakdown",
+            },
         }
 
         return analysis
 
-    def generate_sprint_plan(self, sprint_number: int, available_capacity: Optional[float] = None) -> Dict:
+    def generate_sprint_plan(
+        self, sprint_number: int, available_capacity: Optional[float] = None
+    ) -> Dict:
         """
         Generate a sprint plan by selecting stories from backlog
 
@@ -486,15 +563,17 @@ class PokerPlanningCalculator:
         Returns:
             Dictionary with sprint plan
         """
-        capacity = available_capacity if available_capacity is not None else self.config.points_per_sprint
+        capacity = (
+            available_capacity
+            if available_capacity is not None
+            else self.config.points_per_sprint
+        )
 
         # Get unassigned stories sorted by priority (assuming order in list = priority)
         unassigned = [s for s in self.stories if not s.completed and not s.sprint]
 
         if not unassigned:
-            return {
-                "error": "No unassigned stories available for sprint planning"
-            }
+            return {"error": "No unassigned stories available for sprint planning"}
 
         # Simple greedy algorithm: select stories until capacity is reached
         selected_stories = []
@@ -515,18 +594,21 @@ class PokerPlanningCalculator:
             "sprint_number": sprint_number,
             "capacity": capacity,
             "committed_points": total_points,
-            "capacity_utilization": (total_points / capacity * 100) if capacity > 0 else 0,
+            "capacity_utilization": (total_points / capacity * 100)
+            if capacity > 0
+            else 0,
             "stories": [
                 {
                     "id": s.id,
                     "title": s.title,
                     "points": s.estimated_points,
-                    "epic_id": s.epic_id
+                    "epic_id": s.epic_id,
                 }
                 for s in selected_stories
             ],
-            "recommendation": "Good capacity utilization" if 70 <= (total_points / capacity * 100) <= 90
-                             else "Consider adjusting story selection"
+            "recommendation": "Good capacity utilization"
+            if 70 <= (total_points / capacity * 100) <= 90
+            else "Consider adjusting story selection",
         }
 
         return sprint_plan
@@ -548,7 +630,7 @@ def main():
         scale=EstimationScale.FIBONACCI,
         breakdown_threshold=13,
         points_per_sprint=20,
-        sprint_duration_weeks=2
+        sprint_duration_weeks=2,
     )
 
     calculator = PokerPlanningCalculator(config)
@@ -565,9 +647,7 @@ def main():
     print("=" * 80)
 
     session = PlanningSession(
-        session_id="SESSION-001",
-        story_id="US-001",
-        story_title="User Login with OAuth"
+        session_id="SESSION-001", story_id="US-001", story_title="User Login with OAuth"
     )
 
     # Simulate team estimates
@@ -578,12 +658,14 @@ def main():
     print(f"\nStory: {analysis['story']['id']} - {analysis['story']['title']}")
     print(f"\nEstimates: {session.estimates}")
     print("\nStatistics:")
-    for key, value in analysis['statistics'].items():
+    for key, value in analysis["statistics"].items():
         print(f"  {key:20}: {value:.2f}")
 
     print("\nConsensus:")
     print(f"  Reached: {analysis['consensus']['reached']}")
-    print(f"  Variance Coefficient: {analysis['consensus']['variance_coefficient']:.2f}%")
+    print(
+        f"  Variance Coefficient: {analysis['consensus']['variance_coefficient']:.2f}%"
+    )
     print(f"  Recommendation: {analysis['consensus']['recommendation']}")
 
     print(f"\nFinal Estimate: {analysis['final_estimate']['recommended']} points")
@@ -600,9 +682,9 @@ def main():
     print(f"\nStory Points: {large_story}")
     print(f"Should Breakdown: {breakdown['should_breakdown']}")
     print(f"Reason: {breakdown['reason']}")
-    if breakdown['suggested_breakdown']:
+    if breakdown["suggested_breakdown"]:
         print("\nSuggestions:")
-        for suggestion in breakdown['suggested_breakdown']:
+        for suggestion in breakdown["suggested_breakdown"]:
             print(f"  - {suggestion}")
 
     # Example 4: Velocity Calculation
@@ -630,7 +712,7 @@ def main():
             estimated_points=points,
             actual_points=points,
             sprint=sprint,
-            completed=True
+            completed=True,
         )
         calculator.add_story(story)
 
@@ -639,12 +721,14 @@ def main():
     print("\nVelocity Metrics:")
     print(f"  Average Velocity: {velocity['average_velocity']:.1f} points/sprint")
     print(f"  Median Velocity: {velocity['median_velocity']:.1f} points/sprint")
-    print(f"  Range: {velocity['min_velocity']:.1f} - {velocity['max_velocity']:.1f} points/sprint")
+    print(
+        f"  Range: {velocity['min_velocity']:.1f} - {velocity['max_velocity']:.1f} points/sprint"
+    )
     print(f"  Standard Deviation: {velocity['std_dev']:.2f}")
     print(f"  Stability: {velocity['stability']}")
 
     print("\nSprint Details:")
-    for sprint, points in velocity['sprint_details'].items():
+    for sprint, points in velocity["sprint_details"].items():
         print(f"  Sprint {sprint}: {points} points")
 
     # Example 5: Completion Estimation
@@ -659,12 +743,14 @@ def main():
     print(f"Velocity Used: {estimation['velocity_used']:.1f} points/sprint")
 
     print("\nScenarios:")
-    for scenario_name, scenario_data in estimation['scenarios'].items():
+    for scenario_name, scenario_data in estimation["scenarios"].items():
         print(f"\n  {scenario_name.upper()}:")
         print(f"    Velocity: {scenario_data['velocity']:.1f} points/sprint")
-        print(f"    Duration: {scenario_data['duration']['sprints']} sprints "
-              f"({scenario_data['duration']['weeks']} weeks / "
-              f"{scenario_data['duration']['months']} months)")
+        print(
+            f"    Duration: {scenario_data['duration']['sprints']} sprints "
+            f"({scenario_data['duration']['weeks']} weeks / "
+            f"{scenario_data['duration']['months']} months)"
+        )
         print(f"    {scenario_data['description']}")
 
     print(f"\nRecommendation: {estimation['recommendation']}")
@@ -684,10 +770,7 @@ def main():
 
     for story_id, title, points, epic_id in new_stories:
         story = Story(
-            id=story_id,
-            title=title,
-            estimated_points=points,
-            epic_id=epic_id
+            id=story_id, title=title, estimated_points=points, epic_id=epic_id
         )
         calculator.add_story(story)
 
@@ -696,24 +779,28 @@ def main():
     print("\nBacklog Summary:")
     print(f"  Total Stories: {backlog_analysis['total_stories']}")
     print(f"  Total Points: {backlog_analysis['total_points']}")
-    print(f"  Completed: {backlog_analysis['completed_points']} points "
-          f"({backlog_analysis['completion_percentage']:.1f}%)")
+    print(
+        f"  Completed: {backlog_analysis['completed_points']} points "
+        f"({backlog_analysis['completion_percentage']:.1f}%)"
+    )
     print(f"  Remaining: {backlog_analysis['remaining_points']} points")
 
     print("\nSize Distribution:")
-    for size, data in backlog_analysis['size_distribution'].items():
+    for size, data in backlog_analysis["size_distribution"].items():
         print(f"  {size.upper()}:")
         print(f"    Count: {data['count']} stories ({data['percentage']:.1f}%)")
         print(f"    Points: {data['points']}")
-        if 'action_required' in data:
+        if "action_required" in data:
             print(f"    Action: {data['action_required']}")
-            if data['stories']:
+            if data["stories"]:
                 print("    Stories needing breakdown:")
-                for s in data['stories']:
+                for s in data["stories"]:
                     print(f"      - {s['id']}: {s['title']} ({s['points']} points)")
 
     print("\nHealth Check:")
-    print(f"  Ideal Distribution: {backlog_analysis['health_check']['ideal_distribution']:.1f}%")
+    print(
+        f"  Ideal Distribution: {backlog_analysis['health_check']['ideal_distribution']:.1f}%"
+    )
     print(f"  Status: {backlog_analysis['health_check']['status']}")
 
     # Example 7: Sprint Planning
@@ -729,8 +816,10 @@ def main():
     print(f"  Utilization: {sprint_plan['capacity_utilization']:.1f}%")
 
     print("\nSelected Stories:")
-    for story in sprint_plan['stories']:
-        print(f"  - {story['id']}: {story['title']} ({story['points']} points) [Epic: {story['epic_id']}]")
+    for story in sprint_plan["stories"]:
+        print(
+            f"  - {story['id']}: {story['title']} ({story['points']} points) [Epic: {story['epic_id']}]"
+        )
 
     print(f"\nRecommendation: {sprint_plan['recommendation']}")
 

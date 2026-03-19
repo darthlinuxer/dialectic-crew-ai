@@ -72,8 +72,12 @@ from ..paths import (
     SIMULATION_BRANCH_NAME,
 )
 from ..persistence import (
+    completed_story_ids_for_prd,
+    latest_self_prd_path,
+    latest_unfinished_self_prd_path,
     list_resumable_cycles,
     load_self_improve_record,
+    next_available_story_for_prd,
     record_execution_artifacts,
     record_plan_artifacts,
     record_prd_artifacts,
@@ -104,7 +108,17 @@ def _kickoff_prd_flow(
     *,
     flow_id: str,
     feature_request: str,
+    roadmap_opportunity: ImprovementOpportunity | None = None,
 ) -> None:
+    flow.state.source_roadmap_path = (
+        (roadmap_opportunity.source_path or "") if roadmap_opportunity else ""
+    )
+    flow.state.source_roadmap_label = (
+        (roadmap_opportunity.source_label or "") if roadmap_opportunity else ""
+    )
+    flow.state.source_roadmap_key = (
+        (roadmap_opportunity.source_key or "") if roadmap_opportunity else ""
+    )
     flow.kickoff(
         inputs={
             "id": flow_id,
@@ -114,10 +128,15 @@ def _kickoff_prd_flow(
     )
 
 
-def _run_planning_stage(run_user_story_planning_fn, *, prd_path: str) -> dict:
+def _run_planning_stage(
+    run_user_story_planning_fn,
+    *,
+    prd_path: str,
+    user_story_ref: str | None,
+) -> dict:
     return run_user_story_planning_fn(
         prd_path=prd_path,
-        user_story_ref=None,
+        user_story_ref=user_story_ref,
         vision_context=VisionContext.SELF,
     )
 
@@ -167,6 +186,23 @@ def _make_artifact_opportunity(
     artifact_path: str,
 ) -> ImprovementOpportunity:
     label = "PRD" if kind == "prd" else "plan"
+    payload = None
+    try:
+        payload = json.loads(Path(artifact_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = None
+
+    source_path = None
+    source_label = None
+    source_key = None
+    if isinstance(payload, dict):
+        raw_source_path = payload.get("source_roadmap_path")
+        raw_source_label = payload.get("source_roadmap_label")
+        raw_source_key = payload.get("source_roadmap_key")
+        source_path = raw_source_path if isinstance(raw_source_path, str) else None
+        source_label = raw_source_label if isinstance(raw_source_label, str) else None
+        source_key = raw_source_key if isinstance(raw_source_key, str) else None
+
     return ImprovementOpportunity(
         id=f"artifact:{kind}",
         category="code_health",
@@ -177,7 +213,25 @@ def _make_artifact_opportunity(
         ),
         evidence=[artifact_path],
         estimated_impact="medium",
+        source_path=source_path,
+        source_label=source_label,
+        source_key=source_key,
     )
+
+
+def _artifact_source_prd_path(artifact_path: str) -> str:
+    try:
+        payload = json.loads(Path(artifact_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+    if not isinstance(payload, dict):
+        return ""
+
+    raw_source_prd_path = payload.get("source_prd_path")
+    if not isinstance(raw_source_prd_path, str):
+        return ""
+    return raw_source_prd_path.strip()
 
 
 def _collect_touched_files(project_root: Path) -> list[str]:
@@ -399,6 +453,14 @@ def _resolve_resume_context(
     return resolve_resume_context(record)
 
 
+def _completed_story_ids_for_prd(prd_path: str) -> list[str]:
+    return completed_story_ids_for_prd(prd_path)
+
+
+def _next_available_story_for_prd(prd_path: str) -> str | None:
+    return next_available_story_for_prd(prd_path)
+
+
 def _summarize_resume_state(
     record: SelfImprovementRecord,
     last_failure_reason: str = "",
@@ -420,6 +482,9 @@ def _can_recreate_resume_branch_from_saved_state(
     if next_stage == "execution":
         return _artifact_exists(record.plan_path_json)
     if next_stage in {
+        "quality gate",
+        "quality gate (remediation exhausted)",
+        "quality remediation",
         "test validation",
         "metrics validation",
         "PR creation",
@@ -445,6 +510,25 @@ def _require_artifact(path: str, failure_reason: str) -> str:
     return require_artifact(path, failure_reason, error_cls=_CycleAbort)
 
 
+def _normalize_roadmap_label(label: str) -> str:
+    return re.sub(r"\s+", " ", label).strip().lower()
+
+
+def _expected_roadmap_labels(
+    opportunities: list[ImprovementOpportunity],
+) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for opportunity in opportunities:
+        if opportunity.category != "vision_gap" and not opportunity.source_label:
+            continue
+        candidate = (opportunity.source_label or "").strip()
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            labels.append(candidate)
+    return labels
+
+
 def _mark_roadmap_items_completed(
     project_root: Path,
     opportunities: list[ImprovementOpportunity],
@@ -453,12 +537,22 @@ def _mark_roadmap_items_completed(
     if not roadmap_path.exists():
         return []
 
-    targets = {
+    exact_targets = {
+        opportunity.source_label.strip()
+        for opportunity in opportunities
+        if opportunity.source_label and opportunity.source_label.strip()
+    }
+    normalized_targets = {
+        opportunity.source_key.strip()
+        for opportunity in opportunities
+        if opportunity.source_key and opportunity.source_key.strip()
+    }
+    fallback_targets = {
         (opportunity.description or opportunity.title).strip()
         for opportunity in opportunities
         if (opportunity.description or opportunity.title).strip()
     }
-    if not targets:
+    if not exact_targets and not normalized_targets and not fallback_targets:
         return []
 
     updated_labels: list[str] = []
@@ -473,7 +567,12 @@ def _mark_roadmap_items_completed(
             continue
 
         label = match.group("label").strip()
-        if label in targets:
+        normalized_label = _normalize_roadmap_label(label)
+        if (
+            label in exact_targets
+            or normalized_label in normalized_targets
+            or label in fallback_targets
+        ):
             updated_lines.append(
                 f"{match.group('prefix')}[x]{match.group('suffix')}{label}"
             )
@@ -485,6 +584,19 @@ def _mark_roadmap_items_completed(
     if updated_labels:
         roadmap_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
     return updated_labels
+
+
+def _roadmap_update_ready(
+    record: SelfImprovementRecord,
+    opportunities: list[ImprovementOpportunity],
+) -> bool:
+    if not _expected_roadmap_labels(opportunities):
+        return False
+
+    prd_path = record.prd_path_json.strip()
+    if not prd_path:
+        return True
+    return _next_available_story_for_prd(prd_path) is None
 
 
 @contextmanager
@@ -620,6 +732,132 @@ def _execute_plan_with_retries(  # pylint: disable=too-many-arguments
     raise RuntimeError("Execution retry loop exited unexpectedly")
 
 
+def _initialize_continue_prd_state(
+    record: SelfImprovementRecord,
+    *,
+    prd_path: str,
+) -> str | None:
+    record.continue_prd = True
+    record.continue_prd_source_prd_path = prd_path
+    record.continue_prd_completed_story_refs = _completed_story_ids_for_prd(prd_path)
+    next_story_ref = _next_available_story_for_prd(prd_path)
+    if next_story_ref is None:
+        return None
+    record.continue_prd_current_story_ref = next_story_ref
+    record.planning_user_story_ref = next_story_ref
+    return next_story_ref
+
+
+def _upsert_continue_prd_story_history(record: SelfImprovementRecord) -> None:
+    story_ref = record.execution_story_status and record.planning_user_story_ref
+    if not story_ref:
+        return
+
+    history_entry = {
+        "story_ref": story_ref,
+        "plan_path_json": record.plan_path_json,
+        "execution_run_id": record.execution_run_id,
+        "story_status": record.execution_story_status,
+    }
+    updated_history: list[dict[str, str]] = []
+    replaced = False
+    for entry in record.continue_prd_story_history:
+        if entry.get("story_ref") == story_ref:
+            updated_history.append(history_entry)
+            replaced = True
+        else:
+            updated_history.append(entry)
+    if not replaced:
+        updated_history.append(history_entry)
+    record.continue_prd_story_history = updated_history
+
+
+def _advance_continue_prd_story(record: SelfImprovementRecord) -> bool:
+    prd_path = record.continue_prd_source_prd_path or record.prd_path_json
+    if not prd_path:
+        return False
+
+    completed_story_refs = _completed_story_ids_for_prd(prd_path)
+    record.continue_prd_completed_story_refs = completed_story_refs
+    _upsert_continue_prd_story_history(record)
+    next_story_ref = _next_available_story_for_prd(prd_path)
+    if next_story_ref is None:
+        record.continue_prd_current_story_ref = ""
+        record.planning_user_story_ref = ""
+        return False
+
+    record.continue_prd_current_story_ref = next_story_ref
+    record.planning_user_story_ref = next_story_ref
+    record.plan_generated = False
+    record.plan_path_json = ""
+    record.plan_path_md = ""
+    record.execution_attempted = False
+    record.execution_attempt_count = 0
+    record.execution_failure_reasons = []
+    record.execution_run_id = ""
+    record.execution_task_flow_ids = {}
+    record.execution_story_status = ""
+    record.execution_output_path = ""
+    record.execution_report_path = ""
+    return True
+
+
+def _continue_prd_total_story_count(prd_path: str) -> int:
+    try:
+        payload = json.loads(Path(prd_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    user_stories = payload.get("user_stories")
+    if not isinstance(user_stories, list):
+        return 0
+    return sum(1 for story in user_stories if isinstance(story, dict))
+
+
+def _print_continue_prd_progress(record: SelfImprovementRecord) -> None:
+    prd_path = record.continue_prd_source_prd_path or record.prd_path_json
+    if not prd_path or not record.continue_prd_current_story_ref:
+        return
+    completed_count = len(record.continue_prd_completed_story_refs)
+    total_count = _continue_prd_total_story_count(prd_path)
+    print(
+        "[continue-prd] Completed "
+        f"{completed_count}/{total_count} stories. "
+        f"Next: {record.continue_prd_current_story_ref}"
+    )
+
+
+def _resume_continue_prd_story_if_needed(record: SelfImprovementRecord) -> None:
+    if not record.continue_prd:
+        return
+
+    if record.continue_prd_current_story_ref:
+        record.planning_user_story_ref = record.continue_prd_current_story_ref
+        return
+
+    has_active_story_work = any(
+        (
+            record.plan_generated,
+            record.execution_attempted,
+            bool(record.plan_path_json),
+            bool(record.execution_output_path),
+            bool(record.execution_report_path),
+        )
+    )
+    if has_active_story_work:
+        return
+
+    prd_path = record.continue_prd_source_prd_path or record.prd_path_json
+    if not prd_path:
+        return
+
+    record.continue_prd_completed_story_refs = _completed_story_ids_for_prd(prd_path)
+    next_story_ref = _next_available_story_for_prd(prd_path)
+    record.continue_prd_current_story_ref = next_story_ref or ""
+    record.planning_user_story_ref = next_story_ref or ""
+
+
 def _run_git_preflight(
     project_root: Path,
     *,
@@ -714,6 +952,8 @@ def run_self_improve(  # pylint: disable=too-many-arguments
     *,
     artifact_path: str | None = None,
     next_roadmap_item: bool = False,
+    next_available_story: bool = False,
+    continue_prd: bool = False,
 ) -> SelfImprovementRecord:
     """Run a self-improve cycle, optionally as a non-destructive simulation."""
     if max_improvements != 1:
@@ -728,10 +968,37 @@ def run_self_improve(  # pylint: disable=too-many-arguments
         raise ValueError(
             "self-improve does not support using an artifact path with --resume"
         )
+    if continue_prd and next_available_story:
+        raise ValueError(
+            "self-improve does not support using --continue-prd with "
+            "--next-available-story"
+        )
+    if next_available_story and resume_cycle_id is not None:
+        raise ValueError(
+            "self-improve does not support using --next-available-story with --resume"
+        )
+    if continue_prd and resume_cycle_id is not None:
+        raise ValueError(
+            "self-improve does not support using --continue-prd with --resume"
+        )
 
     _configure_crewai_runtime()
     project_root = resolve_project_root()
     is_resume = resume_cycle_id is not None
+    auto_discovered_prd_path = ""
+    if (next_available_story or continue_prd) and artifact_path is None:
+        auto_discovered_prd_path = (
+            latest_unfinished_self_prd_path(project_root)
+            or latest_self_prd_path(project_root)
+            or ""
+        )
+        if not auto_discovered_prd_path:
+            mode_label = "--continue-prd" if continue_prd else "--next-available-story"
+            raise ValueError(
+                f"self-improve {mode_label} could not find a PRD artifact "
+                "in prd_output/self"
+            )
+        artifact_path = auto_discovered_prd_path
     supplied_artifact = (
         _load_starting_artifact(artifact_path) if artifact_path else None
     )
@@ -760,7 +1027,12 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             record.tests_passed = False
             record.metrics_stable = False
             record.pr_created = False
+            record.roadmap_marking_attempted = False
+            record.roadmap_marking_succeeded = False
+            record.completed_roadmap_items = []
+            record.roadmap_marking_failure_reason = ""
             record.execution_failure_reasons = list(record.execution_failure_reasons)
+            _resume_continue_prd_story_if_needed(record)
             _save_self_improve_record(project_root, record)
         else:
             record = SelfImprovementRecord(
@@ -856,6 +1128,11 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     baseline_metrics=baseline_metrics,
                 )
                 print(f"[resume] Loaded {len(selected)} saved opportunities.")
+                if record.planning_user_story_ref and not record.plan_generated:
+                    print(
+                        "[resume] Reusing selected user story: "
+                        f"{record.planning_user_story_ref}"
+                    )
             elif supplied_artifact is not None:
                 artifact_kind, supplied_artifact_path = supplied_artifact
                 selected = [
@@ -873,18 +1150,70 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                     SIMULATION_BRANCH_NAME if simulate else f"self-improve/{cycle_id}"
                 )
                 record.branch_name = branch_name
+                if (next_available_story or continue_prd) and artifact_kind != "prd":
+                    record.failure_reason = (
+                        "--continue-prd requires a PRD artifact, not a plan artifact"
+                        if continue_prd
+                        else "--next-available-story requires a PRD artifact, not a plan artifact"
+                    )
+                    print(f"  ABORT: {record.failure_reason}")
+                    _persist_record(store, record)
+                    _save_self_improve_record(project_root, record)
+                    return record
                 if artifact_kind == "prd":
                     record.prd_generated = True
                     record.prd_path_json = supplied_artifact_path
+                    if continue_prd:
+                        next_story_ref = _initialize_continue_prd_state(
+                            record,
+                            prd_path=supplied_artifact_path,
+                        )
+                    elif next_available_story:
+                        next_story_ref = _next_available_story_for_prd(
+                            supplied_artifact_path
+                        )
+                        if next_story_ref is None:
+                            pass
+                        else:
+                            record.planning_user_story_ref = next_story_ref
+                    else:
+                        next_story_ref = None
+                    if (
+                        continue_prd or next_available_story
+                    ) and next_story_ref is None:
+                        completed_story_ids = _completed_story_ids_for_prd(
+                            supplied_artifact_path
+                        )
+                        completed_suffix = (
+                            f" Completed stories: {', '.join(completed_story_ids)}."
+                            if completed_story_ids
+                            else ""
+                        )
+                        record.failure_reason = (
+                            "No unfinished user stories remain in PRD: "
+                            f"{supplied_artifact_path}.{completed_suffix}"
+                        )
+                        print(f"  ABORT: {record.failure_reason}")
+                        _persist_record(store, record)
+                        _save_self_improve_record(project_root, record)
+                        return record
                 else:
                     record.prd_generated = True
                     record.plan_generated = True
+                    source_prd_path = _artifact_source_prd_path(supplied_artifact_path)
+                    if source_prd_path:
+                        record.prd_path_json = source_prd_path
                     record.plan_path_json = supplied_artifact_path
                 _save_self_improve_record(project_root, record)
                 print(
-                    f"[2/6] Using supplied {artifact_kind.upper()} artifact: "
-                    f"{supplied_artifact_path}"
+                    f"[2/6] {'Auto-discovered' if auto_discovered_prd_path else 'Using supplied'} "
+                    f"{artifact_kind.upper()} artifact: {supplied_artifact_path}"
                 )
+                if record.planning_user_story_ref:
+                    print(
+                        "[2a/6] Selected next available user story: "
+                        f"{record.planning_user_story_ref}"
+                    )
             else:
                 current_stage = "introspection"
                 print(
@@ -1058,6 +1387,9 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                                     flow,
                                     flow_id=record.prd_flow_id,
                                     feature_request=feature_request,
+                                    roadmap_opportunity=selected[0]
+                                    if selected
+                                    else None,
                                 ),
                             )
                             prd_path = _record_prd_artifacts(record, flow)
@@ -1103,87 +1435,115 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                             )
                             raise _CycleAbort(record.failure_reason)
 
-                        if not record.plan_generated:
-                            current_stage = "planning"
-                            print("[5/7] Planning user story execution...")
-                            from planning.flow import (  # pylint: disable=import-outside-toplevel
-                                run_user_story_planning,
-                            )
+                        continue_story_loop = True
+                        while continue_story_loop:
+                            if (
+                                record.continue_prd
+                                and record.continue_prd_current_story_ref
+                            ):
+                                record.planning_user_story_ref = (
+                                    record.continue_prd_current_story_ref
+                                )
+                                _print_continue_prd_progress(record)
 
-                            plan_result = _run_with_transient_llm_retries(
-                                "planning",
-                                partial(
-                                    _run_planning_stage,
+                            if not record.plan_generated:
+                                current_stage = "planning"
+                                selected_story_ref = (
+                                    record.planning_user_story_ref or None
+                                )
+                                if selected_story_ref:
+                                    print(
+                                        "[5/7] Planning user story execution for "
+                                        f"{selected_story_ref}..."
+                                    )
+                                else:
+                                    print("[5/7] Planning user story execution...")
+                                from planning.flow import (  # pylint: disable=import-outside-toplevel
                                     run_user_story_planning,
-                                    prd_path=prd_path,
-                                ),
+                                )
+
+                                plan_result = _run_with_transient_llm_retries(
+                                    "planning",
+                                    partial(
+                                        _run_planning_stage,
+                                        run_user_story_planning,
+                                        prd_path=prd_path,
+                                        user_story_ref=selected_story_ref,
+                                    ),
+                                )
+                                plan_path = _record_plan_artifacts(record, plan_result)
+                                _save_self_improve_record(project_root, record)
+                                if plan_result["quality_score"] < 7.5:
+                                    # pylint: disable-next=line-too-long
+                                    record.failure_reason = f"Plan quality too low: {plan_result['quality_score']}"
+                                    raise _CycleAbort(record.failure_reason)
+                                plan_path = _require_artifact(
+                                    plan_path,
+                                    "Planning did not produce an exported artifact",
+                                )
+                                record.plan_generated = True
+                            else:
+                                plan_path = _require_artifact(
+                                    record.plan_path_json,
+                                    "Planning did not produce an exported artifact",
+                                )
+                                print(f"[resume] Reusing plan artifact: {plan_path}")
+
+                            if tracker.budget_exceeded:
+                                record.failure_reason = (
+                                    f"Token budget exceeded after planning "
+                                    f"({tracker.total_tokens}/{tracker.budget})"
+                                )
+                                raise _CycleAbort(record.failure_reason)
+
+                            needs_execution = (
+                                not record.execution_attempted
+                                or not record.execution_output_path
+                                or not record.execution_report_path
+                                or (
+                                    is_resume
+                                    and str(resume_summary.get("next_stage", ""))
+                                    == "execution"
+                                )
                             )
-                            plan_path = _record_plan_artifacts(record, plan_result)
+                            if needs_execution:
+                                current_stage = "execution"
+                                print("[6/7] Executing plan...")
+                                from execution.dialectic_execution import (  # pylint: disable=import-outside-toplevel
+                                    run_dialectic_execution,
+                                )
+
+                                exec_result = _execute_plan_with_retries(
+                                    run_dialectic_execution,
+                                    plan_path=plan_path,
+                                    resume_run_id=record.execution_run_id or None,
+                                    simulate=simulate,
+                                    record=record,
+                                    project_root=project_root,
+                                )
+
+                                if not exec_result.get("overall_success"):
+                                    raise _CycleAbort(record.failure_reason)
+                                _require_artifact(
+                                    record.execution_output_path,
+                                    "Execution did not produce an exported artifact",
+                                )
+                                _require_artifact(
+                                    record.execution_report_path,
+                                    "Execution report did not produce an exported artifact",
+                                )
+                            else:
+                                print(
+                                    "[resume] Reusing execution artifacts from run: "
+                                    f"{record.execution_run_id}"
+                                )
+
+                            if not record.continue_prd:
+                                continue_story_loop = False
+                                continue
+
+                            continue_story_loop = _advance_continue_prd_story(record)
                             _save_self_improve_record(project_root, record)
-                            if plan_result["quality_score"] < 7.5:
-                                # pylint: disable-next=line-too-long
-                                record.failure_reason = f"Plan quality too low: {plan_result['quality_score']}"
-                                raise _CycleAbort(record.failure_reason)
-                            plan_path = _require_artifact(
-                                plan_path,
-                                "Planning did not produce an exported artifact",
-                            )
-                            record.plan_generated = True
-                        else:
-                            plan_path = _require_artifact(
-                                record.plan_path_json,
-                                "Planning did not produce an exported artifact",
-                            )
-                            print(f"[resume] Reusing plan artifact: {plan_path}")
-
-                        if tracker.budget_exceeded:
-                            record.failure_reason = (
-                                f"Token budget exceeded after planning "
-                                f"({tracker.total_tokens}/{tracker.budget})"
-                            )
-                            raise _CycleAbort(record.failure_reason)
-
-                        needs_execution = (
-                            not record.execution_attempted
-                            or not record.execution_output_path
-                            or not record.execution_report_path
-                            or (
-                                is_resume
-                                and str(resume_summary.get("next_stage", ""))
-                                == "execution"
-                            )
-                        )
-                        if needs_execution:
-                            current_stage = "execution"
-                            print("[6/7] Executing plan...")
-                            from execution.dialectic_execution import (  # pylint: disable=import-outside-toplevel
-                                run_dialectic_execution,
-                            )
-
-                            exec_result = _execute_plan_with_retries(
-                                run_dialectic_execution,
-                                plan_path=plan_path,
-                                resume_run_id=record.execution_run_id or None,
-                                simulate=simulate,
-                                record=record,
-                                project_root=project_root,
-                            )
-
-                            if not exec_result.get("overall_success"):
-                                raise _CycleAbort(record.failure_reason)
-                            _require_artifact(
-                                record.execution_output_path,
-                                "Execution did not produce an exported artifact",
-                            )
-                            _require_artifact(
-                                record.execution_report_path,
-                                "Execution report did not produce an exported artifact",
-                            )
-                        else:
-                            print(
-                                "[resume] Reusing execution artifacts from run: "
-                                f"{record.execution_run_id}"
-                            )
 
                 except KeyboardInterrupt:
                     enable_shutdown_noise_suppression()
@@ -1239,7 +1599,45 @@ def run_self_improve(  # pylint: disable=too-many-arguments
             )
 
             print("\n[7a/9] Validating: running code quality checks...")
-            quality_result = run_quality_gate(project_root)
+            if record.quality_remediation_attempt_count > 0:
+                quality_result = run_quality_gate(
+                    project_root,
+                    previous_remediation_attempt_count=(
+                        record.quality_remediation_attempt_count
+                    ),
+                )
+            else:
+                quality_result = run_quality_gate(project_root)
+            record.quality_gate_passed = quality_result.passed
+            record.quality_gate_summary = quality_result.summary
+            record.quality_remediation_attempted = getattr(
+                quality_result,
+                "remediation_attempted",
+                False,
+            )
+            record.quality_remediation_attempt_count = getattr(
+                quality_result,
+                "remediation_attempt_count",
+                0,
+            )
+            record.quality_remediation_succeeded = getattr(
+                quality_result,
+                "remediation_succeeded",
+                False,
+            )
+            record.quality_remediation_steps = list(
+                getattr(quality_result, "remediation_steps", [])
+            )
+            record.quality_remediation_failure_reason = getattr(
+                quality_result,
+                "remediation_failure_reason",
+                "",
+            )
+            record.quality_remediation_exhausted = getattr(
+                quality_result,
+                "remediation_exhausted",
+                False,
+            )
             if not quality_result.passed:
                 record.failure_reason = f"Quality gate failed: {quality_result.summary}"
                 print(f"  FAIL: {record.failure_reason}")
@@ -1250,10 +1648,14 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 _save_self_improve_record(project_root, record)
                 return record
             print(f"  Quality gate passed: {quality_result.summary}")
+            _save_self_improve_record(project_root, record)
 
             current_stage = "structure validation"
             print("\n[7b/9] Validating: code structure (SOLID, deep modules)...")
-            structure_targets = collect_changed_python_files(project_root)
+            structure_targets = collect_changed_python_files(
+                project_root,
+                semantic_only=True,
+            )
             structure_result = validate_code_structure(
                 project_root,
                 changed_files=structure_targets,
@@ -1328,13 +1730,50 @@ def run_self_improve(  # pylint: disable=too-many-arguments
                 _save_self_improve_record(project_root, record)
                 return record
 
-            completed_roadmap_items = _mark_roadmap_items_completed(
-                project_root, selected
+            roadmap_path = project_root / SELF_IMPROVE_ROADMAP_PATH
+            expected_roadmap_labels = _expected_roadmap_labels(selected)
+            roadmap_marking_ready = _roadmap_update_ready(record, selected)
+            completed_roadmap_items = (
+                _mark_roadmap_items_completed(project_root, selected)
+                if roadmap_marking_ready
+                else []
             )
+            record.roadmap_marking_attempted = (
+                roadmap_marking_ready and roadmap_path.exists()
+            )
+            record.completed_roadmap_items = completed_roadmap_items
+            if (
+                bool(expected_roadmap_labels)
+                and roadmap_path.exists()
+                and not roadmap_marking_ready
+            ):
+                print(
+                    "  Deferring roadmap completion until the roadmap-backed PRD "
+                    "has no unfinished user stories."
+                )
             if completed_roadmap_items:
                 print("  Updated roadmap items:")
                 for item in completed_roadmap_items:
                     print(f"    - {item}")
+
+            if record.roadmap_marking_attempted:
+                missing_roadmap_labels = [
+                    label
+                    for label in expected_roadmap_labels
+                    if label not in completed_roadmap_items
+                ]
+                if missing_roadmap_labels:
+                    record.roadmap_marking_succeeded = False
+                    record.roadmap_marking_failure_reason = (
+                        "Failed to mark roadmap items complete: "
+                        + ", ".join(missing_roadmap_labels)
+                    )
+                    record.failure_reason = record.roadmap_marking_failure_reason
+                    print(f"  FAIL: {record.failure_reason}")
+                    _persist_record(store, record)
+                    _save_self_improve_record(project_root, record)
+                    return record
+                record.roadmap_marking_succeeded = True
 
             commit_message = f"chore(self-improve): apply cycle {cycle_id}"
             committed, commit_reason = _git_commit_all(project_root, commit_message)

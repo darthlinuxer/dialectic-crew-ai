@@ -49,7 +49,9 @@ def execution_plan_to_markdown(plan: Union[UserStoryExecutionPlan, dict]) -> str
         lines.append("")
     if plan.tech_notes:
         lines.extend(["---", "", "## Technical Notes", "", plan.tech_notes, ""])
-    lines.extend(["---", "", "## Validation", "", plan.final_validation_notes.strip(), ""])
+    lines.extend(
+        ["---", "", "## Validation", "", plan.final_validation_notes.strip(), ""]
+    )
     return "\n".join(lines).strip() + "\n"
 
 
@@ -85,44 +87,52 @@ def prd_to_markdown(prd: Union[PRDSchema, dict]) -> str:
     ]
 
     for user_story in prd.user_stories:
-        lines.extend([
-            f"### {user_story.id} — {user_story.title}",
-            "",
-            user_story.description,
-            "",
-            "**Acceptance criteria:**",
-            "",
-        ])
+        lines.extend(
+            [
+                f"### {user_story.id} — {user_story.title}",
+                "",
+                user_story.description,
+                "",
+                "**Acceptance criteria:**",
+                "",
+            ]
+        )
         for criterion in user_story.acceptance_criteria:
             lines.append(f"- {criterion}")
-        lines.extend([
-            "",
-            f"**Effort:** {user_story.effort}",
-            "",
-        ])
+        lines.extend(
+            [
+                "",
+                f"**Effort:** {user_story.effort}",
+                "",
+            ]
+        )
         if user_story.dependencies:
             lines.append(f"**Dependencies:** {', '.join(user_story.dependencies)}")
             lines.append("")
         lines.append("")
 
-    lines.extend([
-        "---",
-        "",
-        "## Anti-Drift Questions",
-        "",
-    ])
+    lines.extend(
+        [
+            "---",
+            "",
+            "## Anti-Drift Questions",
+            "",
+        ]
+    )
     for question in prd.anti_drift_questions:
         lines.append(f"- **{question.question}** — {question.answer}")
     lines.append("")
 
-    lines.extend([
-        "---",
-        "",
-        "## Final Validation",
-        "",
-        prd.final_validation_notes.strip(),
-        "",
-    ])
+    lines.extend(
+        [
+            "---",
+            "",
+            "## Final Validation",
+            "",
+            prd.final_validation_notes.strip(),
+            "",
+        ]
+    )
 
     return "\n".join(lines).strip() + "\n"
 
@@ -135,12 +145,16 @@ def render_markdown(
     """Render final Markdown with metadata frontmatter and schema-derived body."""
     vision_hash = get_vision_hash(vision_context)
     if vision_hash is None:
-        logger.debug("Could not read vision document to compute hash; continuing without vision_hash.")
+        logger.debug(
+            "Could not read vision document to compute hash; continuing without vision_hash."
+        )
 
     quality = getattr(prd, "quality_score", None)
     validation_status = getattr(prd, "validation_status", None)
     if validation_status is None:
-        validation_status = "approved" if getattr(prd, "consensus_reached", False) else "unapproved"
+        validation_status = (
+            "approved" if getattr(prd, "consensus_reached", False) else "unapproved"
+        )
 
     generated_at = datetime.now(tz=timezone.utc).isoformat()
 
